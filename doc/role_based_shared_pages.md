@@ -89,7 +89,7 @@ export default async function DashboardPage() {
 
 ---
 
-### PAGE 1 — Dashboard `/dashboard`
+### PAGE 1 — Dashboard `/dashboard`                ✅
 
 **One URL. 17 different role views.**
 
@@ -142,7 +142,7 @@ export default async function DashboardPage() {
 
 ---
 
-### PAGE 2 — Notice Board `/notices`
+### PAGE 2 — Notice Board `/notices`                ✅
 
 **One URL. Different post permissions and scopes per role.**
 
@@ -183,7 +183,7 @@ const postScopes = usePostScopes() // returns allowed scopes for current role
 
 ---
 
-### PAGE 3 — Discussion Forum `/discussion`
+### PAGE 3 — Discussion Forum `/discussion`        ✅
 
 **One URL. Role determines what threads are visible and what actions are available.**
 
