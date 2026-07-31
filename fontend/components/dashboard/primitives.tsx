@@ -112,7 +112,12 @@ export function Chip({
       className={cn(
         "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium",
         TONE_BG[tone],
-        TONE_TEXT[tone],
+        // `muted-foreground` is 4.76:1 on white but only 4.34:1 on the
+        // `bg-muted` tint this chip sits on, so the muted chip takes the
+        // darker slate. Chosen rather than layered: `cn()` has no Tailwind
+        // conflict resolution, so two competing text colours would be decided
+        // by stylesheet order, not by which came last in the list.
+        tone === "muted" ? "text-[#475569]" : TONE_TEXT[tone],
         tone === "accent" && "border border-accent-border",
       )}
     >

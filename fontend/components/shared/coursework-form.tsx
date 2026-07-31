@@ -280,8 +280,10 @@ export function CourseworkForm({
 
           {!isExam && (
             <div className="min-w-0">
-              <label className="flex min-w-0 items-center gap-2.5">
+              {/* Explicit id + `for`, not just a wrapping label */}
+              <label htmlFor="cw-allow-late" className="flex min-w-0 items-center gap-2.5">
                 <input
+                  id="cw-allow-late"
                   type="checkbox"
                   checked={allowLate}
                   onChange={(e) => setAllowLate(e.target.checked)}

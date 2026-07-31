@@ -233,6 +233,29 @@ for (const [path, label] of PUBLIC_PAGES) {
   publicRows.push({ page: label, url, want, got: outcome, status, ok });
 }
 
+/* ── Platform console (app.xyz.com) — C-SA-01…08 ───────────────────────── */
+
+const PLATFORM_PAGES: [string, string][] = [
+  ["/platform/dashboard", "Platform Dashboard (C-SA-01)"],
+  ["/platform/institutions", "Institution List (C-SA-02)"],
+  ["/platform/institutions/t-abc-college", "Institution Detail (C-SA-03)"],
+  ["/platform/institutions/new", "Create Institution (C-SA-04)"],
+  ["/platform/plans", "Plans (C-SA-05)"],
+  ["/platform/platform-users", "Platform Users (C-SA-06)"],
+  ["/platform/audit-logs", "Audit Logs (C-SA-07)"],
+  ["/platform/settings", "Platform Settings (C-SA-08)"],
+];
+
+const platformRows: { page: string; url: string; got: string; status: number; ok: boolean }[] = [];
+for (const [path, label] of PLATFORM_PAGES) {
+  const url = `${BASE}${path}`;
+  const { outcome, status } = await probe(url);
+  checked++;
+  const ok = outcome === "ok";
+  if (!ok) mismatches++;
+  platformRows.push({ page: label, url, got: outcome, status, ok });
+}
+
 /* ── Crawl: every link the app actually renders ─────────────────────────── */
 
 /**
@@ -242,10 +265,25 @@ for (const [path, label] of PUBLIC_PAGES) {
  * CTAs) that the explicit list had reported as "0 broken".
  */
 const rendered = new Map<string, Set<string>>();
-{
-  const { chromium } = await import("playwright");
+await (async () => {
+  // Playwright is a dev-only dependency for this script. If it isn't
+  // installed, skip the crawl loudly rather than failing the whole check —
+  // the explicit page matrix above still runs.
+  let chromium;
+  try {
+    ({ chromium } = await import("playwright"));
+  } catch {
+    console.log(
+      "\n⚠  playwright not installed — skipping the rendered-link crawl.",
+    );
+    console.log("   npm i -D playwright && npx playwright install chromium\n");
+  }
+  if (!chromium) return;
   const browser = await chromium.launch();
-  const seeds = [...new Set(PAGES.map((pg) => pg.path({ role: "STUDENT", slug: "student", label: "" })))];
+  const seeds = [
+    ...new Set(PAGES.map((pg) => pg.path({ role: "STUDENT", slug: "student", label: "" }))),
+    ...PLATFORM_PAGES.map(([p]) => p),
+  ];
 
   for (const [role, slug] of ROLES.map((r) => [r[0], r[1]] as const)) {
     const page = await browser.newPage();
@@ -268,7 +306,7 @@ const rendered = new Map<string, Set<string>>();
     await page.close();
   }
   await browser.close();
-}
+})();
 
 const deadRendered: { href: string; roles: string[]; status: number }[] = [];
 for (const [href, roles] of rendered) {
@@ -297,13 +335,20 @@ for (const [role, , label] of ROLES) {
 }
 
 console.log("");
+for (const r of platformRows) {
+  console.log(`${r.ok ? "✓" : "✗"} ${r.page.padEnd(34)} ${r.got} (${r.status})`);
+}
+
+console.log("");
 for (const r of publicRows) {
   console.log(`${r.ok ? "✓" : "✗"} ${r.page.padEnd(34)} ${r.got} (${r.status})`);
 }
 
 console.log(
-  `\n${rendered.size} distinct links crawled from rendered pages — ` +
-    (deadRendered.length ? `${deadRendered.length} DEAD:` : "all resolve"),
+  rendered.size === 0
+    ? "\n⚠  crawl SKIPPED — rendered-link coverage was not checked"
+    : `\n${rendered.size} distinct links crawled from rendered pages — ` +
+        (deadRendered.length ? `${deadRendered.length} DEAD:` : "all resolve"),
 );
 for (const d of deadRendered) {
   console.log(`  ✗ ${String(d.status)}  ${d.href}  (shown to ${d.roles.length} role(s))`);

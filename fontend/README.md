@@ -1047,6 +1047,53 @@ HTML — 54 checks, 0 leaks, positive control passing.
 
 ---
 
+## Platform console (Super Admin)
+
+The eight Super Admin pages, C-SA-01…08. They live under `app/(platform)/`
+and are served at `/platform/*` locally; in production the assignment doc §2
+puts them on **`app.xyz.com`**, a different origin from the institution
+subdomains. `lib/tenant.ts` already treats `app` as a reserved slug, so the
+split is real, not cosmetic.
+
+| Task | Page | Route |
+|---|---|---|
+| C-SA-01 | Dashboard | `/platform/dashboard` |
+| C-SA-02 | Institution List | `/platform/institutions` |
+| C-SA-03 | Institution Detail | `/platform/institutions/:id` |
+| C-SA-04 | Create Institution | `/platform/institutions/new` |
+| C-SA-05 | Plans | `/platform/plans` |
+| C-SA-06 | Platform Users | `/platform/platform-users` |
+| C-SA-07 | Audit Logs | `/platform/audit-logs` |
+| C-SA-08 | Settings | `/platform/settings` |
+
+**"Audit-only, no edit" shapes the UI.** `role_based_system_design.md` §4.1
+grants the Super Admin "access all institution data (audit-only, no edit)".
+So plan, modules and tenant lifecycle *are* editable — those are platform
+concerns — while the tenant's own records are read-only, which the detail
+page states rather than implies.
+
+**ABC College is the tenant this app runs as.** Its headcount on the platform
+is summed from the institution's own department table and staff directory
+(910 students, 14 active teachers), so the two consoles can't disagree.
+
+**Deviations, flagged.**
+1. The DB enum is `platform_role AS ENUM ('SUPER_ADMIN','SUPPORT','SALES',
+   'FINANCE')` (§12) but `types/auth.ts` — from `role_based_system_design.md`
+   §2.1, and depended on by 40+ files — uses `SUPPORT_STAFF /
+   SALES_EXECUTIVE / FINANCE_MANAGER`. The app's names win; `PLATFORM_ROLE_DB`
+   maps to the DB spelling at the boundary.
+2. `is_active` (§4.2) and `subscriptions.status` (§4.4) are independent
+   columns. A suspended tenant can still hold an ACTIVE subscription, so
+   `tenantState()` lets suspension win — that is what actually blocks sign-in.
+3. Support / Sales / Finance get a "not built yet" page rather than a 404.
+   They are real roles with real sections (C-SP, C-SL, C-FM), just not this
+   milestone.
+
+**Guard worth noting:** the last active Super Admin cannot be deactivated —
+locking the only one out of the console is unrecoverable without a DB edit.
+
+---
+
 ## Link integrity
 
 `npm run link-check` probes every page for all 18 roles **and crawls every

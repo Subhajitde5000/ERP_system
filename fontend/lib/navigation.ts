@@ -187,7 +187,9 @@ export function getNavSections(
 /** Icon for the "module disabled" card (§4.3). */
 export const ModuleDisabledIcon = ShieldCheck;
 
-/** Human label for a module key, used in the disabled-state copy. */
-export function moduleLabel(key: ModuleKey): string {
-  return key.charAt(0).toUpperCase() + key.slice(1);
-}
+/**
+ * Human label for a module key, used in the disabled-state copy.
+ * Re-exported from `platform-shared` so "HR" isn't rendered as "Hr" in one
+ * place and correctly in another.
+ */
+export { moduleLabel } from "./platform-shared";
