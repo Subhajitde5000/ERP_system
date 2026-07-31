@@ -1,0 +1,62 @@
+import type { DetailTab } from "@/types/detail";
+
+/** Tiny className joiner — avoids pulling in clsx for one helper. */
+export function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+/**
+ * "12 Aug 2026", always in IST.
+ *
+ * Slicing an ISO string or formatting without a timeZone renders UTC, which
+ * shifts every Indian date by 5:30 — see PROJECT_MEMORY. One implementation is
+ * shared by the profile, student-detail and staff-detail pages.
+ */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
+  });
+}
+
+/** "Jul 2026" — payslip and appraisal period headings. */
+export function monthLabel(year: number, month: number): string {
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-IN", {
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
+  });
+}
+
+/** ₹ with Indian digit grouping. */
+export function rupees(amount: number): string {
+  return `₹${Math.round(amount).toLocaleString("en-IN")}`;
+}
+
+/** Day counts may be halves (`leave_requests.total_days` is NUMERIC(4,1)). */
+export function days(value: number): string {
+  return value % 1 === 0 ? String(value) : value.toFixed(1);
+}
+
+/**
+ * Union two tab lists for a multi-role user.
+ * First occurrence wins, and a wider grant (no scope note) supersedes a
+ * narrowed one — a user who is both HOD and Principal sees institution scope.
+ */
+export function mergeTabLists<K extends string, T extends DetailTab<K>>(
+  acc: T[],
+  next: T[],
+): T[] {
+  const merged = [...acc];
+
+  for (const tab of next) {
+    const existing = merged.findIndex((t) => t.key === tab.key);
+    if (existing === -1) merged.push(tab);
+    else if (!tab.scopeNote) merged[existing] = tab;
+  }
+
+  return merged;
+}
