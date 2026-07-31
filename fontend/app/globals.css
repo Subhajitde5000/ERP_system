@@ -1,26 +1,104 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/**
+ * xyz.com ERP + LMS — Premium Palette ("Royal Indigo")
+ * Ref: login_page_design.md §2, §3
+ *
+ * 4-color system:
+ *   Primary    #0F172A  Slate 900   — headings, branding panel
+ *   Accent     #4F46E5  Indigo 600  — CTA, links, focus ring
+ *   Accent 2   #06B6D4  Cyan 500    — highlights, student/parent badge
+ *   Background #F8FAFC / #FFFFFF    — page / card
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surfaces */
+  --background: 210 40% 98%; /* #F8FAFC */
+  --foreground: 222 47% 11%; /* #0F172A */
+
+  --card: 0 0% 100%; /* #FFFFFF */
+  --card-foreground: 222 47% 11%;
+
+  /* Brand */
+  --primary: 222 47% 11%; /* #0F172A — dark branding panel */
+  --primary-foreground: 210 40% 98%;
+
+  --accent: 243 75% 59%; /* #4F46E5 Indigo 600 — main CTA */
+  --accent-foreground: 0 0% 100%;
+
+  --accent-2: 188 94% 43%; /* #06B6D4 Cyan 500 */
+
+  /* Neutrals */
+  --muted: 210 40% 96.1%; /* #F1F5F9 */
+  --muted-foreground: 215 16% 47%; /* #64748B */
+
+  --border: 214 32% 91%; /* #E2E8F0 */
+  --input: 214 32% 91%;
+  --ring: 243 75% 59%; /* Indigo focus */
+
+  /* Status */
+  --destructive: 0 84% 60%; /* #EF4444 */
+  --success: 160 84% 39%; /* #10B981 */
+  --warning: 38 92% 50%; /* #F59E0B */
+
+  --radius-card: 16px;
+  --radius-field: 10px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+.dark {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 98%;
+  --border: 217 32% 17%;
+  --input: 217 32% 17%;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Consistent, visible focus ring across the whole platform (a11y §10) */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Left branding panel — design §6.4 */
+  .bg-brand-radial {
+    background: radial-gradient(120% 120% at 0% 0%, #4f46e5 0%, #0f172a 60%);
+  }
+
+  .bg-brand-dots {
+    background-image: radial-gradient(#ffffff 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+}
+
+/* Respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

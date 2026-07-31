@@ -89,7 +89,7 @@ export default async function DashboardPage() {
 
 ---
 
-### PAGE 1 — Dashboard `/dashboard`                ✅
+### PAGE 1 — Dashboard `/dashboard`✅
 
 **One URL. 17 different role views.**
 
@@ -208,7 +208,7 @@ const postScopes = usePostScopes() // returns allowed scopes for current role
 
 ---
 
-### PAGE 4 — Profile Page `/profile`
+### PAGE 4 — Profile Page `/profile`✅
 
 **One URL. Different fields visible and editable per role.**
 
@@ -225,7 +225,7 @@ const postScopes = usePostScopes() // returns allowed scopes for current role
 
 ---
 
-### PAGE 5 — Attendance View `/attendance`
+### PAGE 5 — Attendance View `/attendance`✅
 
 **One URL. Completely different layout per role.**
 
@@ -258,7 +258,7 @@ const AttendancePage = () => {
 
 ---
 
-### PAGE 6 — Examination Page `/examination`
+### PAGE 6 — Examination Page `/examination`✅
 
 **One URL. Role determines create vs. attempt vs. monitor.**
 
@@ -280,7 +280,7 @@ const AttendancePage = () => {
 
 ---
 
-### PAGE 7 — Assignment Page `/assignments`
+### PAGE 7 — Assignment Page `/assignments`✅
 
 **One URL. Role determines create vs. submit vs. review.**
 
@@ -296,7 +296,7 @@ const AttendancePage = () => {
 
 ---
 
-### PAGE 8 — Content / Study Material `/content`
+### PAGE 8 — Content / Study Material `/content`✅
 
 **One URL. Upload vs. browse view.**
 
@@ -312,7 +312,7 @@ const AttendancePage = () => {
 
 ---
 
-### PAGE 9 — Results `/results`
+### PAGE 9 — Results `/results`✅
 
 **One URL. Role determines what results are shown and what actions are available.**
 
@@ -329,7 +329,7 @@ const AttendancePage = () => {
 
 ---
 
-### PAGE 10 — Timetable `/timetable`
+### PAGE 10 — Timetable `/timetable`✅
 
 **One URL. Create vs. view, class vs. personal schedule.**
 
@@ -346,7 +346,7 @@ const AttendancePage = () => {
 
 ---
 
-### PAGE 11 — Fee Account `/fees`
+### PAGE 11 — Fee Account `/fees`✅
 
 **One URL. Different data scope and actions per role.**
 
@@ -362,7 +362,7 @@ const AttendancePage = () => {
 
 ---
 
-### PAGE 12 — User Directory `/users`
+### PAGE 12 — User Directory `/users`✅
 
 **One URL. Scope and edit permissions differ per role.**
 
@@ -396,7 +396,7 @@ const AttendancePage = () => {
 
 ---
 
-### PAGE 14 — Reports `/reports`
+### PAGE 14 — Reports `/reports`✅
 
 **One URL. Completely different report types per role.**
 
@@ -420,7 +420,7 @@ const AttendancePage = () => {
 
 ---
 
-### PAGE 15 — Notifications `/notifications`
+### PAGE 15 — Notifications `/notifications`✅
 
 **One URL. Same layout, different notification types per role.**
 
@@ -444,7 +444,7 @@ const AttendancePage = () => {
 
 ---
 
-### PAGE 16 — Settings `/settings`
+### PAGE 16 — Settings `/settings`✅
 
 **One URL. Sections shown/hidden per role.**
 
@@ -461,7 +461,7 @@ const AttendancePage = () => {
 
 ---
 
-### PAGE 17 — Search `/search`
+### PAGE 17 — Search `/search`✅
 
 **One URL. Results scoped by role.**
 
@@ -484,7 +484,7 @@ Global search bar available to all roles. What appears in results depends on rol
 
 ---
 
-### PAGE 18 — Calendar `/calendar`
+### PAGE 18 — Calendar `/calendar`✅
 
 **One URL. Events differ per role.**
 
@@ -503,7 +503,7 @@ Global search bar available to all roles. What appears in results depends on rol
 
 ---
 
-### PAGE 19 — Mentee/Student Detail `/students/:id`
+### PAGE 19 — Mentee/Student Detail `/students/:id`✅
 
 **One URL. Different tabs and data visible per role.**
 
@@ -527,7 +527,7 @@ Global search bar available to all roles. What appears in results depends on rol
 
 ---
 
-### PAGE 20 — Staff Detail `/staff/:id`
+### PAGE 20 — Staff Detail `/staff/:id`✅
 
 **One URL. Different tabs per role.**
 
@@ -542,7 +542,7 @@ Global search bar available to all roles. What appears in results depends on rol
 
 ---
 
-### PAGE 21 — Exam Detail `/examination/:id`
+### PAGE 21 — Exam Detail `/examination/:id`✅
 
 **One URL. Three completely different experiences.**
 
@@ -557,7 +557,7 @@ Global search bar available to all roles. What appears in results depends on rol
 
 ---
 
-### PAGE 22 — Assignment Detail `/assignments/:id`
+### PAGE 22 — Assignment Detail `/assignments/:id`✅
 
 **One URL. Two experiences.**
 
@@ -571,7 +571,7 @@ Global search bar available to all roles. What appears in results depends on rol
 
 ---
 
-### PAGE 23 — Hostel Detail `/hostel/rooms/:id`
+### PAGE 23 — Hostel Detail `/hostel/rooms/:id`✅
 
 **One URL. Different view for warden vs. student.**
 
@@ -585,7 +585,7 @@ Global search bar available to all roles. What appears in results depends on rol
 
 ---
 
-### PAGE 24 — Library Book Detail `/library/books/:id`
+### PAGE 24 — Library Book Detail `/library/books/:id`✅
 
 **One URL. Different actions.**
 
