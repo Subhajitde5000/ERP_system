@@ -922,6 +922,67 @@ had to invent a parallel list of people to show anybody.
 
 ---
 
+## Leave Management
+
+Built to `role_based_shared_pages.md` PAGE 13 (C-RB-13), across the three
+leave tables the docs define.
+
+| Role | Sections | Actions |
+|---|---|---|
+| Student | own class leave | apply, upload document |
+| Parent | child's class leave | view only *(deviation 3)* |
+| Teacher | students (own classes) + own HR leave | approve / reject, apply |
+| HOD | students (own dept) + own HR leave | approve / reject, apply |
+| HR Manager | all staff + own HR leave | approve / reject, edit balances |
+| Hostel Warden | residents + own HR leave | approve / reject, apply |
+| Admin · Principal · VP | students (+ staff, for Admin) + own | *(deviation 2)* |
+| *9 other staff roles* | own HR leave only | apply *(deviation 4)* |
+
+**Three tables, not one.** `attendance_leaves` (§7.1, auto-marks EXCUSED),
+`leave_requests` (§8.5, debits a policy balance) and `hostel_leave_requests`
+(§8.2, has a destination and emergency contact) share only from/to/reason/
+status. `LeaveKind` discriminates and each keeps its own fields; flattening
+them would lose the medical certificate, the balance and the contact number.
+
+**Apply and approve are sections, not opposite roles.** PAGE 13's fourth row —
+"Staff (Teacher, HOD, etc.)" — overlaps rows two and three, so a Teacher gets
+*both* their students' queue and their own HR leave. Modelled as a view-kind
+dispatch one of them would have to lose, so this is a section list per role
+like settings and the detail pages.
+
+**Nothing is duplicated.** Staff rows and the policy table come from the HR
+module (`getStaffLeave`, `LEAVE_POLICIES`), hostel rows from the hostel module
+(`getAllHostelLeave`), students from the shared roster. Only the student
+attendance-leave rows are defined here, because `attendance-data` models them
+for one student and this page needs the class-wide queue. Removing the
+third copy of the policy table also fixed PAGE 14, which had its own.
+
+**Scope is applied before a row is built.** A Teacher's payload holds their
+own classes' 6 requests; the other 3 never leave the data layer. Verified by
+grepping raw server HTML — 43 checks, 0 leaks, positive control passing.
+Leave reasons are the most sensitive free text on the site (they are often
+medical), so this matters more here than on most pages.
+
+**Deviations, flagged.**
+1. "Staff (Teacher, HOD, etc.)" is read as *every employee* — §8.5 gives all
+   staff a leave balance, so withholding the apply form from the Librarian
+   would leave them no way to use it. 16 of 18 roles get the section.
+2. Admin / Principal / VP also get the student queue: §4.2 grants "● full" on
+   attendance and §4.3 makes the Principal the academic authority, so a leave
+   escalated past the HOD has somewhere to land. Mentor is deliberately *not*
+   an approver — §2.2's grant is pastoral, not decisional.
+3. Parent gets a read-only view of their child's leaves; they already see the
+   same rows on `/attendance`.
+4. Nine staff roles get only the own-leave section — no doc grants them
+   anyone else's queue.
+
+**Separation of duties.** The HR Manager's own request is excluded from her
+own approval queue and appears under "My leave" instead, matching the rule
+the appraisal cycle already applies (§8.5: a head can't be their own
+reviewer). `TODO(Dev-A)` notes the real rule escalates to the Principal.
+
+---
+
 ## Reports
 
 Built to `role_based_shared_pages.md` PAGE 14 (C-RB-14), aggregating the
@@ -983,6 +1044,19 @@ HTML — 54 checks, 0 leaks, positive control passing.
    their aggregates live in `report-data.ts` with a `TODO(Dev-B)` to move each
    into its module's data layer. Their figures match the dashboards that
    already show them (route load 94/81/67/52/38%).
+
+---
+
+## Link integrity
+
+`npm run link-check` probes every page for all 18 roles **and crawls every
+anchor the app actually renders**, comparing each outcome against the app's own
+permission tables. `--md` regenerates `TEST-LINKS.md`.
+
+The crawl matters: an earlier version checked only a hand-written page list and
+reported "0 broken" while 55 rendered links were 404ing — including all seven
+module hubs, which the sidebar shows to every role. Current state: **832 links
+checked, 0 broken.**
 
 ---
 

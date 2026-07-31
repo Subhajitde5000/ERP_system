@@ -5,6 +5,7 @@ import {
   BookMarked,
   Boxes,
   Building2,
+  CalendarClock,
   CalendarDays,
   ClipboardCheck,
   Contact,
@@ -55,6 +56,9 @@ export interface NavSection {
 /** The 8 core modules from §6 — always available. */
 const NAV_MAIN: NavItem[] = [
   { label: "Attendance", href: "/attendance", icon: ClipboardCheck, core: true },
+  // PAGE 13 — every role has a section: students apply for class leave,
+  // everyone else is staff with an HR balance. No role filter.
+  { label: "Leave", href: "/leaves", icon: CalendarClock, core: true },
   { label: "Examination", href: "/examination", icon: FileSpreadsheet, core: true },
   { label: "Assignments", href: "/assignments", icon: FileText, core: true },
   { label: "Notice Board", href: "/notices", icon: Megaphone, core: true },
@@ -64,16 +68,24 @@ const NAV_MAIN: NavItem[] = [
   { label: "Timetable", href: "/timetable", icon: CalendarDays, core: true },
 ];
 
-/** Optional modules — hidden unless enabled for the tenant (§6). */
+/**
+ * Optional modules — hidden unless enabled for the tenant (§6).
+ *
+ * Each module's home is `/{module}/dashboard`, per the route column in
+ * `complete_webpage_developer_assignment.md` (C-LB-01, C-HW-01, C-TR-01,
+ * C-PL-01, C-HR-01, C-AD-01, C-SM-01). These previously pointed at `/{module}`
+ * with no trailing segment, which 404'd for every one of the 18 roles.
+ * `finance` is the exception: its page is `/fees` (PAGE 11).
+ */
 const NAV_MODULES: NavItem[] = [
   { label: "Fees", href: "/fees", icon: BadgeIndianRupee, module: "finance" },
-  { label: "Library", href: "/library", icon: Library, module: "library" },
-  { label: "Hostel", href: "/hostel", icon: Building2, module: "hostel" },
-  { label: "Transport", href: "/transport", icon: Bus, module: "transport" },
-  { label: "Placement", href: "/placement", icon: Handshake, module: "placement" },
-  { label: "HR", href: "/hr", icon: Users, module: "hr" },
-  { label: "Admission", href: "/admission", icon: UserRoundPlus, module: "admission" },
-  { label: "Inventory", href: "/inventory", icon: Boxes, module: "inventory" },
+  { label: "Library", href: "/library/dashboard", icon: Library, module: "library" },
+  { label: "Hostel", href: "/hostel/dashboard", icon: Building2, module: "hostel" },
+  { label: "Transport", href: "/transport/dashboard", icon: Bus, module: "transport" },
+  { label: "Placement", href: "/placement/dashboard", icon: Handshake, module: "placement" },
+  { label: "HR", href: "/hr/dashboard", icon: Users, module: "hr" },
+  { label: "Admission", href: "/admission/dashboard", icon: UserRoundPlus, module: "admission" },
+  { label: "Inventory", href: "/inventory/dashboard", icon: Boxes, module: "inventory" },
 ];
 
 /** Admin-only tail of the sidebar (§3). */

@@ -42,7 +42,7 @@ import { getFeeData } from "./fee-data";
 import { feePermissions } from "./fee";
 import { getLibraryCirculation } from "./library-data";
 import { getHostelOccupancy } from "./hostel-data";
-import { getStaffDirectory } from "./staff-detail-data";
+import { getStaffDirectory, LEAVE_POLICIES } from "./staff-detail-data";
 import { getClassSlots, CLASSES, PERIODS } from "./timetable-data";
 
 /**
@@ -1642,11 +1642,15 @@ const BUILDERS: Record<string, () => ReportSection> = {
  * dashboards already show — a report that disagreed with the dashboard beside
  * it would be the PAGE 19/23 bug again.
  *
+ * They are **exported** so the module hub pages (`/transport/dashboard`,
+ * `/inventory/dashboard`, …) show the same figures rather than computing a
+ * second, drifting set.
+ *
  * TODO(Dev-B): move each of these to its module's data layer as those pages
  * are built, exactly as fees / library / hostel already work.
  */
 
-function getRouteStats() {
+export function getRouteStats() {
   // [code, name, vehicle, capacity, students] — utilisation matches the
   // Transport Manager dashboard's route bars (94 / 81 / 67 / 52 / 38 %).
   const ROUTES: [string, string, string, number, number][] = [
@@ -1667,7 +1671,7 @@ function getRouteStats() {
   }));
 }
 
-function getInventoryStats() {
+export function getInventoryStats() {
   // [code, name, unit, in, out, reorder, unitCost]
   const ITEMS: [string, string, string, number, number, number, number][] = [
     ["INV-001", "A4 paper ream", "ream", 400, 355, 60, 260],
@@ -1715,7 +1719,7 @@ function getInventoryStats() {
   };
 }
 
-function getPlacementStats() {
+export function getPlacementStats() {
   // Companies match the ones global search already lists (§8.4).
   const BY_COMPANY: [string, string, number, number][] = [
     // [name, sector, offers, avg package LPA]
@@ -1772,7 +1776,7 @@ function getPlacementStats() {
   };
 }
 
-function getAdmissionFunnel() {
+export function getAdmissionFunnel() {
   const applications = 412;
   const shortlisted = 268;
   const admitted = 214;
@@ -1799,13 +1803,11 @@ function getAdmissionFunnel() {
  * are computed by the HR module from their approved requests, so this total
  * matches what PAGE 20 shows for any individual.
  */
-function getHrLeaveStats() {
-  // Policy entitlements from `leave_policies` (§8.5), as PAGE 20 uses them
-  const POLICIES = [
-    { code: "CL", name: "Casual Leave", daysPerYear: 12 },
-    { code: "SL", name: "Sick Leave", daysPerYear: 10 },
-    { code: "EL", name: "Earned Leave", daysPerYear: 15 },
-  ];
+export function getHrLeaveStats() {
+  // Entitlements come from the HR module's own `leave_policies` table, not a
+  // third copy of it — the staff record, the leave page and this report must
+  // agree on what a year's allowance is.
+  const POLICIES = LEAVE_POLICIES;
   const headcount = getStaffDirectory().filter((s) => s.isActive).length;
 
   // Days used per policy across the institution. Derived from the same
@@ -1843,7 +1845,7 @@ function getHrLeaveStats() {
  * (basic + HRA 40% + DA 20% + ₹3,200 transport, less PF 12% / PT / TDS), so
  * the institution total is consistent with any individual payslip.
  */
-function getPayrollStats() {
+export function getPayrollStats() {
   const staff = getStaffDirectory().filter((s) => s.isActive);
 
   const rows = staff.map((s) => {

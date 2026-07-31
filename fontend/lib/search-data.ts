@@ -19,6 +19,7 @@ import { getOwnAssignments, getDepartmentAssignments } from "./assignment-data";
 import { getStudentDetail } from "./student-detail-data";
 import { getAllReceipts, getFeeAccountFor } from "./fee-data";
 import { getStaffDirectory, getStaffDetail } from "./staff-detail-data";
+import { getAuditLog } from "./audit-data";
 import { staffDetailPermissions } from "./staff-detail";
 import { getBookIds, getBook, getBookDetail } from "./library-data";
 import { bookPermissions } from "./library";
@@ -59,14 +60,6 @@ const SUBJECTS = [
   { code: "CS307", name: "Operating Systems", dept: "CSE" },
   { code: "MA101", name: "Discrete Mathematics", dept: "CSE" },
   { code: "EC202", name: "Signals & Systems", dept: "ECE" },
-];
-
-/** Audit log — admin only (§10). No page yet; these are representative rows. */
-const AUDIT_LOGS = [
-  { id: "al1", action: "USER_DEACTIVATED", actor: "Meera Krishnan", target: "Ganesh Bhat", at: "2026-07-28T09:12:00.000Z" },
-  { id: "al2", action: "MODULE_TOGGLED", actor: "Meera Krishnan", target: "Placement enabled", at: "2026-07-27T14:40:00.000Z" },
-  { id: "al3", action: "ROLE_ASSIGNED", actor: "Meera Krishnan", target: "Priya Sharma → Exam Controller", at: "2026-07-26T11:05:00.000Z" },
-  { id: "al4", action: "RESULT_PUBLISHED", actor: "Deepak Iyer", target: "Mid-term · FY-A", at: "2026-07-25T16:20:00.000Z" },
 ];
 
 /** Placement companies and drives (§8.4). */
@@ -201,16 +194,22 @@ const SEARCHERS: Record<SearchKind, Searcher> = {
         matchedOn: !matches(n.title, q) ? "in the notice body" : null,
       })),
 
+  // Rows come from the audit page's own data layer (§10.3), so search and
+  // /audit-logs can't show two different histories.
   AUDIT_LOG: (q) =>
-    AUDIT_LOGS.filter(
-      (l) =>
-        matches(l.action, q) || matches(l.actor, q) || matches(l.target, q),
-    ).map((l) => ({
+    getAuditLog()
+      .filter(
+        (l) =>
+          matches(l.action, q) ||
+          matches(l.actorName, q) ||
+          matches(l.target, q),
+      )
+      .map((l) => ({
       id: l.id,
       kind: "AUDIT_LOG" as const,
       title: l.action.replace(/_/g, " ").toLowerCase(),
       subtitle: l.target,
-      meta: l.actor,
+      meta: l.actorName,
       href: "/audit-logs",
       matchedOn: null,
     })),
@@ -416,7 +415,7 @@ const SEARCHERS: Record<SearchKind, Searcher> = {
       title: c.name,
       subtitle: c.roles,
       meta: c.sector,
-      href: "/placement",
+      href: "/placement/dashboard",
       matchedOn: null,
     })),
 
@@ -429,7 +428,7 @@ const SEARCHERS: Record<SearchKind, Searcher> = {
       title: `${d.company} campus drive`,
       subtitle: `${d.date} · ${d.eligible}`,
       meta: d.status,
-      href: "/placement",
+      href: "/placement/dashboard",
       matchedOn: null,
     })),
 
@@ -468,7 +467,7 @@ const SEARCHERS: Record<SearchKind, Searcher> = {
       title: a.name,
       subtitle: a.email,
       meta: a.status,
-      href: "/admission",
+      href: "/admission/dashboard",
       matchedOn: matches(a.no, q) ? a.no : matches(a.email, q) && !matches(a.name, q) ? a.email : null,
     })),
 };

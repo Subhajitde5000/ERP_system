@@ -666,11 +666,21 @@ function buildAttendance(shift = 0): StaffAttendance {
 /* ── Leave (§8.5) ───────────────────────────────────────────────────────── */
 
 /** `leave_policies` for this tenant. */
-const POLICIES = [
+/**
+ * `leave_policies` for this tenant (§8.5).
+ *
+ * Exported because PAGE 13's apply form needs the picker and PAGE 14's
+ * utilisation report needs the entitlements — restating them in either place
+ * would let the balance on the staff record disagree with the balance on the
+ * leave page.
+ */
+export const LEAVE_POLICIES = [
   { code: "CL", name: "Casual Leave", daysPerYear: 12, carriedForward: 0 },
   { code: "SL", name: "Sick Leave", daysPerYear: 10, carriedForward: 0 },
   { code: "EL", name: "Earned Leave", daysPerYear: 15, carriedForward: 4 },
 ];
+
+const POLICIES = LEAVE_POLICIES;
 
 const LEAVE_SEED: StaffLeaveRequest[] = [
   {
@@ -753,14 +763,33 @@ const LEAVE_SEED: StaffLeaveRequest[] = [
  * of bug as the phantom timetable clashes.
  */
 /**
- * Only `s1` has the pending request, so the HR Manager's approve / reject
- * actions are demoable on one record without every staff member looking like
- * they are mid-application.
+ * Who currently has a leave application open.
+ *
+ * `s1` alone was enough while this only fed PAGE 20, which shows one person at
+ * a time. PAGE 13 shows the whole institution's queue, and a 57-row queue with
+ * a single pending item makes the HR Manager's primary action look broken —
+ * the recurring "fixture state hides the flow" trap. Four applicants across
+ * different departments gives a realistic queue without implying half the
+ * payroll is away.
  */
+const PENDING_APPLICANTS = new Set(["s1", "s6", "s10", "s13"]);
+
 function buildLeaveRequests(id: string): StaffLeaveRequest[] {
-  return id === "s1"
+  return PENDING_APPLICANTS.has(id)
     ? LEAVE_SEED
     : LEAVE_SEED.filter((r) => r.status !== "PENDING");
+}
+
+/**
+ * One staff member's HR leave requests (§8.5), as PAGE 20 shows them.
+ * Exported so the leave page quotes the same rows rather than its own.
+ */
+export function getStaffLeave(staffId: string): {
+  requests: StaffLeaveRequest[];
+  balances: StaffLeaveBalance[];
+} {
+  const requests = buildLeaveRequests(staffId);
+  return { requests, balances: buildBalances(requests) };
 }
 
 function buildBalances(requests: StaffLeaveRequest[]): StaffLeaveBalance[] {

@@ -47,7 +47,7 @@ export function BookDetailView({
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-4xl">
-      <DetailBackLink href="/library" label="Library" />
+      <DetailBackLink href="/library/dashboard" label="Library" />
 
       {status && (
         <FormAlert variant="info" className="mb-4">

@@ -94,13 +94,13 @@ export const EVENT_META: Record<NotificationEvent, EventMeta> = {
   INSTALLMENT_DUE_TOMORROW: { category: "FEE", icon: CalendarClock, href: "/fees" },
 
   // HR Manager
-  LEAVE_REQUEST_SUBMITTED: { category: "SYSTEM", icon: CalendarClock, href: "/hr" },
-  PAYROLL_RUN_DUE: { category: "SYSTEM", icon: Wallet, href: "/hr", urgent: true },
+  LEAVE_REQUEST_SUBMITTED: { category: "SYSTEM", icon: CalendarClock, href: "/hr/dashboard" },
+  PAYROLL_RUN_DUE: { category: "SYSTEM", icon: Wallet, href: "/hr/dashboard", urgent: true },
 
   // Hostel Warden
-  HOSTEL_STUDENT_ABSENT: { category: "ATTENDANCE", icon: AlertTriangle, href: "/hostel", urgent: true },
-  HOSTEL_LEAVE_REQUEST: { category: "SYSTEM", icon: CalendarClock, href: "/hostel" },
-  COMPLAINT_RAISED: { category: "SYSTEM", icon: ShieldAlert, href: "/hostel" },
+  HOSTEL_STUDENT_ABSENT: { category: "ATTENDANCE", icon: AlertTriangle, href: "/hostel/dashboard", urgent: true },
+  HOSTEL_LEAVE_REQUEST: { category: "SYSTEM", icon: CalendarClock, href: "/hostel/dashboard" },
+  COMPLAINT_RAISED: { category: "SYSTEM", icon: ShieldAlert, href: "/hostel/dashboard" },
 
   // Institution Admin
   SUPPORT_TICKET_NEW: { category: "SYSTEM", icon: LifeBuoy, href: "/support" },
@@ -108,13 +108,13 @@ export const EVENT_META: Record<NotificationEvent, EventMeta> = {
   BULK_ENROLLMENT_DONE: { category: "SYSTEM", icon: Users, href: "/users" },
 
   // Placement Officer
-  APPLICATION_SUBMITTED: { category: "SYSTEM", icon: UserRoundPlus, href: "/placement" },
-  DRIVE_CONFIRMED: { category: "SYSTEM", icon: Handshake, href: "/placement" },
-  OFFER_ACCEPTED: { category: "SYSTEM", icon: Handshake, href: "/placement" },
+  APPLICATION_SUBMITTED: { category: "SYSTEM", icon: UserRoundPlus, href: "/placement/dashboard" },
+  DRIVE_CONFIRMED: { category: "SYSTEM", icon: Handshake, href: "/placement/dashboard" },
+  OFFER_ACCEPTED: { category: "SYSTEM", icon: Handshake, href: "/placement/dashboard" },
 
   // Admission Officer
-  ADMISSION_APPLICATION_RECEIVED: { category: "SYSTEM", icon: UserRoundPlus, href: "/admission" },
-  DOCUMENT_VERIFICATION_PENDING: { category: "SYSTEM", icon: Boxes, href: "/admission" },
+  ADMISSION_APPLICATION_RECEIVED: { category: "SYSTEM", icon: UserRoundPlus, href: "/admission/dashboard" },
+  DOCUMENT_VERIFICATION_PENDING: { category: "SYSTEM", icon: Boxes, href: "/admission/dashboard" },
 };
 
 /** The PAGE 15 matrix — which events each role receives. */
