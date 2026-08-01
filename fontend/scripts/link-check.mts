@@ -56,6 +56,7 @@ const ID = {
   staffEce: "s3", // ECE — proves the HOD department fence
   room: "A-104",
   book: "b1",
+  submission: "sub-as1-s6",
   department: "cse",
   klass: "fy-a",
 };
@@ -147,6 +148,11 @@ const PAGES = [
   // it; everyone else is refused.
   { label: "HOD teacher list", path: () => `/hod/teachers`, expect: (r) => hodOk(r.role) },
   { label: "HOD mentor assignments", path: () => `/hod/mentors`, expect: (r) => hodOk(r.role) },
+  // C-TC-16 — one student's work. Reviewers only; everyone else gets a 404,
+  // not a 403, so the URL space can't be probed. "404" is the expectation
+  // for the roles without `canReview`.
+  { label: "Submission detail", path: () => `/teacher/submissions/${ID.submission}`,
+    expect: (r, P) => (P.assignment.canReview ? "ok" : "404") },
   { label: "Library hub", path: () => `/library/dashboard`, expect: () => "ok" },
   { label: "Hostel hub", path: () => `/hostel/dashboard`, expect: () => "ok" },
   { label: "Transport hub", path: () => `/transport/dashboard`, expect: () => "ok" },

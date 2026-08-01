@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
+  ArrowRight,
   CheckCircle2,
   Layers,
   Lock,
@@ -15,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { usePreviewHref } from "@/lib/use-preview-href";
 import { fileSize } from "@/lib/notices";
 import {
   SUBMISSION_STATUS_LABELS,
@@ -79,10 +82,13 @@ export function AssignmentProgressPanel({
         {[
           ["Submission rate", `${progress.submissionRate}%`, "text-foreground",
             `${progress.submitted} of ${progress.enrolled} students`],
-          ["Completion rate", `${progress.completionRate}%`, "text-success",
+          // `text-success` (#10B981) is 2.54:1 and `text-warning` (#F59E0B)
+          // is 2.15:1 — below the 3:1 large text needs. The darkened `-text`
+          // variants clear AA; the vivid ones stay for fills and icons.
+          ["Completion rate", `${progress.completionRate}%`, "text-success-text",
             `${progress.approved} approved`],
           ["Awaiting review", String(progress.pendingReview),
-            progress.pendingReview > 0 ? "text-warning" : "text-muted-foreground",
+            progress.pendingReview > 0 ? "text-warning-text" : "text-muted-foreground",
             progress.pendingReview > 0 ? "needs your attention" : "all clear"],
         ].map(([label, value, tone, hint]) => (
           <Card key={label} className="min-w-0 p-5">
@@ -349,6 +355,8 @@ export function SubmissionTablePanel({
 }) {
   const [filter, setFilter] = useState<Filter>("PENDING");
   const [open, setOpen] = useState<string | null>(null);
+  // Preserve `?role=` so the link doesn't navigate as the default role
+  const previewHref = usePreviewHref();
   const [decided, setDecided] = useState<Record<string, string>>({});
 
   const isPending = (r: SubmissionRow) =>
@@ -439,7 +447,10 @@ export function SubmissionTablePanel({
                   className="flex w-full min-w-0 items-center gap-3 rounded text-left disabled:cursor-default focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15"
                 >
                   <span
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-[12px] font-semibold text-muted-foreground"
+                    // #64748B is 4.76:1 on white but only 4.34:1 on the
+                    // `bg-muted` tint this sits on — the colour *pair* has to
+                    // be checked, not the foreground alone.
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-[12px] font-semibold text-[#475569]"
                     aria-hidden="true"
                   >
                     {r.studentName.charAt(0)}
@@ -457,7 +468,7 @@ export function SubmissionTablePanel({
                         ? `Submitted ${dueDateTime(r.submittedAt)}`
                         : "No submission"}
                       {r.isLate && (
-                        <span className="text-destructive"> · late</span>
+                        <span className="text-destructive-text"> · late</span>
                       )}
                       {r.version > 1 && ` · v${r.version}`}
                     </p>
@@ -472,6 +483,24 @@ export function SubmissionTablePanel({
                     {SUBMISSION_STATUS_LABELS[status].toUpperCase()}
                   </Pill>
                 </button>
+
+                {/* C-TC-16. The inline expander above stays — it is faster
+                    for a run of quick approvals — but a submission that needs
+                    real attention (long text, several files, an earlier
+                    attempt to compare against) gets a page of its own.
+                    A link, not a second button, so it opens in a new tab. */}
+                {r.submissionId && (
+                  <div className="mt-1 pl-11">
+                    <Link
+                      href={previewHref(`/teacher/submissions/${r.submissionId}`)}
+                      className="inline-flex items-center gap-1 rounded text-[11px] font-medium text-accent transition-colors hover:text-accent-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15"
+                    >
+                      Open full submission
+                      <span className="sr-only"> — {r.studentName}</span>
+                      <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                    </Link>
+                  </div>
+                )}
 
                 {expanded && r.submissionId && (
                   <div className="mt-2.5 min-w-0">

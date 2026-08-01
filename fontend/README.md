@@ -1094,6 +1094,59 @@ locking the only one out of the console is unrecoverable without a DB edit.
 
 ---
 
+## Submission detail (Teacher)
+
+C-TC-16 — "View one submission, files, add feedback, set score".
+
+| Task | Page | Route |
+|---|---|---|
+| C-TC-16 | Submission Detail | `/teacher/submissions/:id` |
+
+**Not a duplicate of C-TC-15.** The review table already expands a row into a
+compact grading form, and that stays — it is faster for a run of quick
+approvals. This page is the same decision with room to make it properly: the
+full text response instead of a clipped preview, every file with its size,
+and the **earlier attempts** that explain why the work is on its second
+version. It exists as a URL because a submission is the thing a teacher gets
+*linked to* — from a notification, a dashboard count, or a colleague — and
+hunting for one student in a table of forty is the workflow it removes.
+
+It reuses `SubmissionRow`, `SUBMISSION_STATUS_LABELS/TONE`, `dueDateTime` and
+`fileSize`; the only new contract is `SubmissionDetail`, which adds the
+context a deep link lacks (which assignment, what it is out of, where the
+student sits in the review queue).
+
+**A 404, not a 403.** Every other guarded page in this app protects a
+*section* and renders `PermissionDenied`. This URL is one named student's
+work, marks and feedback, so `getSubmissionDetail()` returns nothing unless
+the caller may review and the route 404s — the response is byte-identical to
+a non-existent submission, so the URL space cannot be probed to discover who
+has submitted. Verified for six unauthorised roles plus four malformed ids.
+
+**`previousVersions` exists because §7.3 makes a resubmission a new row** —
+`submissions` is UNIQUE on `(assignment_id, milestone_id, student_id,
+version)`. A reviewer looking at v2 without v1's feedback cannot see what
+they asked for, so the loop is invisible. Reconstructed from the current row
+today, with a `TODO(Dev-B)` for the real versions endpoint.
+
+**Score is validated in JS, not with native `min`/`max`** — the native
+attributes suppress the form's own message and the field silently refuses to
+submit. Approving requires a score; rejecting does not, because a rejection
+legitimately carries none.
+
+**Bugs fixed while here.**
+1. **Client links dropped the `?role=` preview param**, so "Next to review"
+   navigated as the default role and 404'd. Extracted `usePreviewHref()` —
+   the same loop three shells had each grown privately — and applied it to
+   this page and the new review-table link.
+2. **Three pre-existing contrast failures on C-TC-15**: `text-success`
+   (2.54:1) and `text-warning` (2.15:1) as 24px KPI values, `text-destructive`
+   (3.76:1) on the 11px "· late" tag, and `muted-foreground` on the
+   `bg-muted` avatar (4.34:1 — the colour *pair* again). All now use the
+   darkened `-text` tokens.
+
+---
+
 ## HOD department management
 
 C-HD-07 and C-HD-08 — §4.4's "Teachers: view, **assign subjects**" and
