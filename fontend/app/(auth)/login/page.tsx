@@ -26,7 +26,7 @@ export default async function LoginPage({
   searchParams: Promise<{ tenant?: string }>;
 }) {
   const [headerList, params] = await Promise.all([headers(), searchParams]);
-  const tenant = resolveTenant(headerList.get("host"), params.tenant);
+  const tenant = await resolveTenant(headerList.get("host"), params.tenant);
 
   /*
    * `app.xyz.com` (and bare localhost, which resolves the same way) is the
