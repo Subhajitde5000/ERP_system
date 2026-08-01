@@ -11,7 +11,11 @@ from slowapi.util import get_remote_address
 
 from app.config import get_settings
 from app.middleware.request_id import RequestIDMiddleware
-from app.routers import platform_auth_router, tenant_auth_router
+from app.routers import (
+    platform_auth_router,
+    service_requests_router,
+    tenant_auth_router,
+)
 from app.schemas.common import ErrorDetail
 
 settings = get_settings()
@@ -70,3 +74,4 @@ async def health_check():
 api_prefix = "/api/v1"
 app.include_router(platform_auth_router, prefix=api_prefix)
 app.include_router(tenant_auth_router, prefix=api_prefix)
+app.include_router(service_requests_router, prefix=api_prefix)

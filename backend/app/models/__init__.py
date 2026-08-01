@@ -6,6 +6,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.role import Role, Permission, RoleAssignment
 from app.models.session import UserSession
+from app.models.service_request import ServiceRequest
 
 __all__ = [
     "PlatformUser",
@@ -16,4 +17,5 @@ __all__ = [
     "Permission",
     "RoleAssignment",
     "UserSession",
+    "ServiceRequest",
 ]

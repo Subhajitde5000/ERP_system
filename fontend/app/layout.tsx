@@ -19,7 +19,7 @@ const jakarta = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: {
-    default: "Sign in · xyz.com",
+    default: "xyz.com · Education, connected",
     template: "%s · xyz.com",
   },
   description:
