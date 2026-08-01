@@ -330,7 +330,8 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         span: 12,
         items: [
           { label: "Post Dept Notice", icon: Megaphone, href: "/notices/new", primary: true },
-          { label: "Assign Mentor", icon: UserCheck, href: "/users" },
+          // C-HD-08, not /users — /users lists people, it doesn't assign mentors
+          { label: "Assign Mentor", icon: UserCheck, href: "/hod/mentors" },
           { label: "View Timetable", icon: CalendarDays, href: "/timetable" },
           { label: "Moderate Discussion", icon: ShieldAlert, href: "/discussion" },
         ],
@@ -1199,15 +1200,21 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
   /* ── Mentor — teacher-level role scoped to assigned mentees ────────────── */
   MENTOR: {
     roleChip: "Mentor",
-    scope: "12 mentees · CSE Sem 3",
-    summary: "2 mentees below 75% attendance · 1 needs follow-up",
+    // Matches `getMentorBoard()`: Priya Sharma carries 3 mentees, 1 of them
+    // below the 75% threshold. The old "12 mentees · 2 below" predated any
+    // mentor data and contradicted every other page once C-HD-08 landed.
+    scope: "3 mentees · CSE",
+    summary: "1 mentee below 75% attendance · needs follow-up",
     notice: {
       tone: "warning",
-      title: "2 mentees have dropped below the 75% attendance requirement.",
-      action: { label: "View mentees", href: "/users" },
+      title: "1 mentee has dropped below the 75% attendance requirement.",
+      // A Mentor is denied /users ("Your mentees are listed on your
+      // dashboard"), so that link was a dead end. Attendance is the page
+      // that actually answers this notice.
+      action: { label: "View attendance", href: "/attendance" },
     },
     stats: [
-      { label: "My Mentees", value: "12", icon: Users, tone: "accent" },
+      { label: "My Mentees", value: "3", icon: Users, tone: "accent" },
       {
         label: "Avg Attendance",
         value: "Group",
@@ -1236,7 +1243,7 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Mentee Attendance",
         span: 7,
         action: "Open profile",
-        link: { label: "All mentees", href: "/users" },
+        link: { label: "Attendance", href: "/attendance" },
         empty: "No mentees assigned yet.",
         columns: [
           { key: "student", label: "Mentee" },
@@ -1284,8 +1291,10 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "View Mentee Profiles", icon: Users, href: "/users", primary: true },
-          { label: "Add Mentor Note", icon: FileText, href: "/users" },
+          // A Mentor is denied /users. Their mentees' profiles are reachable
+          // through the pages their role does own (§4.5).
+          { label: "Mentee Attendance", icon: Users, href: "/attendance", primary: true },
+          { label: "Mentee Results", icon: FileText, href: "/results" },
           { label: "Mentee Results", icon: GraduationCap, href: "/results" },
           { label: "Group Discussion", icon: MessagesSquare, href: "/discussion" },
         ],

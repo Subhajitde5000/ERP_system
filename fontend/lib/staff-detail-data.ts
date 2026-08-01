@@ -508,6 +508,20 @@ const EXTRA_ROLES: Record<string, RoleAssignment[]> = {
       isActive: true,
     },
   ],
+  // A second mentor, so C-HD-08 has more than one group. With a single
+  // mentor the page can show a list but not the decision it exists for —
+  // which group an unassigned student should join, and whether the at-risk
+  // ones are spread or piled onto one person.
+  s6: [
+    {
+      role: "MENTOR",
+      scopeType: "CLASS",
+      scopeName: "SY-A",
+      assignedAt: "2024-04-01T00:00:00.000Z",
+      expiresAt: null,
+      isActive: true,
+    },
+  ],
 };
 
 /**

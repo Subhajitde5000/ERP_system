@@ -25,6 +25,7 @@ import {
   ScrollText,
   Settings,
   ShieldCheck,
+  UserCheck,
   UserRoundPlus,
   Users,
   type LucideIcon,
@@ -193,6 +194,23 @@ const NAV_ADMIN: NavItem[] = [
     icon: Contact,
     core: true,
     roles: ["VICE_PRINCIPAL"],
+  },
+  {
+    // C-HD-07 / C-HD-08 — the HOD's own department management. Scoped to
+    // the HOD (plus the Admin and leadership, who read it); every other role
+    // would land on a 403.
+    label: "Teachers",
+    href: "/hod/teachers",
+    icon: Contact,
+    core: true,
+    roles: ["HOD"],
+  },
+  {
+    label: "Mentors",
+    href: "/hod/mentors",
+    icon: UserCheck,
+    core: true,
+    roles: ["HOD"],
   },
   {
     // C-PR-06 — students, with enrolment status.

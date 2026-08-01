@@ -60,6 +60,15 @@ const ID = {
   klass: "fy-a",
 };
 
+/** Mirrors the guard in `components/hod/hod-page.tsx` (§4.4 / §4.2 / §4.3). */
+const hodOk = (role: string) =>
+  role === "HOD" ||
+  role === "INSTITUTION_ADMIN" ||
+  role === "PRINCIPAL" ||
+  role === "VICE_PRINCIPAL"
+    ? "ok"
+    : "denied";
+
 /** Mirrors `canUseLeadershipDirectory()` in `lib/user-directory.ts`. */
 const leadershipOk = (role: string) =>
   role === "PRINCIPAL" || role === "VICE_PRINCIPAL" ? "ok" : "denied";
@@ -134,6 +143,10 @@ const PAGES = [
   { label: "Principal staff directory", path: () => `/principal/staff`, expect: (r) => leadershipOk(r.role) },
   { label: "Principal student directory", path: () => `/principal/students`, expect: (r) => leadershipOk(r.role) },
   { label: "VP staff directory", path: () => `/vp/staff`, expect: (r) => leadershipOk(r.role) },
+  // C-HD-07 / C-HD-08 — the HOD's own department. Admin and leadership read
+  // it; everyone else is refused.
+  { label: "HOD teacher list", path: () => `/hod/teachers`, expect: (r) => hodOk(r.role) },
+  { label: "HOD mentor assignments", path: () => `/hod/mentors`, expect: (r) => hodOk(r.role) },
   { label: "Library hub", path: () => `/library/dashboard`, expect: () => "ok" },
   { label: "Hostel hub", path: () => `/hostel/dashboard`, expect: () => "ok" },
   { label: "Transport hub", path: () => `/transport/dashboard`, expect: () => "ok" },
