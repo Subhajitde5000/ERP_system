@@ -210,7 +210,8 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
           { label: "Post Institution Notice", icon: Megaphone, href: "/notices/new", primary: true },
           { label: "Approve Results", icon: FileCheck2, href: "/results" },
           { label: "View Reports", icon: TrendingUp, href: "/reports" },
-          { label: "Staff Directory", icon: Contact, href: "/users" },
+          // C-PR-05, not the merged `/users` — the Principal's own directory
+          { label: "Staff Directory", icon: Contact, href: "/principal/staff" },
         ],
       },
     ],
@@ -265,6 +266,8 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         items: [
           { label: "Post Notice", icon: Megaphone, href: "/notices/new", primary: true },
           { label: "View Reports", icon: TrendingUp, href: "/reports" },
+          // C-VP-07 — the VP's own staff directory
+          { label: "Staff Directory", icon: Contact, href: "/vp/staff" },
         ],
       },
     ],

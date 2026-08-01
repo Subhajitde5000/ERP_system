@@ -158,19 +158,54 @@ const NAV_ADMIN: NavItem[] = [
   {
     // PAGE 12 — one directory, six role scopes. Only the roles with a grant
     // see the link; the other 12 would land on a 403.
+    //
+    // The Principal is excluded: C-PR-05 and C-PR-06 give them the same
+    // people as two focused directories, and a third merged entry would be
+    // the same rows under a third sidebar link.
+    //
+    // The Vice Principal keeps it. They have a documented staff page
+    // (C-VP-07) but no student one, so `/users` is how they reach students —
+    // dropping it would have silently removed access §4.3 grants them.
     label: "Users",
     href: "/users",
     icon: Contact,
     core: true,
     roles: [
       "INSTITUTION_ADMIN",
-      "PRINCIPAL",
       "VICE_PRINCIPAL",
       "HOD",
       "HR_MANAGER",
       "PLACEMENT_OFFICER",
       "ADMISSION_OFFICER",
     ],
+  },
+  {
+    // C-PR-05 / C-VP-07 — the Principal's and VP's staff directory.
+    label: "Staff",
+    href: "/principal/staff",
+    icon: Contact,
+    core: true,
+    roles: ["PRINCIPAL"],
+  },
+  {
+    label: "Staff",
+    href: "/vp/staff",
+    icon: Contact,
+    core: true,
+    roles: ["VICE_PRINCIPAL"],
+  },
+  {
+    // C-PR-06 — students, with enrolment status.
+    //
+    // Principal-only in the sidebar: the assignment doc gives the VP seven
+    // pages and a student directory is not among them (§4.3 scopes the VP to
+    // "duties delegated by Principal"). The VP keeps `/users` for students —
+    // see the Users entry above, which admits them for exactly that reason.
+    label: "Students",
+    href: "/principal/students",
+    icon: GraduationCap,
+    core: true,
+    roles: ["PRINCIPAL"],
   },
   {
     // PAGE 16 gives every role a Settings page (password + preferences at

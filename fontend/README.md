@@ -1094,6 +1094,56 @@ locking the only one out of the console is unrecoverable without a DB edit.
 
 ---
 
+## Leadership directories (Principal / Vice Principal)
+
+C-PR-05, C-PR-06 and C-VP-07.
+
+| Task | Page | Route |
+|---|---|---|
+| C-PR-05 | Staff Directory | `/principal/staff` |
+| C-PR-06 | Student Directory | `/principal/students` |
+| C-VP-07 | Staff Directory (VP) | `/vp/staff` |
+
+**These are narrowings of the shared directory, not a second one.** `/users`
+(PAGE 12) already gives leadership a merged `STAFF_AND_STUDENTS` list; the doc
+asks for the same people split by kind. So all three routes pass a different
+`DirectoryPermissions` preset into the *same* `getDirectoryData()` and the
+*same* `DirectoryView`. No new list component, no new data layer, no second
+search box to keep in sync.
+
+The audience is still applied server-side: the staff directory's RSC payload
+contains zero student rows, and vice versa — asserted, not assumed.
+
+**Columns differ because the two halves need different ones.** A staff row has
+no class; a student row has no designation. C-PR-06 names "class, enrollment
+status", so `ENROLMENT_STATUS` was added as a real column reading
+`student_enrollments.status` (§6.6) through `structure-data` — the same value
+the enrolment board (C-IA-11) and class detail (C-IA-06) show. `Last login` is
+deliberately **absent** from the staff list: that is an account-administration
+signal (C-IA-08), and §4.3 gives the Principal academic authority only.
+
+**Read-only by construction.** Every preset carries `actions:
+["VIEW_PROFILE"]`; §4.3 grants the Principal no user-management rights, so
+there is no edit, deactivate, reset-password or assign-roles control on any of
+the three — verified against raw HTML, with the Admin's `/users` as a positive
+control proving the probes fire.
+
+**Deviations, flagged.**
+1. **The Principal no longer sees `/users` in the sidebar.** They have the same
+   people under two focused links; a third merged entry would be the same rows
+   a third time. The Vice Principal **keeps** `/users`, because C-VP-07 gives
+   them a staff page but no student one — dropping it would have silently
+   removed access §4.3 grants them.
+2. **C-VP-07 uses the same preset as C-PR-05.** The doc describes both as
+   "view staff profiles" and §4.3's VP limits are about *delegated duties and
+   result approval*, not staff visibility. The VP's real constraint is
+   modelled on the results page, which already implements it.
+3. **`DirectoryView` gained a `title` prop.** It hard-coded "Users", so the
+   Student Directory announced itself as "Users" to a screen reader. Default
+   unchanged, so `/users` is untouched.
+
+---
+
 ## Institution structure (Institution Admin)
 
 C-IA-02…07, C-IA-11 and C-IA-12 — the institution's skeleton, which every

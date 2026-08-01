@@ -12,7 +12,17 @@ import {
   ELIGIBILITY_RULES,
 } from "@/lib/user-directory";
 import { FormAlert } from "@/components/auth/form-alert";
-import { Card, Chip, EmptyState } from "@/components/dashboard/primitives";
+import {
+  Card,
+  Chip,
+  EmptyState,
+  TONE_BG,
+  TONE_TEXT,
+} from "@/components/dashboard/primitives";
+import {
+  ENROLLMENT_STATUS_LABELS,
+  ENROLLMENT_STATUS_TONE,
+} from "@/lib/structure";
 import { DirectoryRowActions } from "./row-actions";
 import type {
   DirectoryData,
@@ -38,9 +48,16 @@ type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
 export function DirectoryView({
   perms,
   data,
+  title = "Users",
 }: {
   perms: DirectoryPermissions;
   data: DirectoryData;
+  /**
+   * Page heading. Defaults to "Users" for the shared `/users` route; the
+   * focused leadership directories (C-PR-05/06, C-VP-07) pass their own, so
+   * a Student Directory isn't announced to a screen reader as "Users".
+   */
+  title?: string;
 }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("ALL");
@@ -79,7 +96,7 @@ export function DirectoryView({
       <div className="mb-4 flex min-w-0 flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="font-display text-[22px] font-bold text-foreground">
-            Users
+            {title}
           </h1>
           <p className="mt-1 text-[13px] text-muted-foreground">{perms.note}</p>
         </div>
@@ -501,6 +518,25 @@ function ColumnCell({
         <>{formatDate(user.lastLoginAt)}</>
       ) : (
         <span className="font-medium text-[#B45309]">Never</span>
+      );
+    case "ENROLMENT_STATUS":
+      // Reuses the enrolment vocabulary from `lib/structure` rather than a
+      // second set of labels and tones — a student reads "Transferred" here
+      // and on the enrolment board (C-IA-11) identically.
+      return user.enrolmentStatus ? (
+        <span
+          className={cn(
+            "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+            TONE_BG[ENROLLMENT_STATUS_TONE[user.enrolmentStatus]],
+            ENROLLMENT_STATUS_TONE[user.enrolmentStatus] === "muted"
+              ? "text-[#475569]"
+              : TONE_TEXT[ENROLLMENT_STATUS_TONE[user.enrolmentStatus]],
+          )}
+        >
+          {ENROLLMENT_STATUS_LABELS[user.enrolmentStatus]}
+        </span>
+      ) : (
+        <>—</>
       );
     case "ELIGIBILITY":
       return <EligibilityCell user={user} />;

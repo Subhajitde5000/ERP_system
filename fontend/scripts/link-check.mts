@@ -60,6 +60,10 @@ const ID = {
   klass: "fy-a",
 };
 
+/** Mirrors `canUseLeadershipDirectory()` in `lib/user-directory.ts`. */
+const leadershipOk = (role: string) =>
+  role === "PRINCIPAL" || role === "VICE_PRINCIPAL" ? "ok" : "denied";
+
 /** §4.2 / §4.3 — mirrors `structureAccess()` in `lib/structure.ts`. */
 const structureOk = (role: string) =>
   role === "INSTITUTION_ADMIN" ||
@@ -125,6 +129,11 @@ const PAGES = [
   { label: "Subjects", path: () => `/subjects`, expect: (r) => structureOk(r.role) },
   { label: "Enrolment", path: () => `/enrollments`, expect: (r) => structureOk(r.role) },
   { label: "Parent links", path: () => `/parent-links`, expect: (r) => structureOk(r.role) },
+  // C-PR-05 / C-PR-06 / C-VP-07 — leadership's focused directories. Only the
+  // Principal and Vice Principal; every other role has its own at /users.
+  { label: "Principal staff directory", path: () => `/principal/staff`, expect: (r) => leadershipOk(r.role) },
+  { label: "Principal student directory", path: () => `/principal/students`, expect: (r) => leadershipOk(r.role) },
+  { label: "VP staff directory", path: () => `/vp/staff`, expect: (r) => leadershipOk(r.role) },
   { label: "Library hub", path: () => `/library/dashboard`, expect: () => "ok" },
   { label: "Hostel hub", path: () => `/hostel/dashboard`, expect: () => "ok" },
   { label: "Transport hub", path: () => `/transport/dashboard`, expect: () => "ok" },

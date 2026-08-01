@@ -1,5 +1,6 @@
 import type { InstitutionRole } from "./auth";
 import type { EmploymentType } from "./profile";
+import type { EnrollmentStatus } from "./structure";
 
 /**
  * User directory contracts — role_based_shared_pages.md PAGE 12 (C-RB-12),
@@ -52,7 +53,14 @@ export type DirectoryColumn =
   | "JOINED"
   | "ENROLLED"
   | "LAST_LOGIN"
-  | "ELIGIBILITY";
+  | "ELIGIBILITY"
+  /**
+   * `student_enrollments.status` (§6.6) — ACTIVE / TRANSFERRED / DROPPED /
+   * COMPLETED. Named explicitly by C-PR-06 ("view profiles, class,
+   * **enrollment status**"), so it is a real column rather than something the
+   * Principal has to infer from the class name.
+   */
+  | "ENROLMENT_STATUS";
 
 /** Row-level actions, all gated server-side as well (§6.4 RolesGuard). */
 export type DirectoryAction =
@@ -129,6 +137,8 @@ export interface DirectoryUser {
   dateOfJoining?: string;
   /** `student_enrollments.enrollment_date` (§6.6) */
   enrollmentDate?: string;
+  /** `student_enrollments.status` (§6.6), for the C-PR-06 column */
+  enrolmentStatus?: EnrollmentStatus;
   eligibility?: PlacementEligibility;
   /** Where the row's "View profile" action goes */
   href: string;
