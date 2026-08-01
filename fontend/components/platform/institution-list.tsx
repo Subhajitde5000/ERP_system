@@ -2,11 +2,18 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Building2, Plus, Search } from "lucide-react";
+import { Building2, Plus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { seatUsage } from "@/lib/platform";
 import { Card, EmptyState } from "@/components/dashboard/primitives";
+import {
+  FilterBar,
+  FilterSelect,
+  FilterTabs,
+  ResultCount,
+  SearchBox,
+} from "./list-filters";
 import { TenantStateChip } from "./tenant-bits";
 import type { PlanRow, TenantRow } from "@/types/platform";
 
@@ -71,79 +78,38 @@ export function InstitutionList({
       </div>
 
       <Card className="min-w-0 p-5 sm:p-6">
-        <div className="relative mb-3 flex min-w-0 items-center">
-          <Search
-            className="pointer-events-none absolute left-3 h-4 w-4 text-[#94A3B8]"
-            aria-hidden="true"
+        <SearchBox
+          id="tenant-search"
+          label="Search institutions"
+          value={query}
+          onChange={setQuery}
+          placeholder="Search by name, subdomain or city…"
+        />
+
+        <FilterBar>
+          <FilterTabs
+            label="Filter by state"
+            value={state}
+            onChange={setState}
+            tabs={[
+              ["ALL", "All", counts.all],
+              ["ACTIVE", "Active", counts.active],
+              ["TRIAL", "Trial", counts.trial],
+              ["SUSPENDED", "Suspended", counts.suspended],
+            ]}
           />
-          <label htmlFor="tenant-search" className="sr-only">
-            Search institutions
-          </label>
-          <input
-            id="tenant-search"
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, subdomain or city…"
-            className="h-10 w-full min-w-0 rounded-field border border-border bg-white pl-9 pr-3 text-[13px] transition placeholder:text-[#94A3B8] focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15"
+
+          <FilterSelect
+            id="tenant-plan"
+            label="Filter by plan"
+            value={plan}
+            onChange={setPlan}
+            allLabel="All plans"
+            options={plans.map((p) => [p.slug, p.name])}
           />
-        </div>
+        </FilterBar>
 
-        <div className="mb-4 flex min-w-0 flex-wrap gap-2">
-          <div
-            role="group"
-            aria-label="Filter by state"
-            className="-mx-1 flex min-w-0 max-w-full gap-2 overflow-x-auto px-1 pb-1"
-          >
-            {(
-              [
-                ["ALL", "All", counts.all],
-                ["ACTIVE", "Active", counts.active],
-                ["TRIAL", "Trial", counts.trial],
-                ["SUSPENDED", "Suspended", counts.suspended],
-              ] as const
-            ).map(([key, label, n]) => (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={state === key}
-                onClick={() => setState(key)}
-                className={cn(
-                  "h-8 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15",
-                  state === key
-                    ? "border-primary bg-primary text-white"
-                    : "border-border bg-white text-muted-foreground hover:border-accent",
-                )}
-              >
-                {label}
-                <span className="ml-1.5 opacity-70">{n}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex min-w-0 shrink-0 items-center gap-1.5">
-            <label htmlFor="tenant-plan" className="sr-only">
-              Filter by plan
-            </label>
-            <select
-              id="tenant-plan"
-              value={plan}
-              onChange={(e) => setPlan(e.target.value)}
-              className="h-8 max-w-[170px] rounded-full border border-border bg-white px-3 text-xs font-medium text-muted-foreground transition focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15"
-            >
-              <option value="ALL">All plans</option>
-              {plans.map((p) => (
-                <option key={p.slug} value={p.slug}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <p className="sr-only" role="status" aria-live="polite">
-          {shown.length} {shown.length === 1 ? "institution" : "institutions"} shown
-        </p>
+        <ResultCount count={shown.length} noun="institution" />
 
         {shown.length === 0 ? (
           <EmptyState message="No institutions match these filters." />

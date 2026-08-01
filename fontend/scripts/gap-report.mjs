@@ -95,21 +95,40 @@ const SHARED = [
   [/audit/, "/audit-logs"],
 ];
 
+/**
+ * Platform-console route prefixes (assignment doc §2).
+ *
+ * These live at `app.xyz.com` and are a *different application* from the
+ * institution app — `/finance/invoices` is the platform's billing page, not
+ * the tenant's `/fees`. They must never fall through to the SHARED table
+ * below, which is written for institution routes: `/report/` matched
+ * `/finance/reports`, `payment|invoice` matched `/finance/payments` and
+ * `/finance/invoices`, and `/[a-z-]+/dashboard$` matched `/finance/dashboard`
+ * — so the report claimed Finance Manager was 4/4 built when none of the four
+ * pages existed. A gap report that hides gaps is worse than no report.
+ */
+/** Is this master-table row a platform-console page rather than a tenant one? */
+function isPlatformRoute(page) {
+  return /^(Super Admin|Support Staff|Sales Executive|Finance Manager)$/.test(
+    page.role,
+  );
+}
+
 /** Does a documented route resolve to a built one? */
-function isBuilt(route) {
+function isBuilt(route, page) {
   const norm = (r) => r.replace(/:\w+/g, ":id").replace(/\/$/, "");
   const target = norm(route);
 
   if (built.some((b) => norm(b) === target)) return "exact";
 
+  // Platform rows resolve only under `/platform/*`, never via SHARED
+  if (page && isPlatformRoute(page)) {
+    return built.includes(`/platform${target}`) ? "platform" : false;
+  }
+
   // `[role]/dashboard` serves /library/dashboard, /student/dashboard, …
   if (/^\/[a-z-]+\/dashboard$/.test(target) && built.includes("/:role/dashboard"))
     return "dynamic";
-
-  // The platform console lives under `/platform/*` on one origin here;
-  // in production it is `app.xyz.com/<route>` (assignment doc §2). Map the
-  // doc's bare platform routes onto the prefix.
-  if (built.includes(`/platform${target}`)) return "platform";
 
   // 404 and 403 are not routes in Next.js: 404 is `app/not-found.tsx` and
   // 403 is the `<PermissionDenied>` component every guarded page renders.
@@ -131,7 +150,7 @@ function isBuilt(route) {
 const done = [];
 const todo = [];
 for (const p of pages) {
-  const hit = isBuilt(p.route);
+  const hit = isBuilt(p.route, p);
   (hit ? done : todo).push({ ...p, how: hit });
 }
 

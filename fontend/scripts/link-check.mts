@@ -246,8 +246,24 @@ const PLATFORM_PAGES: [string, string][] = [
   ["/platform/settings", "Platform Settings (C-SA-08)"],
 ];
 
+/** Sales Executive console — C-SL-01…04. Gated to SALES_EXECUTIVE / SUPER_ADMIN. */
+const SALES_PAGES: [string, string][] = [
+  ["/platform/sales/dashboard?role=SALES_EXECUTIVE", "Sales Dashboard (C-SL-01)"],
+  ["/platform/sales/trials?role=SALES_EXECUTIVE", "Trial Institutions (C-SL-02)"],
+  ["/platform/sales/trials/t-vidya-college/convert?role=SALES_EXECUTIVE", "Convert Trial (C-SL-03)"],
+  ["/platform/sales/subscriptions?role=SALES_EXECUTIVE", "Subscriptions (C-SL-04)"],
+];
+
+/** Support Staff console — C-SP-01…04. Gated to SUPPORT_STAFF / SUPER_ADMIN. */
+const SUPPORT_PAGES: [string, string][] = [
+  ["/platform/support/dashboard?role=SUPPORT_STAFF", "Support Dashboard (C-SP-01)"],
+  ["/platform/support/tickets?role=SUPPORT_STAFF", "Ticket List (C-SP-02)"],
+  ["/platform/support/tickets/tkt-1?role=SUPPORT_STAFF", "Ticket Detail (C-SP-03)"],
+  ["/platform/support/institutions/t-abc-college?role=SUPPORT_STAFF", "Institution Read-Only (C-SP-04)"],
+];
+
 const platformRows: { page: string; url: string; got: string; status: number; ok: boolean }[] = [];
-for (const [path, label] of PLATFORM_PAGES) {
+for (const [path, label] of [...PLATFORM_PAGES, ...SUPPORT_PAGES, ...SALES_PAGES]) {
   const url = `${BASE}${path}`;
   const { outcome, status } = await probe(url);
   checked++;
@@ -283,6 +299,8 @@ await (async () => {
   const seeds = [
     ...new Set(PAGES.map((pg) => pg.path({ role: "STUDENT", slug: "student", label: "" }))),
     ...PLATFORM_PAGES.map(([p]) => p),
+    ...SUPPORT_PAGES.map(([p]) => p.split("?")[0]!),
+    ...SALES_PAGES.map(([p]) => p.split("?")[0]!),
   ];
 
   for (const [role, slug] of ROLES.map((r) => [r[0], r[1]] as const)) {

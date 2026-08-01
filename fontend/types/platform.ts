@@ -99,6 +99,16 @@ export interface PlanRow {
 
 /* ── §4.4 subscriptions ─────────────────────────────────────────────────── */
 
+/**
+ * How a period is billed.
+ *
+ * Not a column: §4.4 stores `starts_at` and `ends_at`, and `plans` (§4.1)
+ * prices both `price_monthly` and `price_yearly`. The cycle is therefore the
+ * *length of the period*, derived rather than stored, so it can never
+ * disagree with the dates it is supposed to describe.
+ */
+export type BillingCycle = "MONTHLY" | "YEARLY";
+
 export interface SubscriptionRow {
   id: string;
   tenantId: string;
@@ -110,6 +120,8 @@ export interface SubscriptionRow {
   amount: number;
   currency: string;
   paymentReference: string | null;
+  /** Derived from the period length — see `BillingCycle` */
+  cycle: BillingCycle;
 }
 
 /* ── §4.5 platform_users ────────────────────────────────────────────────── */

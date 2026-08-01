@@ -31,9 +31,17 @@ export function monthLabel(year: number, month: number): string {
   });
 }
 
-/** ₹ with Indian digit grouping. */
+/**
+ * ₹ with Indian digit grouping.
+ *
+ * The sign goes outside the symbol: `Math.round(-10000).toLocaleString()`
+ * returns "-10,000", which naively interpolated renders "₹-10,000" — the
+ * minus inside the currency. Negative amounts are rare in this app but real
+ * (an MRR delta on a downgrade, C-SL-04), and "-₹10,000" is the correct form.
+ */
 export function rupees(amount: number): string {
-  return `₹${Math.round(amount).toLocaleString("en-IN")}`;
+  const n = Math.round(amount);
+  return `${n < 0 ? "-" : ""}₹${Math.abs(n).toLocaleString("en-IN")}`;
 }
 
 /** Day counts may be halves (`leave_requests.total_days` is NUMERIC(4,1)). */

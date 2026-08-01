@@ -73,7 +73,15 @@ export function Card({
   );
 }
 
-/** Panel header with optional "view all" link. */
+/**
+ * Panel header with optional "view all" link.
+ *
+ * `h2`, not `h3`: a panel is a top-level section of the page, sitting
+ * directly under the page's single `h1`. Hard-coding `h3` skipped a level on
+ * every dashboard, report and module hub in the app — a WCAG 1.3.1 failure
+ * that makes heading navigation lie about the structure. Panels that ever
+ * nest inside another section would need a level prop; none do today.
+ */
 export function PanelHeader({
   title,
   link,
@@ -83,9 +91,9 @@ export function PanelHeader({
 }) {
   return (
     <div className="mb-4 flex items-center justify-between gap-3">
-      <h3 className="font-display text-[15px] font-bold text-foreground">
+      <h2 className="font-display text-[15px] font-bold text-foreground">
         {title}
-      </h3>
+      </h2>
       {link && (
         <Link
           href={link.href}

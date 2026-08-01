@@ -1,5 +1,5 @@
 import { PlatformShell } from "./platform-shell";
-import { canUsePlatformConsole, PLATFORM_ROLE_LABELS } from "@/lib/platform";
+import { PLATFORM_ROLE_HOME, PLATFORM_ROLE_LABELS } from "@/lib/platform";
 import { Card, EmptyState } from "@/components/dashboard/primitives";
 import type { PlatformRole } from "@/types/auth";
 
@@ -10,24 +10,31 @@ import type { PlatformRole } from "@/types/auth";
  *
  * `?role=` previews a platform role without a backend, matching the
  * institution side's convention.
+ *
+ * @param allow Roles this page belongs to. Defaults to the Super Admin, who
+ *              owns C-SA-01…08. A page passes its own list rather than each
+ *              section re-implementing the shell and the guard.
  */
 export function PlatformPage({
   search,
+  allow = ["SUPER_ADMIN"],
   children,
 }: {
   search: { role?: string };
+  allow?: PlatformRole[];
   children: (ctx: { role: PlatformRole }) => React.ReactNode;
 }) {
   const role = parsePlatformRole(search.role);
+  const permitted = allow.includes(role);
 
   return (
     <PlatformShell role={role} userName={firstName(role)}>
-      {canUsePlatformConsole(role) ? (
+      {permitted ? (
         children({ role })
       ) : (
         <Card className="mx-auto max-w-md p-8 text-center">
           <EmptyState
-            message={`The ${PLATFORM_ROLE_LABELS[role]} console isn't built yet. These eight pages are the Super Admin's (C-SA-01…08); ${PLATFORM_ROLE_LABELS[role]} has its own section in the assignment doc.`}
+            message={`This section belongs to ${allow.map((r) => PLATFORM_ROLE_LABELS[r]).join(" / ")}. You're signed in as ${PLATFORM_ROLE_LABELS[role]} — your own console is at ${PLATFORM_ROLE_HOME[role]}.`}
           />
         </Card>
       )}

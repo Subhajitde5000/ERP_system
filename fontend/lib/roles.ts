@@ -17,8 +17,8 @@ interface RoleMeta {
 const ROLE_MAP: Record<Role, RoleMeta> = {
   // Platform — hosted on app.xyz.com
   SUPER_ADMIN: { label: "Super Admin", redirect: "/platform/dashboard", external: true },
-  SUPPORT_STAFF: { label: "Support Staff", redirect: "/platform/support", external: true },
-  SALES_EXECUTIVE: { label: "Sales Executive", redirect: "/platform/sales", external: true },
+  SUPPORT_STAFF: { label: "Support Staff", redirect: "/platform/support/dashboard", external: true },
+  SALES_EXECUTIVE: { label: "Sales Executive", redirect: "/platform/sales/dashboard", external: true },
   FINANCE_MANAGER: { label: "Finance Manager", redirect: "/platform/finance", external: true },
 
   // Institution leadership

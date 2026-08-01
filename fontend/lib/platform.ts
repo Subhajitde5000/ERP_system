@@ -5,8 +5,12 @@ import {
   Receipt,
   ScrollText,
   Settings,
+  Sprout,
+  Ticket,
+  TrendingUp,
   Layers,
   UsersRound,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 
@@ -18,9 +22,9 @@ import type { Tone } from "@/types/dashboard";
  * Platform console — role logic and navigation.
  *
  * `role_based_system_design.md` §4.1 defines four platform roles. The Super
- * Admin owns all eight pages (C-SA-01…08); the other three have their own
- * sections (C-SP, C-SL, C-FM) which are not built yet, so they are routed to
- * their landing page and told what they can reach.
+ * Admin owns all eight pages (C-SA-01…08); Support owns C-SP-01…04 and Sales
+ * owns C-SL-01…04. Finance (C-FM) is not built yet, so that role is routed to
+ * its landing page and told what it can reach.
  *
  * §4.1 Super Admin, verbatim:
  *   - Create / suspend / delete institutions
@@ -73,13 +77,55 @@ const NAV: PlatformNavSection[] = [
     ],
   },
   {
+    // C-SP-01…04. The Super Admin sees these too: §4.1 gives them platform-wide
+    // oversight, and an escalated ticket has to be reachable from somewhere.
+    title: "Support",
+    items: [
+      {
+        label: "Support",
+        href: "/platform/support/dashboard",
+        icon: LifeBuoy,
+        roles: ["SUPPORT_STAFF", "SUPER_ADMIN"],
+      },
+      {
+        label: "Tickets",
+        href: "/platform/support/tickets",
+        icon: Ticket,
+        roles: ["SUPPORT_STAFF", "SUPER_ADMIN"],
+      },
+    ],
+  },
+  {
+    // C-SL-01…04. The Super Admin sees these too: §4.1 gives them
+    // platform-wide oversight, and they own plans and tenant lifecycle
+    // (C-SA-03/05), which is the other half of every conversation here.
+    title: "Sales",
+    items: [
+      {
+        label: "Sales",
+        href: "/platform/sales/dashboard",
+        icon: TrendingUp,
+        roles: ["SALES_EXECUTIVE", "SUPER_ADMIN"],
+      },
+      {
+        label: "Trials",
+        href: "/platform/sales/trials",
+        icon: Sprout,
+        roles: ["SALES_EXECUTIVE", "SUPER_ADMIN"],
+      },
+      {
+        label: "Subscriptions",
+        href: "/platform/sales/subscriptions",
+        icon: Receipt,
+        roles: ["SALES_EXECUTIVE", "SUPER_ADMIN"],
+      },
+    ],
+  },
+  {
     title: "Teams",
     items: [
-      // Not built yet — C-SP-01, C-SL-01, C-FM-01. Listed so the Super Admin
-      // can see the shape of the console, but only for the owning role.
-      { label: "Support", href: "/platform/support", icon: LifeBuoy, roles: ["SUPPORT_STAFF"] },
-      { label: "Sales", href: "/platform/sales", icon: Receipt, roles: ["SALES_EXECUTIVE"] },
-      { label: "Finance", href: "/platform/finance", icon: Receipt, roles: ["FINANCE_MANAGER"] },
+      // Not built yet — C-FM-01…04.
+      { label: "Finance", href: "/platform/finance", icon: Wallet, roles: ["FINANCE_MANAGER"] },
     ],
   },
 ];
@@ -89,15 +135,6 @@ export function getPlatformNav(role: PlatformRole): PlatformNavSection[] {
     ...s,
     items: s.items.filter((i) => i.roles.includes(role)),
   })).filter((s) => s.items.length > 0);
-}
-
-/**
- * Only the Super Admin has pages built. The other three platform roles land
- * on a page that says so rather than a 404 — they are real roles with real
- * sections in the doc, just not this milestone.
- */
-export function canUsePlatformConsole(role: PlatformRole): boolean {
-  return role === "SUPER_ADMIN";
 }
 
 export const PLATFORM_ROLE_LABELS: Record<PlatformRole, string> = {
@@ -110,8 +147,8 @@ export const PLATFORM_ROLE_LABELS: Record<PlatformRole, string> = {
 /** Where each non-Super-Admin role's own section will live. */
 export const PLATFORM_ROLE_HOME: Record<PlatformRole, string> = {
   SUPER_ADMIN: "/platform/dashboard",
-  SUPPORT_STAFF: "/platform/support",
-  SALES_EXECUTIVE: "/platform/sales",
+  SUPPORT_STAFF: "/platform/support/dashboard",
+  SALES_EXECUTIVE: "/platform/sales/dashboard",
   FINANCE_MANAGER: "/platform/finance",
 };
 
@@ -183,10 +220,16 @@ export function seatUsage(
 
 /** Compact money for the platform's INR figures. */
 export function compactINR(amount: number): string {
-  if (amount >= 10_000_000) return `₹${(amount / 10_000_000).toFixed(1)}Cr`;
-  if (amount >= 100_000) return `₹${(amount / 100_000).toFixed(1)}L`;
-  if (amount >= 1_000) return `₹${Math.round(amount / 1_000)}K`;
-  return `₹${amount}`;
+  // Sign outside the symbol, magnitude inside. Every branch below compared
+  // against a positive threshold, so a negative fell straight through to the
+  // last line and rendered "₹-10000" — ungrouped, with the minus inside the
+  // currency. Same fix as `rupees()`.
+  const sign = amount < 0 ? "-" : "";
+  const n = Math.abs(amount);
+  if (n >= 10_000_000) return `${sign}₹${(n / 10_000_000).toFixed(1)}Cr`;
+  if (n >= 100_000) return `${sign}₹${(n / 100_000).toFixed(1)}L`;
+  if (n >= 1_000) return `${sign}₹${Math.round(n / 1_000)}K`;
+  return `${sign}₹${n}`;
 }
 
 /** Slugify an institution name into a subdomain candidate (C-SA-04). */

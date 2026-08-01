@@ -1085,12 +1085,118 @@ is summed from the institution's own department table and staff directory
 2. `is_active` (§4.2) and `subscriptions.status` (§4.4) are independent
    columns. A suspended tenant can still hold an ACTIVE subscription, so
    `tenantState()` lets suspension win — that is what actually blocks sign-in.
-3. Support / Sales / Finance get a "not built yet" page rather than a 404.
-   They are real roles with real sections (C-SP, C-SL, C-FM), just not this
-   milestone.
+3. Finance Manager gets a "not built yet" page rather than a 404 — a real
+   role with a real section (C-FM), just not this milestone. Support (C-SP)
+   and Sales (C-SL) are now built.
 
 **Guard worth noting:** the last active Super Admin cannot be deactivated —
 locking the only one out of the console is unrecoverable without a DB edit.
+
+---
+
+## Support Staff console
+
+C-SP-01…04, under `app/(platform)/platform/support/`.
+
+| Task | Page | Route |
+|---|---|---|
+| C-SP-01 | Support Dashboard | `/platform/support/dashboard` |
+| C-SP-02 | Ticket List | `/platform/support/tickets` |
+| C-SP-03 | Ticket Detail | `/platform/support/tickets/:id` |
+| C-SP-04 | Institution Read-Only | `/platform/support/institutions/:id` |
+
+**"Cannot modify institution data or settings" (§4.1) is enforced, not
+implied.** C-SP-04 has no `<form>`, no `<input>`, no `<select>` and no
+mutating button — asserted in the leak suite, not just intended. A support
+agent *can* change a ticket, because `support_tickets` (§4.6) is a platform
+row; they cannot change anything inside a tenant.
+
+**C-SP-04 is a diagnostic snapshot, not impersonation.** Debugging a login
+failure or a missing menu item needs configuration and health — plan, module
+toggles, capacity, recent admin actions. It does not need student records,
+marks or fee accounts, so none of them are in the payload. Verified by
+grepping the raw HTML for 12 institution values; 0 present.
+
+**Deviations, flagged.**
+1. **`ticket_replies` does not exist in the schema.** §4.6 has no reply table,
+   yet the assignment doc lists `POST /tickets/:id/reply` and C-SP-03 asks for
+   a "reply thread". `TicketReply` is the shape that endpoint implies and is
+   marked `TODO(Dev-A)` so the table gets added rather than the UI inventing
+   it. It carries `is_internal`, because a support agent needs to record a
+   diagnosis the customer shouldn't read.
+2. **Routes are `/platform/support/*`, not the doc's `/support/*`.** `/support`
+   is already the public login-help page (a C-PB task). Both now resolve. The
+   dashboard sits at `/platform/support/dashboard`, matching the doc's own
+   `/support/dashboard` under the platform prefix.
+3. **No SLA is specified anywhere**, so `SLA_HOURS` lives in one table
+   (4/12/48/96h by priority) rather than being scattered through the UI, with
+   a TODO to move it into plan-based support tiers.
+4. The Super Admin can also open this section — §4.1 gives them platform-wide
+   oversight, and an escalated ticket has to be reachable.
+
+---
+
+## Sales Executive console
+
+C-SL-01…04, under `app/(platform)/platform/sales/`.
+
+| Task | Page | Route |
+|---|---|---|
+| C-SL-01 | Sales Dashboard | `/platform/sales/dashboard` |
+| C-SL-02 | Trial Institutions | `/platform/sales/trials` |
+| C-SL-03 | Convert Trial to Paid | `/platform/sales/trials/:id/convert` |
+| C-SL-04 | Subscription Management | `/platform/sales/subscriptions` |
+
+**"Cannot access institution academic data" (§4.1) is decided in the data
+layer, not the component.** `toTrialRow()` and `toAccount()` in
+`lib/sales-data.ts` are the only two places a tenant becomes a sales payload,
+and they name every field that crosses. There is no path from this file to
+student, mark, attendance, fee or audit data, so the RSC payload the browser
+receives does not contain it — verified by grepping the raw server HTML of all
+four pages against 19 probes, with three positive controls proving the probes
+fire on the pages that *do* hold that data. Seats, teachers and storage **are**
+included: those are the meters a plan is priced on.
+
+**Nothing is re-seeded.** Trials, plans and subscriptions all come from
+`lib/platform-data.ts`, so a trial the Sales console lists is the same tenant
+row the Super Admin sees, at the same price, with the same headcount. ABC
+College still reports the institution app's own 910 students.
+
+**Plan fit has three levels, not two.** A *blocker* (over a seat, teacher or
+storage cap) refuses the change — selling Standard to an institution with
+2,400 students means their next enrolment fails. A *warning* (a module the
+plan doesn't license) is acknowledged with a checkbox and proceeds, because
+§4.1 grants "upgrade / **downgrade**" and every downgrade drops something;
+collapsing warnings into blockers made downgrades impossible. *Notes* are
+headroom. One `planFit()` serves both C-SL-03 and C-SL-04.
+
+**Deviations, flagged.**
+1. **`trial_notes` does not exist in the schema.** C-SL-02 asks for "follow-up
+   notes" but §4 has nowhere to record a sales conversation. `TrialNote` is the
+   shape the page implies, marked `TODO(Dev-A)`, and the UI says so in place
+   rather than faking a composer. Same call made for `ticket_replies` (C-SP-03).
+2. **`subscriptions` has no billing-cycle column.** §4.4 stores `starts_at` and
+   `ends_at`; §4.1 prices both `price_monthly` and `price_yearly`. The cycle is
+   therefore the *length of the period*, derived rather than stored, so it can
+   never contradict the dates it describes.
+3. **Conversion rate is read out of billing history**, not stored. A tenant
+   whose TRIAL row is followed by a paid row converted; one with nothing after
+   it lapsed — `tenants.trial_ends_at` goes NULL when a trial ends (§4.2), so
+   §4.4 is the only place that history survives. Open trials are excluded:
+   counting undecided leads as losses would make the number worse every time
+   sales generated one.
+4. **The urgency bands (3d critical / 7d soon) and the 45-day renewal window
+   are conventions, not documented rules** — the doc gives only
+   `trial_ends_at`. They live in one table in `lib/sales.ts` with a TODO to
+   move them into platform settings, as `SLA_HOURS` did.
+5. **Routes are `/platform/sales/*`**, matching the platform prefix the doc
+   sets in §2 ("Next.js route prefix `app/(platform)/`") rather than a bare
+   `/sales/*` on the tenant origin.
+
+**MRR has one definition.** `tenantMrr()` in `lib/platform-data.ts` is used by
+both the Super Admin dashboard and the Sales board, reading each tenant's real
+cycle. Computing it locally in the sales layer booked ₹4,999 from a *suspended*
+tenant while the platform overview correctly counted zero.
 
 ---
 
