@@ -253,13 +253,28 @@ export function dueLabel(iso: string): string {
   return `${Math.abs(days)} days overdue`;
 }
 
-/** Date + time, e.g. "12 Aug, 23:59". */
+/**
+ * Date + time, e.g. "12 Aug, 23:59" — always in IST.
+ *
+ * `timeZone` is not optional. Omitting it formats in the *server's* zone,
+ * which in this deployment resolves to UTC, so every assignment deadline and
+ * exam start rendered 5:30 early — a 10:00 IST paper displayed as "04:30".
+ * Same rule as `formatDate` in `lib/utils`.
+ */
 export function dueDateTime(iso: string): string {
   const d = new Date(iso);
-  return `${d.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}, ${d.toLocaleTimeString(
-    "en-IN",
-    { hour: "2-digit", minute: "2-digit", hour12: false },
-  )}`;
+  return `${d.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Kolkata",
+  })}, ${d.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    // `hour12: false` yields the h24 cycle, which renders midnight as
+    // "24:00" under en-IN. `hourCycle: "h23"` gives the expected "00:00".
+    hourCycle: "h23",
+    timeZone: "Asia/Kolkata",
+  })}`;
 }
 
 /** Review-load colour: amber past 5 pending, red past 15. */

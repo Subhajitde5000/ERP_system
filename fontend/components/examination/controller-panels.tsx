@@ -111,7 +111,7 @@ export function HallAllocationPanel({
                   <p className="flex min-w-0 items-center gap-1 truncate text-[11px] text-muted-foreground">
                     <UserCheck className="h-3 w-3 shrink-0" aria-hidden="true" />
                     {h.invigilatorName ?? (
-                      <span className="text-warning">No invigilator</span>
+                      <span className="text-warning-text">No invigilator</span>
                     )}
                   </p>
                 </div>
@@ -213,9 +213,9 @@ export function LiveMonitorPanel({
                   className={cn(
                     "px-1 py-2.5 text-right text-[13px] font-semibold tabular-nums",
                     a.tabSwitchCount > 5
-                      ? "text-destructive"
+                      ? "text-destructive-text"
                       : a.tabSwitchCount > 2
-                        ? "text-warning"
+                        ? "text-warning-text"
                         : "text-muted-foreground",
                   )}
                 >
@@ -270,7 +270,7 @@ export function MalpracticePanel({
           </p>
         </div>
         {open.length > 0 && (
-          <span className="shrink-0 rounded-full bg-destructive-light px-2 py-0.5 text-[10px] font-semibold text-destructive">
+          <span className="shrink-0 rounded-full bg-destructive-light px-2 py-0.5 text-[10px] font-semibold text-destructive-text">
             {open.length} OPEN
           </span>
         )}
@@ -289,7 +289,7 @@ export function MalpracticePanel({
                   <Flag
                     className={cn(
                       "h-3.5 w-3.5 shrink-0",
-                      action ? "text-muted-foreground" : "text-destructive",
+                      action ? "text-[#475569]" : "text-destructive-text",
                     )}
                     aria-hidden="true"
                   />
@@ -299,7 +299,7 @@ export function MalpracticePanel({
                       {l.rollNo}
                     </span>
                   </span>
-                  <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                  <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-[#475569]">
                     {MALPRACTICE_TYPE_LABELS[l.type]}
                   </span>
                   {action && (
@@ -307,10 +307,10 @@ export function MalpracticePanel({
                       className={cn(
                         "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
                         action === "DISQUALIFIED"
-                          ? "bg-destructive-light text-destructive"
+                          ? "bg-destructive-light text-destructive-text"
                           : action === "WARNED"
                             ? "bg-warning-light text-[#B45309]"
-                            : "bg-muted text-muted-foreground",
+                            : "bg-muted text-[#475569]",
                       )}
                     >
                       {MALPRACTICE_ACTION_LABELS[action] ?? action}
@@ -344,7 +344,7 @@ export function MalpracticePanel({
                           className={cn(
                             "inline-flex h-9 shrink-0 items-center rounded-field border px-3 text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15",
                             kind === "DISQUALIFIED"
-                              ? "border-destructive-border text-destructive hover:bg-destructive-light"
+                              ? "border-destructive-border text-destructive-text hover:bg-destructive-light"
                               : "border-border text-accent hover:border-accent hover:bg-accent-light",
                           )}
                         >

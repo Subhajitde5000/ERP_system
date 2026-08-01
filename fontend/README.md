@@ -922,6 +922,67 @@ had to invent a parallel list of people to show anybody.
 
 ---
 
+## Leave Management
+
+Built to `role_based_shared_pages.md` PAGE 13 (C-RB-13), across the three
+leave tables the docs define.
+
+| Role | Sections | Actions |
+|---|---|---|
+| Student | own class leave | apply, upload document |
+| Parent | child's class leave | view only *(deviation 3)* |
+| Teacher | students (own classes) + own HR leave | approve / reject, apply |
+| HOD | students (own dept) + own HR leave | approve / reject, apply |
+| HR Manager | all staff + own HR leave | approve / reject, edit balances |
+| Hostel Warden | residents + own HR leave | approve / reject, apply |
+| Admin · Principal · VP | students (+ staff, for Admin) + own | *(deviation 2)* |
+| *9 other staff roles* | own HR leave only | apply *(deviation 4)* |
+
+**Three tables, not one.** `attendance_leaves` (§7.1, auto-marks EXCUSED),
+`leave_requests` (§8.5, debits a policy balance) and `hostel_leave_requests`
+(§8.2, has a destination and emergency contact) share only from/to/reason/
+status. `LeaveKind` discriminates and each keeps its own fields; flattening
+them would lose the medical certificate, the balance and the contact number.
+
+**Apply and approve are sections, not opposite roles.** PAGE 13's fourth row —
+"Staff (Teacher, HOD, etc.)" — overlaps rows two and three, so a Teacher gets
+*both* their students' queue and their own HR leave. Modelled as a view-kind
+dispatch one of them would have to lose, so this is a section list per role
+like settings and the detail pages.
+
+**Nothing is duplicated.** Staff rows and the policy table come from the HR
+module (`getStaffLeave`, `LEAVE_POLICIES`), hostel rows from the hostel module
+(`getAllHostelLeave`), students from the shared roster. Only the student
+attendance-leave rows are defined here, because `attendance-data` models them
+for one student and this page needs the class-wide queue. Removing the
+third copy of the policy table also fixed PAGE 14, which had its own.
+
+**Scope is applied before a row is built.** A Teacher's payload holds their
+own classes' 6 requests; the other 3 never leave the data layer. Verified by
+grepping raw server HTML — 43 checks, 0 leaks, positive control passing.
+Leave reasons are the most sensitive free text on the site (they are often
+medical), so this matters more here than on most pages.
+
+**Deviations, flagged.**
+1. "Staff (Teacher, HOD, etc.)" is read as *every employee* — §8.5 gives all
+   staff a leave balance, so withholding the apply form from the Librarian
+   would leave them no way to use it. 16 of 18 roles get the section.
+2. Admin / Principal / VP also get the student queue: §4.2 grants "● full" on
+   attendance and §4.3 makes the Principal the academic authority, so a leave
+   escalated past the HOD has somewhere to land. Mentor is deliberately *not*
+   an approver — §2.2's grant is pastoral, not decisional.
+3. Parent gets a read-only view of their child's leaves; they already see the
+   same rows on `/attendance`.
+4. Nine staff roles get only the own-leave section — no doc grants them
+   anyone else's queue.
+
+**Separation of duties.** The HR Manager's own request is excluded from her
+own approval queue and appears under "My leave" instead, matching the rule
+the appraisal cycle already applies (§8.5: a head can't be their own
+reviewer). `TODO(Dev-A)` notes the real rule escalates to the Principal.
+
+---
+
 ## Reports
 
 Built to `role_based_shared_pages.md` PAGE 14 (C-RB-14), aggregating the
@@ -983,6 +1044,617 @@ HTML — 54 checks, 0 leaks, positive control passing.
    their aggregates live in `report-data.ts` with a `TODO(Dev-B)` to move each
    into its module's data layer. Their figures match the dashboards that
    already show them (route load 94/81/67/52/38%).
+
+---
+
+## Platform console (Super Admin)
+
+The eight Super Admin pages, C-SA-01…08. They live under `app/(platform)/`
+and are served at `/platform/*` locally; in production the assignment doc §2
+puts them on **`app.xyz.com`**, a different origin from the institution
+subdomains. `lib/tenant.ts` already treats `app` as a reserved slug, so the
+split is real, not cosmetic.
+
+| Task | Page | Route |
+|---|---|---|
+| C-SA-01 | Dashboard | `/platform/dashboard` |
+| C-SA-02 | Institution List | `/platform/institutions` |
+| C-SA-03 | Institution Detail | `/platform/institutions/:id` |
+| C-SA-04 | Create Institution | `/platform/institutions/new` |
+| C-SA-05 | Plans | `/platform/plans` |
+| C-SA-06 | Platform Users | `/platform/platform-users` |
+| C-SA-07 | Audit Logs | `/platform/audit-logs` |
+| C-SA-08 | Settings | `/platform/settings` |
+
+**"Audit-only, no edit" shapes the UI.** `role_based_system_design.md` §4.1
+grants the Super Admin "access all institution data (audit-only, no edit)".
+So plan, modules and tenant lifecycle *are* editable — those are platform
+concerns — while the tenant's own records are read-only, which the detail
+page states rather than implies.
+
+**ABC College is the tenant this app runs as.** Its headcount on the platform
+is summed from the institution's own department table and staff directory
+(910 students, 14 active teachers), so the two consoles can't disagree.
+
+**Deviations, flagged.**
+1. The DB enum is `platform_role AS ENUM ('SUPER_ADMIN','SUPPORT','SALES',
+   'FINANCE')` (§12) but `types/auth.ts` — from `role_based_system_design.md`
+   §2.1, and depended on by 40+ files — uses `SUPPORT_STAFF /
+   SALES_EXECUTIVE / FINANCE_MANAGER`. The app's names win; `PLATFORM_ROLE_DB`
+   maps to the DB spelling at the boundary.
+2. `is_active` (§4.2) and `subscriptions.status` (§4.4) are independent
+   columns. A suspended tenant can still hold an ACTIVE subscription, so
+   `tenantState()` lets suspension win — that is what actually blocks sign-in.
+3. Finance Manager gets a "not built yet" page rather than a 404 — a real
+   role with a real section (C-FM), just not this milestone. Support (C-SP)
+   and Sales (C-SL) are now built.
+
+**Guard worth noting:** the last active Super Admin cannot be deactivated —
+locking the only one out of the console is unrecoverable without a DB edit.
+
+---
+
+## Submission detail (Teacher)
+
+C-TC-16 — "View one submission, files, add feedback, set score".
+
+| Task | Page | Route |
+|---|---|---|
+| C-TC-16 | Submission Detail | `/teacher/submissions/:id` |
+
+**Not a duplicate of C-TC-15.** The review table already expands a row into a
+compact grading form, and that stays — it is faster for a run of quick
+approvals. This page is the same decision with room to make it properly: the
+full text response instead of a clipped preview, every file with its size,
+and the **earlier attempts** that explain why the work is on its second
+version. It exists as a URL because a submission is the thing a teacher gets
+*linked to* — from a notification, a dashboard count, or a colleague — and
+hunting for one student in a table of forty is the workflow it removes.
+
+It reuses `SubmissionRow`, `SUBMISSION_STATUS_LABELS/TONE`, `dueDateTime` and
+`fileSize`; the only new contract is `SubmissionDetail`, which adds the
+context a deep link lacks (which assignment, what it is out of, where the
+student sits in the review queue).
+
+**A 404, not a 403.** Every other guarded page in this app protects a
+*section* and renders `PermissionDenied`. This URL is one named student's
+work, marks and feedback, so `getSubmissionDetail()` returns nothing unless
+the caller may review and the route 404s — the response is byte-identical to
+a non-existent submission, so the URL space cannot be probed to discover who
+has submitted. Verified for six unauthorised roles plus four malformed ids.
+
+**`previousVersions` exists because §7.3 makes a resubmission a new row** —
+`submissions` is UNIQUE on `(assignment_id, milestone_id, student_id,
+version)`. A reviewer looking at v2 without v1's feedback cannot see what
+they asked for, so the loop is invisible. Reconstructed from the current row
+today, with a `TODO(Dev-B)` for the real versions endpoint.
+
+**Score is validated in JS, not with native `min`/`max`** — the native
+attributes suppress the form's own message and the field silently refuses to
+submit. Approving requires a score; rejecting does not, because a rejection
+legitimately carries none.
+
+**Bugs fixed while here.**
+1. **Client links dropped the `?role=` preview param**, so "Next to review"
+   navigated as the default role and 404'd. Extracted `usePreviewHref()` —
+   the same loop three shells had each grown privately — and applied it to
+   this page and the new review-table link.
+2. **Three pre-existing contrast failures on C-TC-15**: `text-success`
+   (2.54:1) and `text-warning` (2.15:1) as 24px KPI values, `text-destructive`
+   (3.76:1) on the 11px "· late" tag, and `muted-foreground` on the
+   `bg-muted` avatar (4.34:1 — the colour *pair* again). All now use the
+   darkened `-text` tokens.
+
+---
+
+## HOD department management
+
+C-HD-07 and C-HD-08 — §4.4's "Teachers: view, **assign subjects**" and
+"Mentors: **assign students to mentors**", both scoped to one department.
+
+| Task | Page | Route |
+|---|---|---|
+| C-HD-07 | Teacher List | `/hod/teachers` |
+| C-HD-08 | Mentor Assignments | `/hod/mentors` |
+
+**The department fence is applied in the data layer.** §4.4 scopes the HOD to
+"Own department only", so `getTeacherListBoard()` and `getMentorBoard()` take
+a department code and never emit a row outside it — ECE staff, ECE subjects
+and other departments' students are absent from the payload, not hidden by
+CSS. The code is resolved server-side by `HodPage`, so an HOD cannot reach
+another department by editing the URL.
+
+**Both pages lead with the number the decision turns on.** A teacher list
+without teaching load can't answer "who takes CS309?", so every row shows
+subjects / as-lead / classes / mentees, and the staffing dialog sorts
+lightest-load first. A mentor board without attendance can't answer "which
+group should this student join?", so every mentee carries their percentage
+and at-risk students are counted per group.
+
+**`teacher_subjects` (§6.5) is edited from both sides.** The teacher's dialog
+answers "what else does Arun teach?"; clicking an unstaffed subject in the
+banner answers "who takes CS309?". Same endpoint, same unique key
+`(teacher_id, subject_id, role_in_subject)` — so one person can be Teacher
+*and* Co-teacher on one subject, which the dialog allows and a duplicate of
+which it refuses.
+
+**Read-only for the Principal and Vice Principal**, who get the data and a
+"View only" chip with no assign, staff or remove control — asserted against
+raw HTML with the HOD's own copy as a positive control.
+
+**Deviations, flagged.**
+1. **`mentor_assignments` does not exist in the schema.** The DB doc defines
+   the MENTOR role (§4.5), gives the HOD "assign students to mentors" (§4.4),
+   scopes a permission tier to "Mentee Group" (§6) and C-HD-08 asks for the
+   page — but searching the whole document for "mentor" or "mentee" returns
+   **nothing**. `MentorAssignment` in `types/mentor.ts` is the shape those
+   four requirements imply, with `UNIQUE (student_id)` because one mentor per
+   student is what makes "my mentees" a group. Marked `TODO(Dev-A)`, exactly
+   as `ticket_replies` (C-SP-03) and `trial_notes` (C-SL-02) were.
+2. **"If Mentor role enabled" is a role gate, not a module gate.** MENTOR is
+   an optional *role* (§4.5), not one of the 16 module keys, so the condition
+   is whether anyone in the department holds the grant. When nobody does the
+   page says so and lists who could take it.
+3. **A second mentor was added to the fixture.** Only Priya Sharma held the
+   grant, and a one-group board can show a list but not the decision the page
+   exists for. Meena Thomas now holds it too, so the two at-risk students sit
+   in different groups.
+4. **The Mentor dashboard was corrected**, not just linked: it claimed "12
+   mentees · 2 below 75%" against no data at all, and three of its links went
+   to `/users` — a page the Mentor role is explicitly denied. Now 3 mentees,
+   1 at risk, pointing at Attendance and Results.
+
+---
+
+## Leadership directories (Principal / Vice Principal)
+
+C-PR-05, C-PR-06 and C-VP-07.
+
+| Task | Page | Route |
+|---|---|---|
+| C-PR-05 | Staff Directory | `/principal/staff` |
+| C-PR-06 | Student Directory | `/principal/students` |
+| C-VP-07 | Staff Directory (VP) | `/vp/staff` |
+
+**These are narrowings of the shared directory, not a second one.** `/users`
+(PAGE 12) already gives leadership a merged `STAFF_AND_STUDENTS` list; the doc
+asks for the same people split by kind. So all three routes pass a different
+`DirectoryPermissions` preset into the *same* `getDirectoryData()` and the
+*same* `DirectoryView`. No new list component, no new data layer, no second
+search box to keep in sync.
+
+The audience is still applied server-side: the staff directory's RSC payload
+contains zero student rows, and vice versa — asserted, not assumed.
+
+**Columns differ because the two halves need different ones.** A staff row has
+no class; a student row has no designation. C-PR-06 names "class, enrollment
+status", so `ENROLMENT_STATUS` was added as a real column reading
+`student_enrollments.status` (§6.6) through `structure-data` — the same value
+the enrolment board (C-IA-11) and class detail (C-IA-06) show. `Last login` is
+deliberately **absent** from the staff list: that is an account-administration
+signal (C-IA-08), and §4.3 gives the Principal academic authority only.
+
+**Read-only by construction.** Every preset carries `actions:
+["VIEW_PROFILE"]`; §4.3 grants the Principal no user-management rights, so
+there is no edit, deactivate, reset-password or assign-roles control on any of
+the three — verified against raw HTML, with the Admin's `/users` as a positive
+control proving the probes fire.
+
+**Deviations, flagged.**
+1. **The Principal no longer sees `/users` in the sidebar.** They have the same
+   people under two focused links; a third merged entry would be the same rows
+   a third time. The Vice Principal **keeps** `/users`, because C-VP-07 gives
+   them a staff page but no student one — dropping it would have silently
+   removed access §4.3 grants them.
+2. **C-VP-07 uses the same preset as C-PR-05.** The doc describes both as
+   "view staff profiles" and §4.3's VP limits are about *delegated duties and
+   result approval*, not staff visibility. The VP's real constraint is
+   modelled on the results page, which already implements it.
+3. **`DirectoryView` gained a `title` prop.** It hard-coded "Users", so the
+   Student Directory announced itself as "Users" to a screen reader. Default
+   unchanged, so `/users` is untouched.
+
+---
+
+## Institution structure (Institution Admin)
+
+C-IA-02…07, C-IA-11 and C-IA-12 — the institution's skeleton, which every
+other module hangs off.
+
+| Task | Page | Route |
+|---|---|---|
+| C-IA-02 | Department Management | `/departments` |
+| C-IA-03 | Department Detail | `/departments/:id` |
+| C-IA-04 | Academic Year Setup | `/academic-years` |
+| C-IA-05 | Class Management | `/classes` |
+| C-IA-06 | Class Detail | `/classes/:id` |
+| C-IA-07 | Subject Management | `/subjects` |
+| C-IA-11 | Student Enrollment | `/enrollments` |
+| C-IA-12 | Parent–Student Links | `/parent-links` |
+
+**`lib/structure-data.ts` is now the single owner of departments, classes and
+subjects.** They used to be re-typed in four files that disagreed: global
+search listed **3** departments while the attendance report showed **6**, and
+search named an HOD ("Rajesh Verma") who holds no HOD grant in
+`role_assignments`. Everything is now derived from the module that owns the
+underlying people — `getInstitutionSummary()` for departments and headcount,
+`getStaffDirectory()` for staff and HODs, `getClassRoster()` for students,
+`getAcademicYears()` for years, `getClassSlots()` for the timetable. ABC
+College's 910 students still reconcile with the platform console.
+
+**The database constraints are enforced in the UI, not discovered by the API.**
+- `departments ←── classes.department_id` (§12): deleting a department with
+  classes is *refused with a reason*, not offered and then 409'd.
+- `classes` is UNIQUE on `(tenant_id, department_id, academic_year_id, code)` —
+  a **composite**, so `SY-A` legitimately exists in both CSE and ECE.
+  Validating on code alone would reject a correct entry.
+- `subjects` is UNIQUE on `(tenant_id, class_id, code)` — scoped to the class.
+- `teacher_subjects` is UNIQUE on `(teacher_id, subject_id, role_in_subject)`,
+  so the same person can be Teacher *and* Co-teacher on one subject.
+- `academic_years` has a partial unique index on `is_current` (§6.1), so
+  making a year current is a **swap** — the dialog names the year it displaces.
+- `max_strength` (§6.3) blocks a bulk enrolment *before* the request rather
+  than letting the API half-write the batch.
+- `passing_marks ≤ max_marks` (§6.4), validated in JS — a native `min`/`max`
+  suppresses the form's own message.
+
+**Vacancies are shown as work, not as missing data.** Four of six departments
+have no HOD, five classes have no class teacher and six subjects have no
+teacher — all real states (`hod_id` and `class_teacher_id` are nullable), and
+all the thing these pages exist to fix. Inventing values would have hidden
+every empty state the pages were built for.
+
+**Read-only for the Principal and Vice Principal.** §4.3 grants
+institution-wide visibility but not structural edit, so they get the data and
+a "View only" chip with *no* create, edit, delete, assign or unlink control —
+asserted against the raw server HTML across all 8 pages, with a positive
+control proving the probes fire on the Admin's copy.
+
+**Deviations, flagged.**
+1. **C-IA-04 moved out of Settings.** An Academic Year section already existed
+   inside `/settings`; it is now a read-only summary that links to
+   `/academic-years` rather than carrying a second copy of the same form.
+2. **C-IA-12 is school-only (§6.7)** and ABC College is a college, so the page
+   *explains itself* instead of showing an empty table. `?tenantType=SCHOOL`
+   previews the school case.
+3. **Class enrolment counts show the named demo cohort** (10 students), while
+   department totals are the institution's real 910. Both are stated on the
+   page so "4/60" doesn't read as a bug.
+4. **FY-A's subject list was aligned to the timetable.** The timetable module
+   already scheduled Algorithms, Databases and Operating Systems for `fy-a`;
+   attaching them to the second-year classes made the class detail page
+   contradict itself. The older owner wins.
+
+---
+
+## Support Staff console
+
+C-SP-01…04, under `app/(platform)/platform/support/`.
+
+| Task | Page | Route |
+|---|---|---|
+| C-SP-01 | Support Dashboard | `/platform/support/dashboard` |
+| C-SP-02 | Ticket List | `/platform/support/tickets` |
+| C-SP-03 | Ticket Detail | `/platform/support/tickets/:id` |
+| C-SP-04 | Institution Read-Only | `/platform/support/institutions/:id` |
+
+**"Cannot modify institution data or settings" (§4.1) is enforced, not
+implied.** C-SP-04 has no `<form>`, no `<input>`, no `<select>` and no
+mutating button — asserted in the leak suite, not just intended. A support
+agent *can* change a ticket, because `support_tickets` (§4.6) is a platform
+row; they cannot change anything inside a tenant.
+
+**C-SP-04 is a diagnostic snapshot, not impersonation.** Debugging a login
+failure or a missing menu item needs configuration and health — plan, module
+toggles, capacity, recent admin actions. It does not need student records,
+marks or fee accounts, so none of them are in the payload. Verified by
+grepping the raw HTML for 12 institution values; 0 present.
+
+**Deviations, flagged.**
+1. **`ticket_replies` does not exist in the schema.** §4.6 has no reply table,
+   yet the assignment doc lists `POST /tickets/:id/reply` and C-SP-03 asks for
+   a "reply thread". `TicketReply` is the shape that endpoint implies and is
+   marked `TODO(Dev-A)` so the table gets added rather than the UI inventing
+   it. It carries `is_internal`, because a support agent needs to record a
+   diagnosis the customer shouldn't read.
+2. **Routes are `/platform/support/*`, not the doc's `/support/*`.** `/support`
+   is already the public login-help page (a C-PB task). Both now resolve. The
+   dashboard sits at `/platform/support/dashboard`, matching the doc's own
+   `/support/dashboard` under the platform prefix.
+3. **No SLA is specified anywhere**, so `SLA_HOURS` lives in one table
+   (4/12/48/96h by priority) rather than being scattered through the UI, with
+   a TODO to move it into plan-based support tiers.
+4. The Super Admin can also open this section — §4.1 gives them platform-wide
+   oversight, and an escalated ticket has to be reachable.
+
+---
+
+## Sales Executive console
+
+C-SL-01…04, under `app/(platform)/platform/sales/`.
+
+| Task | Page | Route |
+|---|---|---|
+| C-SL-01 | Sales Dashboard | `/platform/sales/dashboard` |
+| C-SL-02 | Trial Institutions | `/platform/sales/trials` |
+| C-SL-03 | Convert Trial to Paid | `/platform/sales/trials/:id/convert` |
+| C-SL-04 | Subscription Management | `/platform/sales/subscriptions` |
+
+**"Cannot access institution academic data" (§4.1) is decided in the data
+layer, not the component.** `toTrialRow()` and `toAccount()` in
+`lib/sales-data.ts` are the only two places a tenant becomes a sales payload,
+and they name every field that crosses. There is no path from this file to
+student, mark, attendance, fee or audit data, so the RSC payload the browser
+receives does not contain it — verified by grepping the raw server HTML of all
+four pages against 19 probes, with three positive controls proving the probes
+fire on the pages that *do* hold that data. Seats, teachers and storage **are**
+included: those are the meters a plan is priced on.
+
+**Nothing is re-seeded.** Trials, plans and subscriptions all come from
+`lib/platform-data.ts`, so a trial the Sales console lists is the same tenant
+row the Super Admin sees, at the same price, with the same headcount. ABC
+College still reports the institution app's own 910 students.
+
+**Plan fit has three levels, not two.** A *blocker* (over a seat, teacher or
+storage cap) refuses the change — selling Standard to an institution with
+2,400 students means their next enrolment fails. A *warning* (a module the
+plan doesn't license) is acknowledged with a checkbox and proceeds, because
+§4.1 grants "upgrade / **downgrade**" and every downgrade drops something;
+collapsing warnings into blockers made downgrades impossible. *Notes* are
+headroom. One `planFit()` serves both C-SL-03 and C-SL-04.
+
+**Deviations, flagged.**
+1. **`trial_notes` does not exist in the schema.** C-SL-02 asks for "follow-up
+   notes" but §4 has nowhere to record a sales conversation. `TrialNote` is the
+   shape the page implies, marked `TODO(Dev-A)`, and the UI says so in place
+   rather than faking a composer. Same call made for `ticket_replies` (C-SP-03).
+2. **`subscriptions` has no billing-cycle column.** §4.4 stores `starts_at` and
+   `ends_at`; §4.1 prices both `price_monthly` and `price_yearly`. The cycle is
+   therefore the *length of the period*, derived rather than stored, so it can
+   never contradict the dates it describes.
+3. **Conversion rate is read out of billing history**, not stored. A tenant
+   whose TRIAL row is followed by a paid row converted; one with nothing after
+   it lapsed — `tenants.trial_ends_at` goes NULL when a trial ends (§4.2), so
+   §4.4 is the only place that history survives. Open trials are excluded:
+   counting undecided leads as losses would make the number worse every time
+   sales generated one.
+4. **The urgency bands (3d critical / 7d soon) and the 45-day renewal window
+   are conventions, not documented rules** — the doc gives only
+   `trial_ends_at`. They live in one table in `lib/sales.ts` with a TODO to
+   move them into platform settings, as `SLA_HOURS` did.
+5. **Routes are `/platform/sales/*`**, matching the platform prefix the doc
+   sets in §2 ("Next.js route prefix `app/(platform)/`") rather than a bare
+   `/sales/*` on the tenant origin.
+
+**MRR has one definition.** `tenantMrr()` in `lib/platform-data.ts` is used by
+both the Super Admin dashboard and the Sales board, reading each tenant's real
+cycle. Computing it locally in the sales layer booked ₹4,999 from a *suspended*
+tenant while the platform overview correctly counted zero.
+
+---
+
+## Exam Controller console
+
+C-EC-03…06, under `app/(institution)/exam-controller/`. The dashboard
+(C-EC-01), schedule (C-EC-02), results (C-EC-07/08), grade cards (C-EC-09) and
+reports (C-EC-10) are the shared pages the controller already reaches.
+
+| Task | Page | Route |
+|---|---|---|
+| C-EC-03 | Create / Edit Exam Schedule | `/exam-controller/schedule/new` |
+| C-EC-04 | Hall Allocation | `/exam-controller/halls` |
+| C-EC-05 | Active Exams Monitor | `/exam-controller/monitor` |
+| C-EC-06 | Malpractice Logs | `/exam-controller/malpractice` |
+
+**Access (`examControlAccess()` in `lib/exam-control.ts`).** Exam Controller
+and Institution Admin edit; Principal and Vice Principal read (§4.3 grants
+"approve exam schedules", which needs the view but not the levers); every other
+role is refused. The read-only state is threaded all the way to the buttons —
+a `canEdit` the component ignores is worse than no flag at all, which is how a
+Principal once got working Create/Edit/Delete on eight pages.
+
+**Clash detection is the point of C-EC-03**, so it is a pure function
+(`findScheduleClashes()`) with its own test rather than a check buried in the
+form. Three kinds **block**: `CLASS_BUSY` (a cohort cannot sit two papers at
+once), `ROOM_TAKEN`, and `PAST_DATE`. `INVIGILATOR_BUSY` only **warns** — a
+controller legitimately double-books one invigilator across two adjacent halls,
+and refusing that would model a rule the institution does not have.
+
+**Everything is IST.** `<input type="date">` and `<input type="time">` return
+a *wall-clock* value, so they go through `istToIso()` in `lib/utils.ts`. Pasting
+them into a `` `${date}T${time}:00.000Z` `` template claimed the controller's
+10:00 was 10:00 **UTC** — 15:30 IST — which slid every proposed exam 5½ hours
+and let a genuine double-booking through the clash check reporting "no
+clashes". `PAST_DATE` likewise compares `istDate()`, not `iso.slice(0, 10)`:
+the UTC slice rolls back before 05:30 and rejected a 01:00 exam booked for
+today.
+
+**Deviations, flagged.**
+1. **There is no `exam_halls` / rooms table.** §7.2 stores
+   `exam_hall_allocations.room_no` as free text `VARCHAR(50)`, so nothing
+   records that a hall exists, what it seats, or whether it is usable. Without
+   a capacity the page cannot answer "do these rooms fit 45 candidates?", which
+   is the whole task. `EXAM_ROOMS` in `lib/exam-control-data.ts` is the shape
+   that table needs, marked `TODO(Dev-A)` — the same call made for
+   `ticket_replies`, `trial_notes` and `mentor_assignments`.
+2. **`ExamSummary.className` holds the class *code*** ("FY-A"), not
+   `classes.name` ("FY-BSc-A"), so `resolveClassId()` joins on code + department
+   before falling back to the name. Matching on the name alone silently found
+   nothing and *every* class clash went undetected. Codes are only unique per
+   department (§6.3's composite key) — `SY-A` exists in both CSE and ECE — so
+   the department disambiguates.
+3. **The auto-flag threshold (3 tab switches) and the 48-hour "starting soon"
+   window are conventions, not documented rules.** They are two named constants
+   in `lib/exam-control.ts` with a TODO to move them into institution settings,
+   as `SLA_HOURS` did.
+4. **C-EC-05's "if Mentor role enabled" analogue.** MENTOR and EXAM_CONTROLLER
+   are *roles*, not module keys, so the gate is whether anyone holds the grant
+   rather than a `modules` lookup.
+
+**A student sees their own anti-cheat counter, and nothing else.** The exam
+detail payload for a STUDENT carries exactly one `tabSwitchCount` — their own
+attempt row (§7.2) — with `attempts`, `halls` and `malpractice` all empty. The
+regression suite asserts the count is theirs *and* runs a positive control
+proving the same probe finds all seven on the controller's payload, because a
+probe that never fires passes every time.
+
+---
+
+## Academic Coordinator substitutions
+
+C-AC-05 and C-AC-06, under `app/(institution)/coordinator/`. The dashboard
+(C-AC-01), timetable builder / grid / conflict checker (C-AC-02…04), academic
+calendar (C-AC-07) and notice composer (C-AC-08) are shared pages the
+coordinator already reaches.
+
+| Task | Page | Route |
+|---|---|---|
+| C-AC-05 | Substitution Management | `/coordinator/substitutions` |
+| C-AC-06 | Add Substitution | `/coordinator/substitutions/new` |
+
+**Access delegates to the timetable grant, it does not restate it.**
+`substitutionAccess()` calls `timetablePermissions()` (PAGE 10) and reads
+`canSubstitute`. A substitution *is* a timetable edit, so a second permission
+table here would be one refactor away from disagreeing with the grid that
+renders the same rows. That gives the Academic Coordinator the levers (§4.5 /
+§6 — the only institution role with a build grant), read-only to everyone
+holding a timetable view, and a refusal for roles whose view is `NONE`.
+C-AC-06 additionally requires `canSubstitute`, so the form context — the
+teacher list and the whole grid — is **never built** for a read-only role and
+never reaches the browser.
+
+**Clash detection is a pure function** (`findSubstitutionIssues()`) with its
+own unit suite, not a check buried in the form. Five kinds **block**:
+`ALREADY_COVERED` (violates `UNIQUE (slot_id, date)`, §7.8 — the insert would
+fail at the database anyway), `SUBSTITUTE_BUSY` (they teach their own class
+that period), `SAME_TEACHER`, `WRONG_DAY` (the slot's weekday doesn't match
+the chosen date) and `PAST_DATE`. `HEAVY_LOAD` only **warns** — asking one
+teacher to cover a third period is a judgement call a coordinator is entitled
+to make on a bad morning, and refusing it would model a rule the institution
+does not have.
+
+**Dates are plain DATEs, compared as strings.** §7.8 stores `date DATE` with
+no time, so `whenFor()` and the `PAST_DATE` check are string comparisons and
+no `Date` is ever constructed — which is what makes them immune to the UTC
+roll-back that shifted the exam scheduler by 5½ hours. `dowOf()` parses at UTC
+midnight and reads `getUTCDay()` for the same reason.
+
+**Deviations, flagged.**
+1. **`timetable_substitutions.reason` has no FK to `leave_requests`.** The
+   schema does not connect a substitution to *why* the teacher is away, so
+   neither does this page — the reason is free text, as §7.8 defines it.
+   Deriving "who is absent today" from the leave module would be inventing a
+   join the database has not got. (The leave fixture also has nobody away
+   today, so an "uncovered periods" panel would have been permanently empty —
+   the fixture-state trap.)
+2. **Substitute candidates are read off the timetable, not filtered by role.**
+   The grid is the only place that knows a person actually takes classes;
+   `getStaffDirectory()` still supplies department and designation so two
+   names can be told apart.
+3. **`HEAVY_COVER_LOAD = 2` is a convention, not a documented rule** — one
+   named constant in `lib/coordinator.ts` with a TODO to move it into
+   institution settings, as `SLA_HOURS` did.
+4. **Only the Academic Coordinator gets the sidebar link.** Every other
+   timetable role can reach the page but has nothing to do there, and a link
+   to a read-only list would be noise in fifteen other sidebars.
+
+**Two stubs became real.** The coordinator dashboard's "Add Substitution"
+quick action pointed at `/timetable`, and the timetable builder's "Add
+substitution" button only fired a placeholder alert. Both now navigate to
+C-AC-06 through `usePreviewHref()`, so `?role=` survives the click.
+
+**`Kpi` is now a shared primitive.** Five boards (hall, malpractice, monitor,
+mentor, subscription) had each grown a private near-identical copy with its
+own tone union and its own hand-rolled ternary chain. They are one
+`components/dashboard/primitives.tsx` export taking `Tone`, coloured from the
+AA-safe `TONE_TEXT` map.
+
+---
+
+## Librarian console + password reset
+
+Built as one batch because both close **dead ends the app already pointed
+at**, not because a role was next in the list. Evidence, measured: 24
+quick-action buttons across 7 roles linked to their own dashboard, and
+`/forgot-password` promised a reset link to a page that did not exist. See
+`BUILD-PRIORITY.md` at the repo root for the full ranking.
+
+| Task | Page | Route |
+|---|---|---|
+| C-PB-03 | Reset Password | `/reset-password?token=` |
+| C-LB-02 | Book Catalogue | `/library/books` |
+| C-LB-04 | Issue Book | `/library/issues/new` |
+| C-LB-05 | Return Book | `/library/issues/:id/return` |
+| C-LB-06 | Issued Books List | `/library/issues` |
+| C-LB-07 | Overdue List | `/library/overdue` |
+| C-LB-08 | E-Resources | `/library/e-resources` |
+
+**C-LB-06 and C-LB-07 are one component.** "Overdue" is a *filter* over the
+loans, not a separate query — two screens reading two sources would eventually
+disagree about how many books are late. `/library/overdue` opens the same desk
+on the overdue tab.
+
+**Nothing was re-seeded.** `library-data.ts` already owned the catalogue,
+copies and issue history feeding PAGE 24; the new pages add cross-title
+accessors (`allLoans()`, `getCirculationDesk()`) built from the same
+`buildIssues()` the book page uses, so a loan on the desk is byte-for-byte the
+loan on the book page. Borrowers come from `getClassRoster()` and
+`getStaffDirectory()`.
+
+**Who sees borrower identity.** PAGE 24 gives "current borrowers" and "full
+issue history" to the Librarian alone. The catalogue and e-resources are for
+readers; the three circulation pages are not, so `LibraryPage requireManage`
+refuses them — the roll numbers, accession numbers and fines never enter the
+RSC payload. Verified by grepping raw server HTML for 7 roles × 5 routes, with
+three positive controls proving the probes fire on the Librarian's payload.
+
+**Deviations, flagged.**
+1. **`LOAN_DAYS = 14`, `BORROW_LIMIT = 3`, `DUE_SOON_DAYS = 7` are
+   conventions.** §8.1 stores `due_date` per loan but no doc gives a default
+   term or a borrowing cap. Three named constants in `lib/library.ts` beside
+   `FINE_PER_DAY`, with a TODO to move them to `tenant_settings`.
+2. **A borrower at their limit only warns.** A librarian routinely lends one
+   more while the late book is promised for tomorrow; refusing it would model
+   a rule the institution has not got. Only `COPY_UNAVAILABLE` and
+   `PAST_DUE_DATE` block.
+3. **`verifyResetToken()` is a stub with a demo convention** — any token
+   containing "expired" models the closed 30-minute window (§4.3
+   `password_reset_expires`), so both dead-end states are reviewable without a
+   backend.
+4. **The return screen recomputes the fine** rather than reading
+   `book_issues.fine_amount`, which is written when the loan starts and is
+   stale the moment the book is late.
+
+## Pre-existing bugs found and fixed this batch
+
+- **All four auth pages had no `h1` on mobile.** The only `h1` lived in
+  `BrandingPanel`, which is `hidden lg:flex` — so on a phone login,
+  forgot-password and reset-password had zero headings. It was also a slogan
+  rather than the page title. The slogan is now a `<p>` and each card heading
+  is the `h1`.
+- **Auth footer text was 2.45:1** (`#94A3B8` on `#F8FAFC`), far below AA for
+  11px. Now `#475569` at **7.24:1**.
+- **`Button` defaults to `w-full`** unless the caller passes an explicit
+  width, so a submit beside a Cancel link wraps to its own full-width row.
+  Fixed on the two new library forms and on C-AC-06, which had the same latent
+  bug from last turn.
+- **A library KPI pinned at zero.** `ACC-11890` was issued 6 days into a
+  14-day loan, leaving "due this week" permanently at 0. Retimed to 8 days.
+- **`LOAN_DAYS` was defined twice** — a private copy in `library-data.ts` and
+  the new shared one. Consolidated.
+
+---
+
+## Link integrity
+
+`npm run link-check` probes every page for all 18 roles **and crawls every
+anchor the app actually renders**, comparing each outcome against the app's own
+permission tables. `--md` regenerates `TEST-LINKS.md`.
+
+The crawl matters: an earlier version checked only a hand-written page list and
+reported "0 broken" while 55 rendered links were 404ing — including all seven
+module hubs, which the sidebar shows to every role. Current state: **832 links
+checked, 0 broken.**
 
 ---
 

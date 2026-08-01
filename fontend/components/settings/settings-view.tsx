@@ -113,7 +113,6 @@ export function SettingsView({
           <AcademicYearSection
             years={data.academicYears}
             readOnly={Boolean(section.readOnly)}
-            onAction={setStatus}
           />
         ) : null;
 

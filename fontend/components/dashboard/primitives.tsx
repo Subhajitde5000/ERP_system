@@ -73,7 +73,15 @@ export function Card({
   );
 }
 
-/** Panel header with optional "view all" link. */
+/**
+ * Panel header with optional "view all" link.
+ *
+ * `h2`, not `h3`: a panel is a top-level section of the page, sitting
+ * directly under the page's single `h1`. Hard-coding `h3` skipped a level on
+ * every dashboard, report and module hub in the app — a WCAG 1.3.1 failure
+ * that makes heading navigation lie about the structure. Panels that ever
+ * nest inside another section would need a level prop; none do today.
+ */
 export function PanelHeader({
   title,
   link,
@@ -83,9 +91,9 @@ export function PanelHeader({
 }) {
   return (
     <div className="mb-4 flex items-center justify-between gap-3">
-      <h3 className="font-display text-[15px] font-bold text-foreground">
+      <h2 className="font-display text-[15px] font-bold text-foreground">
         {title}
-      </h3>
+      </h2>
       {link && (
         <Link
           href={link.href}
@@ -112,7 +120,12 @@ export function Chip({
       className={cn(
         "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium",
         TONE_BG[tone],
-        TONE_TEXT[tone],
+        // `muted-foreground` is 4.76:1 on white but only 4.34:1 on the
+        // `bg-muted` tint this chip sits on, so the muted chip takes the
+        // darker slate. Chosen rather than layered: `cn()` has no Tailwind
+        // conflict resolution, so two competing text colours would be decided
+        // by stylesheet order, not by which came last in the list.
+        tone === "muted" ? "text-[#475569]" : TONE_TEXT[tone],
         tone === "accent" && "border border-accent-border",
       )}
     >
@@ -199,6 +212,51 @@ export function ProgressRing({
         {pct}%
       </span>
     </div>
+  );
+}
+
+/**
+ * A single headline number on a card — the KPI strip every board carries.
+ *
+ * Extracted after five near-identical private copies appeared (hall board,
+ * malpractice board, monitor board, mentor board, subscription board), each
+ * with its own slightly different tone union and its own hand-rolled ternary
+ * chain. They only ever differed by which tones they happened to use, so the
+ * union is `Tone` and the colour comes from `TONE_TEXT` — which is already
+ * the AA-safe darkened set.
+ *
+ * `accent` and `muted` render as plain foreground: a KPI value is the loudest
+ * thing on the card, and indigo-on-white for a neutral number reads as a link.
+ */
+export function Kpi({
+  label,
+  value,
+  hint,
+  tone = "accent",
+}: {
+  label: string;
+  value: string;
+  /** Optional caption under the number. */
+  hint?: string;
+  tone?: Tone;
+}) {
+  return (
+    <Card className="min-w-0 p-5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-2 font-display text-2xl font-bold tabular-nums",
+          tone === "accent" || tone === "muted"
+            ? "text-foreground"
+            : TONE_TEXT[tone],
+        )}
+      >
+        {value}
+      </p>
+      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
+    </Card>
   );
 }
 

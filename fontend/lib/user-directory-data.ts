@@ -9,6 +9,8 @@ import type {
 import { ELIGIBILITY_RULES } from "./user-directory";
 import { getClassRoster, type RosterStudent } from "./attendance-data";
 import { getStaffDirectory } from "./staff-detail-data";
+import { getEnrollmentBoard } from "./structure-data";
+import type { EnrollmentStatus } from "@/types/structure";
 
 /**
  * User directory data source — PAGE 12 (C-RB-12).
@@ -157,9 +159,31 @@ function studentRow(
   if (columns.includes("ENROLLED")) {
     row.enrollmentDate = on(ENROLLED_DAYS_AGO[student.id] ?? 410);
   }
+  if (columns.includes("ENROLMENT_STATUS")) {
+    // Read from `structure-data`, which owns `student_enrollments` (§6.6) —
+    // the same status the enrolment board (C-IA-11) and the class detail page
+    // (C-IA-06) show. Deriving it a second time here is how a student ends up
+    // "Dropped" on one page and "Active" on another.
+    row.enrolmentStatus = enrolmentStatusOf(student.id);
+  }
   if (columns.includes("ELIGIBILITY")) row.eligibility = eligibilityFor(student.id);
 
   return row;
+}
+
+/**
+ * A student's enrolment status for the current year (§6.6).
+ *
+ * `structure-data` is the owner; a student with no enrolment row at all is
+ * reported ACTIVE rather than inventing a fourth state — the roster is the
+ * list of people who exist, and the enrolment board (C-IA-11) is where a
+ * missing placement is surfaced as work.
+ */
+function enrolmentStatusOf(studentId: string): EnrollmentStatus {
+  const row = getEnrollmentBoard().enrollments.find(
+    (e) => e.studentId === studentId,
+  );
+  return row?.status ?? "ACTIVE";
 }
 
 function staffRow(

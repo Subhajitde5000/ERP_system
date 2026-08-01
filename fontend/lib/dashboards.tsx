@@ -142,7 +142,7 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         span: 5,
         items: [
           { label: "Invite User", icon: UserPlus, href: "/users", primary: true },
-          { label: "Create Department", icon: Layers, href: "/settings/departments" },
+          { label: "Create Department", icon: Layers, href: "/settings" },
           { label: "Toggle Modules", icon: Puzzle, href: "/settings/modules" },
           { label: "View Audit Logs", icon: ScrollText, href: "/audit-logs" },
         ],
@@ -208,9 +208,10 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         span: 12,
         items: [
           { label: "Post Institution Notice", icon: Megaphone, href: "/notices/new", primary: true },
-          { label: "Approve Results", icon: FileCheck2, href: "/results/approvals" },
+          { label: "Approve Results", icon: FileCheck2, href: "/results" },
           { label: "View Reports", icon: TrendingUp, href: "/reports" },
-          { label: "Staff Directory", icon: Contact, href: "/users" },
+          // C-PR-05, not the merged `/users` — the Principal's own directory
+          { label: "Staff Directory", icon: Contact, href: "/principal/staff" },
         ],
       },
     ],
@@ -265,6 +266,8 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         items: [
           { label: "Post Notice", icon: Megaphone, href: "/notices/new", primary: true },
           { label: "View Reports", icon: TrendingUp, href: "/reports" },
+          // C-VP-07 — the VP's own staff directory
+          { label: "Staff Directory", icon: Contact, href: "/vp/staff" },
         ],
       },
     ],
@@ -327,7 +330,8 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         span: 12,
         items: [
           { label: "Post Dept Notice", icon: Megaphone, href: "/notices/new", primary: true },
-          { label: "Assign Mentor", icon: UserCheck, href: "/mentors" },
+          // C-HD-08, not /users — /users lists people, it doesn't assign mentors
+          { label: "Assign Mentor", icon: UserCheck, href: "/hod/mentors" },
           { label: "View Timetable", icon: CalendarDays, href: "/timetable" },
           { label: "Moderate Discussion", icon: ShieldAlert, href: "/discussion" },
         ],
@@ -382,13 +386,13 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
             title: "CS301 · Algorithms",
             subtitle: "Sem 3 · Room 201",
             current: true,
-            action: { label: "Mark Attendance", href: "/attendance/mark" },
+            action: { label: "Mark Attendance", href: "/attendance" },
           },
           {
             time: "12:30 PM",
             title: "CS305 · Databases",
             subtitle: "Sem 3 · Lab 2",
-            action: { label: "Mark Attendance", href: "/attendance/mark" },
+            action: { label: "Mark Attendance", href: "/attendance" },
           },
           {
             time: "02:30 PM",
@@ -432,10 +436,10 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "Mark Attendance", icon: ClipboardCheck, href: "/attendance/mark", primary: true },
-          { label: "Create Exam", icon: FileSpreadsheet, href: "/examination/new" },
-          { label: "Create Assignment", icon: FilePlus2, href: "/assignments/new" },
-          { label: "Upload Content", icon: UploadCloud, href: "/content/new" },
+          { label: "Mark Attendance", icon: ClipboardCheck, href: "/attendance", primary: true },
+          { label: "Create Exam", icon: FileSpreadsheet, href: "/examination" },
+          { label: "Create Assignment", icon: FilePlus2, href: "/assignments" },
+          { label: "Upload Content", icon: UploadCloud, href: "/content" },
         ],
       },
     ],
@@ -463,7 +467,7 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Timetable Conflicts",
         span: 7,
         action: "Fix",
-        link: { label: "Conflict centre", href: "/coordinator/timetable/conflicts" },
+        link: { label: "Conflict centre", href: "/timetable" },
         empty: "No conflicts — the timetable is clean.",
         columns: [
           { key: "slot", label: "Slot" },
@@ -479,6 +483,7 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         kind: "list",
         title: "Today's Substitutions",
         span: 5,
+        link: { label: "All substitutions", href: "/coordinator/substitutions" },
         items: [
           { title: "CS201 → Arun K.", subtitle: "09:00 AM · Room 105", tone: "success", meta: "Confirmed" },
           { title: "EC202 → Meena T.", subtitle: "11:00 AM · Room 302", tone: "warning", meta: "Pending" },
@@ -490,7 +495,7 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "Timetable Builder", icon: CalendarDays, href: "/coordinator/timetable", primary: true },
+          { label: "Timetable Builder", icon: CalendarDays, href: "/timetable", primary: true },
           { label: "Add Substitution", icon: RefreshCw, href: "/coordinator/substitutions/new" },
           { label: "Post Academic Notice", icon: Megaphone, href: "/notices/new" },
         ],
@@ -552,10 +557,12 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "Create Schedule", icon: CalendarPlus, href: "/examination/schedule", primary: true },
-          { label: "Allocate Halls", icon: DoorOpen, href: "/examination/halls" },
-          { label: "Compile Results", icon: Layers, href: "/results/compile" },
-          { label: "Publish Results", icon: FileCheck2, href: "/results/publish" },
+          // C-EC-03 / C-EC-04 — these were stand-ins pointing at the shared
+          // examination list before the controller's own pages existed.
+          { label: "Create Schedule", icon: CalendarPlus, href: "/exam-controller/schedule/new", primary: true },
+          { label: "Allocate Halls", icon: DoorOpen, href: "/exam-controller/halls" },
+          { label: "Compile Results", icon: Layers, href: "/results" },
+          { label: "Publish Results", icon: FileCheck2, href: "/results" },
         ],
       },
     ],
@@ -584,7 +591,7 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Top Fee Defaulters",
         span: 7,
         action: "Record payment",
-        link: { label: "Full list", href: "/fees/defaulters" },
+        link: { label: "Full list", href: "/fees" },
         columns: [
           { key: "student", label: "Student" },
           { key: "class", label: "Class" },
@@ -611,10 +618,10 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "Record Payment", icon: Coins, href: "/fees/collect", primary: true },
-          { label: "Defaulter List", icon: ClipboardList, href: "/fees/defaulters" },
-          { label: "Fee Structure", icon: BadgeIndianRupee, href: "/fees/structure" },
-          { label: "Scholarship Grant", icon: FileBadge, href: "/fees/scholarships" },
+          { label: "Record Payment", icon: Coins, href: "/fees", primary: true },
+          { label: "Defaulter List", icon: ClipboardList, href: "/fees" },
+          { label: "Fee Structure", icon: BadgeIndianRupee, href: "/fees" },
+          { label: "Scholarship Grant", icon: FileBadge, href: "/fees" },
         ],
       },
     ],
@@ -788,8 +795,8 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         items: [
           { label: "Attendance Calendar", icon: CalendarDays, href: "/attendance", primary: true },
           { label: "View Results", icon: GraduationCap, href: "/results" },
-          { label: "Download Grade Card", icon: FileBadge, href: "/results/grade-card" },
-          { label: "Fee Receipts", icon: Receipt, href: "/fees/receipts" },
+          { label: "Download Grade Card", icon: FileBadge, href: "/results" },
+          { label: "Fee Receipts", icon: Receipt, href: "/fees" },
         ],
       },
     ],
@@ -840,9 +847,9 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "Issue Book", icon: BookOpen, href: "/library/issue", primary: true },
-          { label: "Return Book", icon: RefreshCw, href: "/library/return" },
-          { label: "Add Book", icon: BookPlus, href: "/library/books/new" },
+          { label: "Issue Book", icon: BookOpen, href: "/library/issues/new", primary: true },
+          { label: "Return Book", icon: RefreshCw, href: "/library/issues" },
+          { label: "Add Book", icon: BookPlus, href: "/library/books" },
           { label: "E-Resources", icon: MonitorPlay, href: "/library/e-resources" },
         ],
       },
@@ -887,17 +894,17 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
           {
             title: "Aryan Mehta · Room A-104",
             subtitle: "2–4 Aug · Family function",
-            action: { label: "Review", href: "/hostel/leaves/1" },
+            action: { label: "Review", href: "/leaves" },
           },
           {
             title: "Kiran Patel · Room B-201",
             subtitle: "3 Aug · Medical",
-            action: { label: "Review", href: "/hostel/leaves/2" },
+            action: { label: "Review", href: "/leaves" },
           },
           {
             title: "Sneha Rao · Room C-012",
             subtitle: "5–7 Aug · Home visit",
-            action: { label: "Review", href: "/hostel/leaves/3" },
+            action: { label: "Review", href: "/leaves" },
           },
         ],
       },
@@ -906,10 +913,10 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "Mark Night Attendance", icon: ClipboardCheck, href: "/hostel/attendance", primary: true },
-          { label: "Allot Room", icon: BedDouble, href: "/hostel/rooms" },
-          { label: "Approve Leave", icon: CalendarClock, href: "/hostel/leaves" },
-          { label: "Resolve Complaint", icon: ShieldAlert, href: "/hostel/complaints" },
+          { label: "Mark Night Attendance", icon: ClipboardCheck, href: "/hostel/dashboard", primary: true },
+          { label: "Allot Room", icon: BedDouble, href: "/hostel/dashboard" },
+          { label: "Approve Leave", icon: CalendarClock, href: "/leaves" },
+          { label: "Resolve Complaint", icon: ShieldAlert, href: "/hostel/dashboard" },
         ],
       },
     ],
@@ -960,9 +967,9 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "Route Management", icon: MapPinned, href: "/transport/routes", primary: true },
-          { label: "Assign Student", icon: UserPlus, href: "/transport/assign" },
-          { label: "Fleet Management", icon: Truck, href: "/transport/fleet" },
+          { label: "Route Management", icon: MapPinned, href: "/transport/dashboard", primary: true },
+          { label: "Assign Student", icon: UserPlus, href: "/transport/dashboard" },
+          { label: "Fleet Management", icon: Truck, href: "/transport/dashboard" },
         ],
       },
     ],
@@ -1013,9 +1020,9 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 5,
         items: [
-          { label: "Create Drive", icon: Handshake, href: "/placement/drives/new", primary: true },
-          { label: "View Applicants", icon: Users, href: "/placement/applicants" },
-          { label: "Schedule Interview", icon: CalendarPlus, href: "/placement/interviews" },
+          { label: "Create Drive", icon: Handshake, href: "/placement/dashboard", primary: true },
+          { label: "View Applicants", icon: Users, href: "/placement/dashboard" },
+          { label: "Schedule Interview", icon: CalendarPlus, href: "/placement/dashboard" },
         ],
       },
     ],
@@ -1048,17 +1055,17 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
           {
             title: "Priya S. · Teacher",
             subtitle: "2–4 Aug · Casual leave",
-            action: { label: "Review", href: "/hr/leaves/1" },
+            action: { label: "Review", href: "/leaves" },
           },
           {
             title: "Arun K. · Lab Assistant",
             subtitle: "5 Aug · Sick leave",
-            action: { label: "Review", href: "/hr/leaves/2" },
+            action: { label: "Review", href: "/leaves" },
           },
           {
             title: "Meena T. · Teacher",
             subtitle: "8–12 Aug · Earned leave",
-            action: { label: "Review", href: "/hr/leaves/3" },
+            action: { label: "Review", href: "/leaves" },
           },
         ],
       },
@@ -1077,10 +1084,10 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "Run Payroll", icon: Wallet, href: "/hr/payroll", primary: true },
-          { label: "Add Staff", icon: UserPlus, href: "/hr/staff/new" },
-          { label: "Leave Policies", icon: ScrollText, href: "/hr/policies" },
-          { label: "Appraisal Cycle", icon: UserCog, href: "/hr/appraisals" },
+          { label: "Run Payroll", icon: Wallet, href: "/hr/dashboard", primary: true },
+          { label: "Add Staff", icon: UserPlus, href: "/users" },
+          { label: "Leave Policies", icon: ScrollText, href: "/hr/dashboard" },
+          { label: "Appraisal Cycle", icon: UserCog, href: "/hr/dashboard" },
         ],
       },
     ],
@@ -1113,7 +1120,7 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         kind: "list",
         title: "Recent Applications",
         span: 5,
-        link: { label: "View all", href: "/admission/applications" },
+        link: { label: "View all", href: "/admission/dashboard" },
         items: [
           { title: "Rhea Kapoor", subtitle: "FY-BSc · 92%", meta: "New", tone: "accent" },
           { title: "Kabir Singh", subtitle: "FY-BCom · 88%", meta: "New", tone: "accent" },
@@ -1125,10 +1132,10 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "View Applications", icon: FileText, href: "/admission/applications", primary: true },
-          { label: "Verify Documents", icon: FileCheck2, href: "/admission/verify" },
-          { label: "Generate Merit List", icon: FileBadge, href: "/admission/merit" },
-          { label: "Enroll Student", icon: UserPlus, href: "/admission/enroll" },
+          { label: "View Applications", icon: FileText, href: "/admission/dashboard", primary: true },
+          { label: "Verify Documents", icon: FileCheck2, href: "/admission/dashboard" },
+          { label: "Generate Merit List", icon: FileBadge, href: "/admission/dashboard" },
+          { label: "Enroll Student", icon: UserPlus, href: "/admission/dashboard" },
         ],
       },
     ],
@@ -1184,10 +1191,10 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "Stock In", icon: PackagePlus, href: "/inventory/stock-in", primary: true },
-          { label: "Stock Out", icon: PackageMinus, href: "/inventory/stock-out" },
-          { label: "Create PO", icon: ShoppingCart, href: "/inventory/po/new" },
-          { label: "Vendor Management", icon: Truck, href: "/inventory/vendors" },
+          { label: "Stock In", icon: PackagePlus, href: "/inventory/dashboard", primary: true },
+          { label: "Stock Out", icon: PackageMinus, href: "/inventory/dashboard" },
+          { label: "Create PO", icon: ShoppingCart, href: "/inventory/dashboard" },
+          { label: "Vendor Management", icon: Truck, href: "/inventory/dashboard" },
         ],
       },
     ],
@@ -1196,15 +1203,21 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
   /* ── Mentor — teacher-level role scoped to assigned mentees ────────────── */
   MENTOR: {
     roleChip: "Mentor",
-    scope: "12 mentees · CSE Sem 3",
-    summary: "2 mentees below 75% attendance · 1 needs follow-up",
+    // Matches `getMentorBoard()`: Priya Sharma carries 3 mentees, 1 of them
+    // below the 75% threshold. The old "12 mentees · 2 below" predated any
+    // mentor data and contradicted every other page once C-HD-08 landed.
+    scope: "3 mentees · CSE",
+    summary: "1 mentee below 75% attendance · needs follow-up",
     notice: {
       tone: "warning",
-      title: "2 mentees have dropped below the 75% attendance requirement.",
-      action: { label: "View mentees", href: "/students?filter=low-attendance" },
+      title: "1 mentee has dropped below the 75% attendance requirement.",
+      // A Mentor is denied /users ("Your mentees are listed on your
+      // dashboard"), so that link was a dead end. Attendance is the page
+      // that actually answers this notice.
+      action: { label: "View attendance", href: "/attendance" },
     },
     stats: [
-      { label: "My Mentees", value: "12", icon: Users, tone: "accent" },
+      { label: "My Mentees", value: "3", icon: Users, tone: "accent" },
       {
         label: "Avg Attendance",
         value: "Group",
@@ -1233,7 +1246,7 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Mentee Attendance",
         span: 7,
         action: "Open profile",
-        link: { label: "All mentees", href: "/students" },
+        link: { label: "Attendance", href: "/attendance" },
         empty: "No mentees assigned yet.",
         columns: [
           { key: "student", label: "Mentee" },
@@ -1259,14 +1272,14 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
             subtitle: "Below 75% in CS301",
             meta: "Critical",
             tone: "danger",
-            action: { label: "Note", href: "/students/1" },
+            action: { label: "Note", href: "/students/s1" },
           },
           {
             title: "Kiran Patel · 72% attendance",
             subtitle: "Below 75% overall",
             meta: "Warning",
             tone: "warning",
-            action: { label: "Note", href: "/students/2" },
+            action: { label: "Note", href: "/students/s2" },
           },
           {
             title: "Sneha Rao · 2 assignments overdue",
@@ -1281,8 +1294,10 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "View Mentee Profiles", icon: Users, href: "/students", primary: true },
-          { label: "Add Mentor Note", icon: FileText, href: "/students" },
+          // A Mentor is denied /users. Their mentees' profiles are reachable
+          // through the pages their role does own (§4.5).
+          { label: "Mentee Attendance", icon: Users, href: "/attendance", primary: true },
+          { label: "Mentee Results", icon: FileText, href: "/results" },
           { label: "Mentee Results", icon: GraduationCap, href: "/results" },
           { label: "Group Discussion", icon: MessagesSquare, href: "/discussion" },
         ],

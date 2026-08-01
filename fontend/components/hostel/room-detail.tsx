@@ -54,7 +54,7 @@ export function HostelRoomView({
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-4xl">
-      <DetailBackLink href="/hostel" label="Hostel" />
+      <DetailBackLink href="/hostel/dashboard" label="Hostel" />
 
       {status && (
         <FormAlert variant="info" className="mb-4">

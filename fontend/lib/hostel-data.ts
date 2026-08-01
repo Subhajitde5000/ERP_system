@@ -493,3 +493,39 @@ export function getHostelOccupancy(): {
     residents,
   };
 }
+
+/* ── Leave across every block (PAGE 13) ─────────────────────────────────── */
+
+/**
+ * Every resident leave request the warden oversees (§8.2).
+ *
+ * The room page shows one room's requests; the leave page needs the whole
+ * queue. Both read `LEAVE_REQUESTS`, so a request approved from one screen is
+ * the same row the other screen was showing.
+ *
+ * TODO(Dev-B): `GET /api/v1/hostel/leaves?status=` — a plain select over
+ * `hostel_leave_requests` joined to the allotment for room/block.
+ */
+export function getAllHostelLeave(): (RoomLeaveRequest & {
+  studentId: string;
+  rollNo: string;
+  roomNumber: string;
+  blockName: string;
+  appliedAt: string;
+})[] {
+  return Object.entries(LEAVE_REQUESTS).flatMap(([roomId, requests]) => {
+    const room = ROOMS.find((r) => r.id === roomId);
+    return requests.map((req, i) => {
+      const student = ROSTER.find((s) => s.name === req.studentName);
+      return {
+        ...req,
+        studentId: student?.id ?? roomId,
+        rollNo: student?.rollNo ?? "—",
+        roomNumber: room?.roomNumber ?? roomId,
+        blockName: room?.blockName ?? "—",
+        // Applied a few days before the leave starts
+        appliedAt: at(3 + i * 2),
+      };
+    });
+  });
+}

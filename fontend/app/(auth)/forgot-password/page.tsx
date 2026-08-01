@@ -29,7 +29,7 @@ export default async function ForgotPasswordPage({
         <div className="w-full max-w-[400px] animate-fade-up py-4 lg:py-0">
           <ForgotPasswordForm tenant={tenant} />
 
-          <p className="mt-6 text-center text-[11px] leading-relaxed text-[#94A3B8]">
+          <p className="mt-6 text-center text-[11px] leading-relaxed text-[#475569]">
             Reset links expire in 30 minutes · All requests are audited
           </p>
         </div>

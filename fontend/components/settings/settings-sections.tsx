@@ -211,11 +211,9 @@ export function BrandingSection({
 export function AcademicYearSection({
   years,
   readOnly,
-  onAction,
 }: {
   years: AcademicYearRow[];
   readOnly: boolean;
-  onAction: (message: string) => void;
 }) {
   return (
     <SectionCard
@@ -226,17 +224,15 @@ export function AcademicYearSection({
         readOnly ? (
           <ReadOnlyChip />
         ) : (
-          <button
-            type="button"
-            onClick={() =>
-              onAction(
-                "POST /academic-years — API not connected yet (Dev-A, C-IA-04).",
-              )
-            }
+          /* C-IA-04 owns creating years and switching the current one. This
+             section stays as a read-only summary and links there rather than
+             carrying a second copy of the same form. */
+          <Link
+            href="/academic-years"
             className="inline-flex h-9 shrink-0 items-center rounded-field bg-accent px-3.5 text-[12px] font-semibold text-white shadow-accent transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15"
           >
-            Add year
-          </button>
+            Manage years
+          </Link>
         )
       }
     >
@@ -265,17 +261,13 @@ export function AcademicYearSection({
             </div>
 
             {!readOnly && !y.isCurrent && (
-              <button
-                type="button"
-                onClick={() =>
-                  onAction(
-                    `PATCH /academic-years/${y.id}/current — API not connected yet (Dev-A).`,
-                  )
-                }
+              <Link
+                href="/academic-years"
                 className="shrink-0 rounded-field border border-border px-2.5 py-1.5 text-[12px] font-medium text-accent transition-colors hover:border-accent hover:bg-accent-light focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15"
               >
                 Make current
-              </button>
+                <span className="sr-only"> — {y.name}</span>
+              </Link>
             )}
           </li>
         ))}

@@ -61,6 +61,9 @@ const config: Config = {
         warning: {
           DEFAULT: "#F59E0B",
           light: "#FFFBEB",
+          // Amber 200, matching `destructive.border` — a tinted callout needs
+          // a border a shade darker than its fill or it reads as a flat block
+          border: "#FDE68A",
           text: "#B45309", // 5.02:1 on white — DEFAULT is only 2.15:1
         },
       },

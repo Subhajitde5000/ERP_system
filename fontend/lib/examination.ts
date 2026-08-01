@@ -311,7 +311,9 @@ export function examDateTime(iso: string): string {
   const time = d.toLocaleTimeString("en-IN", {
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    // `hour12: false` yields the h24 cycle, which renders midnight as
+    // "24:00" under en-IN. `hourCycle: "h23"` gives the expected "00:00".
+    hourCycle: "h23",
     timeZone: "Asia/Kolkata",
   });
   return `${day}, ${time}`;

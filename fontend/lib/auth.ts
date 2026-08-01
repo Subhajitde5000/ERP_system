@@ -116,3 +116,52 @@ export async function requestPasswordReset(
   void identifier;
   void tenantId;
 }
+
+/* ── Reset password (C-PB-03) ───────────────────────────────────────────── */
+
+/**
+ * Minimum password length.
+ *
+ * The login form already refuses fewer than 6 characters, so the same floor
+ * applies when *setting* one — a rule that let you create a password you then
+ * could not use would be worse than no rule. Kept as one constant so the two
+ * screens cannot drift.
+ *
+ * TODO(Dev-A): the real policy belongs in platform settings (§4.1) and must be
+ * re-validated server-side; this is UX, not security.
+ */
+export const MIN_PASSWORD_LENGTH = 6;
+
+/** Why a reset token was refused (§4.3 `password_reset_expires`). */
+export type ResetTokenState = "VALID" | "MISSING" | "EXPIRED";
+
+/**
+ * Check the `?token=` before showing the form.
+ *
+ * `users.password_reset_token` + `password_reset_expires` (DB §4.3) are the
+ * only two columns behind this. The distinction that matters to the person
+ * reading the screen is *missing* vs *expired*: a missing token means they
+ * opened the page directly, an expired one means the 30-minute window in the
+ * email has closed and they need a fresh link.
+ *
+ * TODO(Dev-A): GET /api/v1/auth/reset-password/verify?token=
+ */
+export function verifyResetToken(token: string | undefined): ResetTokenState {
+  if (!token || !token.trim()) return "MISSING";
+  // Demo convention so both branches are reviewable without a backend:
+  // any token containing "expired" models the closed window.
+  return /expired/i.test(token) ? "EXPIRED" : "VALID";
+}
+
+/**
+ * Set a new password from a reset token.
+ * TODO(Dev-A): POST /api/v1/auth/reset-password { token, password }
+ */
+export async function submitPasswordReset(
+  token: string,
+  password: string,
+): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 900));
+  void token;
+  void password;
+}

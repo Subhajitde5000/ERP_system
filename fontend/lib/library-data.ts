@@ -1,4 +1,5 @@
 import type {
+  BookCatalogue,
   BookCirculationStats,
   BookCondition,
   BookCopy,
@@ -6,9 +7,26 @@ import type {
   BookIssueRecord,
   BookPermissions,
   BookSummary,
+  BorrowerOption,
+  CirculationDesk,
+  EResource,
+  EResourceShelf,
+  EResourceType,
+  IssuableCopy,
+  IssueFormContext,
+  LoanRow,
+  ReturnContext,
 } from "@/types/library";
-import { fineFor, isCirculable, overdueDaysFor } from "./library";
+import {
+  BORROW_LIMIT,
+  DUE_SOON_DAYS,
+  LOAN_DAYS,
+  fineFor,
+  isCirculable,
+  overdueDaysFor,
+} from "./library";
 import { getClassRoster } from "./attendance-data";
+import { getStaffDirectory } from "./staff-detail-data";
 
 /**
  * Library data source.
@@ -121,7 +139,11 @@ const COPIES: Record<string, CopySeed[]> = {
     ["ACC-10427", "LOST", null, 0],
   ],
   b2: [
-    ["ACC-11890", "GOOD", "s1", 6],
+    // Issued 8 days ago on a 14-day loan → due in 6, inside the "due this
+    // week" window. At 6 days ago it fell just outside it, which left the
+    // circulation desk permanently reading "0 due today, 0 due this week" —
+    // a KPI pinned at zero reads as broken rather than as good news.
+    ["ACC-11890", "GOOD", "s1", 8],
     ["ACC-11891", "GOOD", null, 0],
     ["ACC-11892", "FAIR", "s4", 15],
   ],
@@ -130,9 +152,6 @@ const COPIES: Record<string, CopySeed[]> = {
     ["ACC-12056", "GOOD", null, 0],
   ],
 };
-
-/** Loan period — no doc states one, so it lives here as a single constant. */
-const LOAN_DAYS = 14;
 
 const ROSTER = getClassRoster();
 
@@ -482,5 +501,237 @@ export function getLibraryCirculation(): BookCirculationStats & {
           fineAmount: i.fineAmount,
         })),
     ),
+  };
+}
+
+/* ── Librarian console (C-LB-02, C-LB-04 … C-LB-08) ─────────────────────── */
+
+/**
+ * Every live and closed loan, flattened across all titles.
+ *
+ * `buildIssues()` is per-title because the book page shows one book; the
+ * circulation desk needs the title on the row. Built from the same function
+ * so a loan on the desk is byte-for-byte the loan on the book page.
+ */
+function allLoans(): LoanRow[] {
+  return BOOKS.flatMap((seed) =>
+    buildIssues(seed.id).map((issue) => ({
+      ...issue,
+      bookId: seed.id,
+      bookTitle: seed.title,
+    })),
+  );
+}
+
+/** C-LB-02 — Book Catalogue. Every title with its derived counters. */
+export function getBookCatalogue(canManage: boolean): BookCatalogue {
+  // `getBook()` already derives the four counters from `book_copies`; calling
+  // it keeps the catalogue row identical to the book page's header.
+  const books = BOOKS.map((seed) => getBook(seed.id)!);
+  const subjects = [
+    ...new Set(books.map((b) => b.subjectArea).filter((s): s is string => !!s)),
+  ].sort();
+
+  return {
+    books,
+    subjects,
+    totals: {
+      titles: books.length,
+      copies: books.reduce((a, b) => a + b.totalCopies, 0),
+      available: books.reduce((a, b) => a + b.availableCopies, 0),
+      onLoan: books.reduce((a, b) => a + b.issuedCopies, 0),
+      outOfCirculation: books.reduce((a, b) => a + b.unavailableCopies, 0),
+    },
+    canManage,
+  };
+}
+
+/**
+ * C-LB-06 — Issued Books List (and C-LB-07, the overdue slice of it).
+ *
+ * One accessor serves both pages: "overdue" is a filter over the same rows,
+ * not a different query, so the two screens can never disagree about how many
+ * books are late.
+ */
+export function getCirculationDesk(canManage: boolean): CirculationDesk {
+  const loans = allLoans();
+  const today = new Date(T0).toISOString().slice(0, 10);
+
+  const outstanding = loans
+    .filter((l) => l.returnedAt === null)
+    // Most overdue first — the desk's actual work queue.
+    .sort((a, b) => b.overdueDays - a.overdueDays || a.dueDate.localeCompare(b.dueDate));
+
+  const returned = loans
+    .filter((l) => l.returnedAt !== null)
+    .sort((a, b) => (b.returnedAt ?? "").localeCompare(a.returnedAt ?? ""));
+
+  const until = (d: string) =>
+    Math.round(
+      (Date.parse(`${d}T00:00:00.000Z`) - Date.parse(`${today}T00:00:00.000Z`)) /
+        DAY,
+    );
+
+  return {
+    outstanding,
+    returned,
+    totals: {
+      onLoan: outstanding.length,
+      overdue: outstanding.filter((l) => l.isOverdue).length,
+      dueToday: outstanding.filter((l) => until(l.dueDate) === 0).length,
+      dueThisWeek: outstanding.filter((l) => {
+        const d = until(l.dueDate);
+        return d > 0 && d <= DUE_SOON_DAYS;
+      }).length,
+      // Fines are owed on returned books too — a reader who paid nothing when
+      // handing it back still owes it.
+      outstandingFines: loans
+        .filter((l) => !l.finePaid)
+        .reduce((a, l) => a + l.fineAmount, 0),
+      borrowers: new Set(outstanding.map((l) => l.borrowerRef)).size,
+    },
+    today,
+    canManage,
+  };
+}
+
+/** C-LB-05 — one live loan, with its fine recomputed against today. */
+export function getReturnContext(loanId: string): ReturnContext | undefined {
+  const loan = allLoans().find((l) => l.id === loanId && l.returnedAt === null);
+  if (!loan) return undefined;
+
+  return {
+    loan,
+    // Recomputed rather than read off the row: `fine_amount` is written when
+    // the loan is created and grows every day it stays out.
+    fineDue: fineFor(overdueDaysFor(loan.dueDate, T0)),
+    today: new Date(T0).toISOString().slice(0, 10),
+  };
+}
+
+/** Live loan ids, so `/library/issues/:id/return` can be statically checked. */
+export function getOpenLoanIds(): string[] {
+  return allLoans()
+    .filter((l) => l.returnedAt === null)
+    .map((l) => l.id);
+}
+
+/**
+ * C-LB-04 — Issue Book.
+ *
+ * Only copies that are physically issuable appear: a DAMAGED or LOST copy is
+ * out of circulation (§8.1 `book_condition`), and one already on loan cannot
+ * be lent twice. Listing them so the form can then refuse them would pad the
+ * picker with rows that can never be chosen.
+ */
+export function getIssueFormContext(): IssueFormContext {
+  const today = new Date(T0).toISOString().slice(0, 10);
+  const live = allLoans().filter((l) => l.returnedAt === null);
+
+  const copies: IssuableCopy[] = BOOKS.flatMap((seed) =>
+    (COPIES[seed.id] ?? [])
+      .map(([accessionNumber, condition, holderId], i) => ({
+        copyId: `${seed.id}-c${i + 1}`,
+        accessionNumber,
+        condition,
+        bookId: seed.id,
+        bookTitle: seed.title,
+        authors: seed.authors,
+        locationCode: seed.locationCode,
+        _issuable: holderId === null && isCirculable(condition),
+      }))
+      .filter((c) => c._issuable)
+      .map(({ _issuable, ...c }) => {
+        void _issuable;
+        return c;
+      }),
+  );
+
+  /*
+   * Who may borrow. §8.1 makes `borrower_id` any user, so the roster and the
+   * staff directory both qualify — read from the modules that own those
+   * identities rather than re-seeded here.
+   */
+  const countFor = (ref: string) => ({
+    currentLoans: live.filter((l) => l.borrowerRef === ref).length,
+    overdueLoans: live.filter((l) => l.borrowerRef === ref && l.isOverdue).length,
+  });
+
+  const borrowers: BorrowerOption[] = [
+    ...ROSTER.map((s) => ({
+      id: s.id,
+      name: s.name,
+      ref: s.rollNo,
+      kind: "STUDENT" as const,
+      ...countFor(s.rollNo),
+    })),
+    ...getStaffDirectory()
+      .filter((s) => s.isActive)
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        ref: s.employeeCode,
+        kind: "STAFF" as const,
+        ...countFor(s.employeeCode),
+      })),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    copies,
+    borrowers,
+    loanDays: LOAN_DAYS,
+    today,
+    borrowLimit: BORROW_LIMIT,
+  };
+}
+
+/* ── E-resources (C-LB-08, DB §8.1 `e_resources`) ───────────────────────── */
+
+/**
+ * [title, type, url|null, fileKey|null, subject, uploadedBy, daysAgo]
+ *
+ * §8.1 stores `url` OR `file_key` — an external link or an S3 object — so the
+ * seed carries exactly one of the two per row and the UI renders accordingly.
+ */
+const E_RESOURCES: [
+  string,
+  EResourceType,
+  string | null,
+  string | null,
+  string,
+  string,
+  number,
+][] = [
+  ["IEEE Xplore Digital Library", "JOURNAL", "https://ieeexplore.ieee.org", null, "Computer Science", LIBRARIAN, 120],
+  ["ACM Digital Library", "JOURNAL", "https://dl.acm.org", null, "Computer Science", LIBRARIAN, 118],
+  ["Introduction to Algorithms — companion notes", "EBOOK", null, "e-res/clrs-companion.pdf", "Computer Science · Algorithms", LIBRARIAN, 46],
+  ["A Survey of Consensus Protocols", "PAPER", null, "e-res/consensus-survey.pdf", "Computer Science · Distributed Systems", "Priya Sharma", 31],
+  ["NPTEL — Database Management Systems", "LINK", "https://nptel.ac.in/courses/106105175", null, "Computer Science · Databases", "Arun Kumar", 22],
+  ["Springer Mathematics Collection", "JOURNAL", "https://link.springer.com", null, "Mathematics", LIBRARIAN, 9],
+];
+
+/** C-LB-08 — E-Resources shelf. */
+export function getEResources(canManage: boolean): EResourceShelf {
+  const resources: EResource[] = E_RESOURCES.map(
+    ([title, resourceType, url, fileKey, subjectArea, uploadedByName, daysAgo], i) => ({
+      id: `er-${i + 1}`,
+      title,
+      resourceType,
+      url,
+      fileKey,
+      subjectArea,
+      uploadedByName,
+      createdAt: at(daysAgo),
+    }),
+  ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  return {
+    resources,
+    subjects: [
+      ...new Set(
+        resources.map((r) => r.subjectArea).filter((s): s is string => !!s),
+      ),
+    ].sort(),
+    canManage,
   };
 }

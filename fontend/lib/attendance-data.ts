@@ -100,6 +100,21 @@ export function getClassRoster(size = NAMES.length): RosterStudent[] {
   });
 }
 
+/**
+ * A student's overall attendance percentage.
+ *
+ * `OVERALL` is the single source for this figure — the teacher's marking
+ * sheet, the student's own view and the mentor's at-risk list all read it.
+ * Exported rather than copied because a mentee shown at 68% here and 72%
+ * on the attendance page would be the same drift `getClassRoster()` exists
+ * to prevent. Unknown ids fall back to the threshold so a new student never
+ * appears spuriously at risk.
+ */
+export function getStudentAttendancePct(studentId: string): number {
+  const index = Number(studentId.replace(/^s/, "")) - 1;
+  return OVERALL[index] ?? ATTENDANCE_THRESHOLD;
+}
+
 function roster(): MarkableSession["students"] {
   return NAMES.map(([name, rollNo], i) => ({
     id: `s${i + 1}`,

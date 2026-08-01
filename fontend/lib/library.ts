@@ -4,6 +4,8 @@ import type {
   BookCondition,
   BookPermissions,
   BookViewKind,
+  EResourceType,
+  IssueIssue,
 } from "@/types/library";
 
 /**
@@ -143,4 +145,130 @@ export function overdueDaysFor(dueDate: string, now: number): number {
   const due = new Date(dueDate).setUTCHours(23, 59, 59, 999);
   if (now <= due) return 0;
   return Math.floor((now - due) / (24 * 60 * 60 * 1000)) + 1;
+}
+
+/* ── Circulation desk (C-LB-04 … C-LB-07) ───────────────────────────────── */
+
+/**
+ * Default loan length, in days.
+ *
+ * `book_issues.due_date` is stored per loan (§8.1) but no doc gives the
+ * default term, so it lives here as one constant beside `FINE_PER_DAY`.
+ * TODO(Dev-A): move both to `tenant_settings` — institutions differ.
+ */
+export const LOAN_DAYS = 14;
+
+/**
+ * How many books one borrower may hold at once.
+ *
+ * Not a schema constraint — the DB would happily insert a twentieth loan —
+ * so the desk enforces it and the backend must re-check.
+ */
+export const BORROW_LIMIT = 3;
+
+/** Loans due within this many days count as "due soon" on the desk. */
+export const DUE_SOON_DAYS = 7;
+
+/** Human labels for `e_resources.resource_type` (§8.1 — free VARCHAR). */
+export const E_RESOURCE_LABELS: Record<EResourceType, string> = {
+  EBOOK: "E-book",
+  JOURNAL: "Journal",
+  PAPER: "Paper",
+  LINK: "Link",
+};
+
+export const E_RESOURCE_TONE: Record<EResourceType, Tone> = {
+  EBOOK: "accent",
+  JOURNAL: "cyan",
+  PAPER: "success",
+  LINK: "muted",
+};
+
+/**
+ * Add `days` to a plain "YYYY-MM-DD", returning the same shape.
+ *
+ * `due_date` is a DATE with no time (§8.1), so this is date arithmetic at UTC
+ * midnight and never a wall-clock conversion — the trap that shifted the exam
+ * scheduler by 5½ hours.
+ */
+export function addDays(date: string, days: number): string {
+  const t = Date.parse(`${date}T00:00:00.000Z`);
+  if (Number.isNaN(t)) return date;
+  return new Date(t + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Whole days until a due date; negative once it has passed. */
+export function daysUntil(dueDate: string, today: string): number {
+  const a = Date.parse(`${dueDate}T00:00:00.000Z`);
+  const b = Date.parse(`${today}T00:00:00.000Z`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.round((a - b) / 86_400_000);
+}
+
+/**
+ * Everything wrong with a proposed issue — C-LB-04.
+ *
+ * A pure function with its own test, the same shape as the Exam Controller's
+ * `findScheduleClashes` and the coordinator's `findSubstitutionIssues`.
+ *
+ * `COPY_UNAVAILABLE` and `PAST_DUE_DATE` **block**: the first would double-issue
+ * one physical copy, the second creates a loan that is born overdue.
+ * `BORROWER_AT_LIMIT` and `BORROWER_OVERDUE` only **warn** — a librarian
+ * routinely lets a student take one more book while promising to bring the
+ * late one tomorrow, and refusing that models a rule the institution has not
+ * got.
+ */
+export function findIssueProblems(
+  proposed: {
+    copy: { accessionNumber: string; condition: BookCondition; available: boolean } | null;
+    borrower: { name: string; currentLoans: number; overdueLoans: number } | null;
+    dueDate: string;
+  },
+  ctx: { today: string; borrowLimit: number },
+): IssueIssue[] {
+  const problems: IssueIssue[] = [];
+  const { copy, borrower, dueDate } = proposed;
+
+  if (copy && (!copy.available || !isCirculable(copy.condition))) {
+    problems.push({
+      kind: "COPY_UNAVAILABLE",
+      message: !isCirculable(copy.condition)
+        ? `${copy.accessionNumber} is marked ${CONDITION_LABELS[copy.condition].toLowerCase()} and is out of circulation.`
+        : `${copy.accessionNumber} is already on loan.`,
+      blocking: true,
+    });
+  }
+
+  if (dueDate && dueDate <= ctx.today) {
+    problems.push({
+      kind: "PAST_DUE_DATE",
+      message: "The due date must be after today, or the loan starts overdue.",
+      blocking: true,
+    });
+  }
+
+  if (borrower && borrower.currentLoans >= ctx.borrowLimit) {
+    problems.push({
+      kind: "BORROWER_AT_LIMIT",
+      message: `${borrower.name} already holds ${borrower.currentLoans} of ${ctx.borrowLimit} allowed books.`,
+      blocking: false,
+    });
+  }
+
+  if (borrower && borrower.overdueLoans > 0) {
+    problems.push({
+      kind: "BORROWER_OVERDUE",
+      message: `${borrower.name} has ${borrower.overdueLoans} overdue ${
+        borrower.overdueLoans === 1 ? "book" : "books"
+      } already.`,
+      blocking: false,
+    });
+  }
+
+  return problems;
+}
+
+/** Does this set of problems stop the issue? */
+export function hasBlockingIssueProblem(problems: IssueIssue[]): boolean {
+  return problems.some((p) => p.blocking);
 }

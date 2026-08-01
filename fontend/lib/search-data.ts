@@ -8,6 +8,7 @@ import type {
 import { MAX_PER_KIND, MIN_QUERY_LENGTH, matches } from "./search";
 
 import { getClassRoster } from "./attendance-data";
+import { getDepartments, getSubjects } from "./structure-data";
 import { CLASSES } from "./timetable-data";
 import { getNotices } from "./notice-data";
 import { noticePermissions } from "./notices";
@@ -19,6 +20,7 @@ import { getOwnAssignments, getDepartmentAssignments } from "./assignment-data";
 import { getStudentDetail } from "./student-detail-data";
 import { getAllReceipts, getFeeAccountFor } from "./fee-data";
 import { getStaffDirectory, getStaffDetail } from "./staff-detail-data";
+import { getAuditLog } from "./audit-data";
 import { staffDetailPermissions } from "./staff-detail";
 import { getBookIds, getBook, getBookDetail } from "./library-data";
 import { bookPermissions } from "./library";
@@ -42,32 +44,13 @@ import { bookPermissions } from "./library";
 /* ── Sources with no page of their own yet ──────────────────────────────── */
 
 /**
- * Departments and subjects have no module page, so their rows live here.
- * Everything else is read from the module that owns it.
- * TODO(Dev-A): these become `departments` (§6.1) and `subjects` (§6.4).
+ * Departments and subjects are read from `lib/structure-data.ts`, which owns
+ * `departments` (§6.2) and `subjects` (§6.4) now that C-IA-02 and C-IA-07
+ * exist. They used to be a private list here — which listed 3 departments
+ * while the attendance report showed 6, and named an HOD ("Rajesh Verma")
+ * who holds no HOD grant in `role_assignments`. Searching for a department
+ * now finds the same six the management page lists.
  */
-const DEPARTMENTS = [
-  { id: "cse", name: "Computer Science & Engineering", code: "CSE", hod: "Kavita Menon" },
-  { id: "ece", name: "Electronics & Communication", code: "ECE", hod: "Sunil Rao" },
-  { id: "mech", name: "Mechanical Engineering", code: "MECH", hod: "Rajesh Verma" },
-];
-
-const SUBJECTS = [
-  { code: "CS301", name: "Algorithms", dept: "CSE" },
-  { code: "CS201", name: "Data Structures", dept: "CSE" },
-  { code: "CS305", name: "Databases", dept: "CSE" },
-  { code: "CS307", name: "Operating Systems", dept: "CSE" },
-  { code: "MA101", name: "Discrete Mathematics", dept: "CSE" },
-  { code: "EC202", name: "Signals & Systems", dept: "ECE" },
-];
-
-/** Audit log — admin only (§10). No page yet; these are representative rows. */
-const AUDIT_LOGS = [
-  { id: "al1", action: "USER_DEACTIVATED", actor: "Meera Krishnan", target: "Ganesh Bhat", at: "2026-07-28T09:12:00.000Z" },
-  { id: "al2", action: "MODULE_TOGGLED", actor: "Meera Krishnan", target: "Placement enabled", at: "2026-07-27T14:40:00.000Z" },
-  { id: "al3", action: "ROLE_ASSIGNED", actor: "Meera Krishnan", target: "Priya Sharma → Exam Controller", at: "2026-07-26T11:05:00.000Z" },
-  { id: "al4", action: "RESULT_PUBLISHED", actor: "Deepak Iyer", target: "Mid-term · FY-A", at: "2026-07-25T16:20:00.000Z" },
-];
 
 /** Placement companies and drives (§8.4). */
 const COMPANIES = [
@@ -146,17 +129,26 @@ const SEARCHERS: Record<SearchKind, Searcher> = {
     })),
 
   DEPARTMENT: (q) =>
-    DEPARTMENTS.filter(
-      (d) => matches(d.name, q) || matches(d.code, q) || matches(d.hod, q),
-    ).map((d) => ({
-      id: d.id,
-      kind: "DEPARTMENT" as const,
-      title: d.name,
-      subtitle: `HOD ${d.hod}`,
-      meta: d.code,
-      href: "/settings/departments",
-      matchedOn: matches(d.code, q) && !matches(d.name, q) ? d.code : null,
-    })),
+    getDepartments()
+      .filter(
+        (d) =>
+          matches(d.name, q) ||
+          matches(d.code, q) ||
+          matches(d.hodName ?? "", q),
+      )
+      .map((d) => ({
+        id: d.id,
+        kind: "DEPARTMENT" as const,
+        title: d.name,
+        // A vacancy is real information — "HOD null" would read as a bug
+        subtitle: d.hodName ? `HOD ${d.hodName}` : "No HOD assigned",
+        meta: d.code,
+        // Was `/settings/departments`, which never existed — a dead link the
+        // page-list checker could not see because nothing rendered it until
+        // a search matched.
+        href: `/departments/${d.id}`,
+        matchedOn: matches(d.code, q) && !matches(d.name, q) ? d.code : null,
+      })),
 
   CLASS: (q) =>
     CLASSES.filter(
@@ -172,18 +164,18 @@ const SEARCHERS: Record<SearchKind, Searcher> = {
     })),
 
   SUBJECT: (q) =>
-    SUBJECTS.filter(
-      (s) => matches(s.name, q) || matches(s.code, q),
-    ).map((s) => ({
-      id: s.code,
-      kind: "SUBJECT" as const,
-      title: s.name,
-      subtitle: `${s.code} · ${s.dept}`,
-      meta: null,
-      href: `/content?subject=${s.code}`,
-      // The code is already in the subtitle — restating it adds nothing
-      matchedOn: null,
-    })),
+    getSubjects()
+      .filter((s) => matches(s.name, q) || matches(s.code, q))
+      .map((s) => ({
+        id: s.id,
+        kind: "SUBJECT" as const,
+        title: s.name,
+        subtitle: `${s.code} · ${s.departmentCode}`,
+        meta: null,
+        href: `/content?subject=${s.code}`,
+        // The code is already in the subtitle — restating it adds nothing
+        matchedOn: null,
+      })),
 
   // Notices are already role-scoped in their own data layer — search passes
   // the caller's roles through rather than reading the raw table, so a hit
@@ -201,16 +193,22 @@ const SEARCHERS: Record<SearchKind, Searcher> = {
         matchedOn: !matches(n.title, q) ? "in the notice body" : null,
       })),
 
+  // Rows come from the audit page's own data layer (§10.3), so search and
+  // /audit-logs can't show two different histories.
   AUDIT_LOG: (q) =>
-    AUDIT_LOGS.filter(
-      (l) =>
-        matches(l.action, q) || matches(l.actor, q) || matches(l.target, q),
-    ).map((l) => ({
+    getAuditLog()
+      .filter(
+        (l) =>
+          matches(l.action, q) ||
+          matches(l.actorName, q) ||
+          matches(l.target, q),
+      )
+      .map((l) => ({
       id: l.id,
       kind: "AUDIT_LOG" as const,
       title: l.action.replace(/_/g, " ").toLowerCase(),
       subtitle: l.target,
-      meta: l.actor,
+      meta: l.actorName,
       href: "/audit-logs",
       matchedOn: null,
     })),
@@ -416,7 +414,7 @@ const SEARCHERS: Record<SearchKind, Searcher> = {
       title: c.name,
       subtitle: c.roles,
       meta: c.sector,
-      href: "/placement",
+      href: "/placement/dashboard",
       matchedOn: null,
     })),
 
@@ -429,7 +427,7 @@ const SEARCHERS: Record<SearchKind, Searcher> = {
       title: `${d.company} campus drive`,
       subtitle: `${d.date} · ${d.eligible}`,
       meta: d.status,
-      href: "/placement",
+      href: "/placement/dashboard",
       matchedOn: null,
     })),
 
@@ -468,7 +466,7 @@ const SEARCHERS: Record<SearchKind, Searcher> = {
       title: a.name,
       subtitle: a.email,
       meta: a.status,
-      href: "/admission",
+      href: "/admission/dashboard",
       matchedOn: matches(a.no, q) ? a.no : matches(a.email, q) && !matches(a.name, q) ? a.email : null,
     })),
 };
