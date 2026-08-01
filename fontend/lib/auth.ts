@@ -1,5 +1,11 @@
 import { AuthError } from "@/types/auth";
-import type { AuthErrorCode, LoginCredentials, LoginResponse } from "@/types/auth";
+import type {
+  AuthErrorCode,
+  LoginCredentials,
+  LoginResponse,
+  PlatformLoginCredentials,
+  PlatformLoginResponse,
+} from "@/types/auth";
 
 /**
  * Auth API client.
@@ -164,4 +170,64 @@ export async function submitPasswordReset(
   await new Promise((resolve) => setTimeout(resolve, 900));
   void token;
   void password;
+}
+
+/* ── Platform console sign-in (C-PB-01 for app.xyz.com) ─────────────────── */
+
+/**
+ * Sign a platform staff member in.
+ *
+ * Separate from `login()` because it is a different table and a different
+ * failure surface, not a variant of the same call:
+ *
+ *   • `platform_users` (DB §4.5) has **no `tenant_id`** — there is no
+ *     institution to resolve, so no `X-Tenant-Id` header and no
+ *     `TENANT_NOT_FOUND` state.
+ *   • The identifier is an email. `platform_users.email` is the unique key;
+ *     roll numbers are an institution concept.
+ *   • Exactly one role per user (`platform_role` is a scalar column, not a
+ *     join table), so there is no role switcher after sign-in.
+ *
+ * TODO(Dev-A): POST /api/v1/auth/platform/login
+ */
+export async function platformLogin(
+  credentials: PlatformLoginCredentials,
+  signal?: AbortSignal,
+): Promise<PlatformLoginResponse> {
+  // ── STUB START — remove when the API is live ──────────────────────────────
+  await new Promise((resolve) => setTimeout(resolve, 900));
+  if (signal?.aborted) throw new AuthError("UNKNOWN", "Request cancelled");
+
+  throw new AuthError(
+    "NETWORK_ERROR",
+    "Platform auth API not connected yet — see lib/auth.ts (Dev-A, A-11).",
+  );
+  // ── STUB END ──────────────────────────────────────────────────────────────
+
+  /* Real implementation:
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/v1/auth/platform/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(credentials),
+      signal,
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      // 404 cannot mean TENANT_NOT_FOUND here — there is no tenant. The API
+      // returns 401 for both "no such account" and "wrong password" so the
+      // response never reveals which platform emails exist.
+      const code = (body?.code as AuthErrorCode) ?? codeFromStatus(res.status);
+      throw new AuthError(code, body?.message ?? ERROR_MESSAGES[code]);
+    }
+
+    return (await res.json()) as PlatformLoginResponse;
+  } catch (err) {
+    if (err instanceof AuthError) throw err;
+    throw new AuthError("NETWORK_ERROR", ERROR_MESSAGES.NETWORK_ERROR);
+  }
+  */
 }

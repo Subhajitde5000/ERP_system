@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
 import { BrandingPanel } from "@/components/auth/branding-panel";
@@ -26,6 +27,18 @@ export default async function LoginPage({
 }) {
   const [headerList, params] = await Promise.all([headers(), searchParams]);
   const tenant = resolveTenant(headerList.get("host"), params.tenant);
+
+  /*
+   * `app.xyz.com` (and bare localhost, which resolves the same way) is the
+   * platform console, not an institution. This page used to render a
+   * half-platform variant of the tenant form — "Work email" wording, but it
+   * still POSTed to the tenant endpoint with `tenantId: "app"`, which no
+   * amount of correct credentials could authenticate. Platform staff live in
+   * `platform_users` (DB §4.5), a different table with a different endpoint.
+   *
+   * Send them to the console's own sign-in instead.
+   */
+  if (tenant.isPlatform) redirect("/platform/login");
 
   return (
     <div className="flex min-h-screen flex-col bg-[#F8FAFC] lg:flex-row">
