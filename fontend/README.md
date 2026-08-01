@@ -1094,6 +1094,77 @@ locking the only one out of the console is unrecoverable without a DB edit.
 
 ---
 
+## Institution structure (Institution Admin)
+
+C-IA-02…07, C-IA-11 and C-IA-12 — the institution's skeleton, which every
+other module hangs off.
+
+| Task | Page | Route |
+|---|---|---|
+| C-IA-02 | Department Management | `/departments` |
+| C-IA-03 | Department Detail | `/departments/:id` |
+| C-IA-04 | Academic Year Setup | `/academic-years` |
+| C-IA-05 | Class Management | `/classes` |
+| C-IA-06 | Class Detail | `/classes/:id` |
+| C-IA-07 | Subject Management | `/subjects` |
+| C-IA-11 | Student Enrollment | `/enrollments` |
+| C-IA-12 | Parent–Student Links | `/parent-links` |
+
+**`lib/structure-data.ts` is now the single owner of departments, classes and
+subjects.** They used to be re-typed in four files that disagreed: global
+search listed **3** departments while the attendance report showed **6**, and
+search named an HOD ("Rajesh Verma") who holds no HOD grant in
+`role_assignments`. Everything is now derived from the module that owns the
+underlying people — `getInstitutionSummary()` for departments and headcount,
+`getStaffDirectory()` for staff and HODs, `getClassRoster()` for students,
+`getAcademicYears()` for years, `getClassSlots()` for the timetable. ABC
+College's 910 students still reconcile with the platform console.
+
+**The database constraints are enforced in the UI, not discovered by the API.**
+- `departments ←── classes.department_id` (§12): deleting a department with
+  classes is *refused with a reason*, not offered and then 409'd.
+- `classes` is UNIQUE on `(tenant_id, department_id, academic_year_id, code)` —
+  a **composite**, so `SY-A` legitimately exists in both CSE and ECE.
+  Validating on code alone would reject a correct entry.
+- `subjects` is UNIQUE on `(tenant_id, class_id, code)` — scoped to the class.
+- `teacher_subjects` is UNIQUE on `(teacher_id, subject_id, role_in_subject)`,
+  so the same person can be Teacher *and* Co-teacher on one subject.
+- `academic_years` has a partial unique index on `is_current` (§6.1), so
+  making a year current is a **swap** — the dialog names the year it displaces.
+- `max_strength` (§6.3) blocks a bulk enrolment *before* the request rather
+  than letting the API half-write the batch.
+- `passing_marks ≤ max_marks` (§6.4), validated in JS — a native `min`/`max`
+  suppresses the form's own message.
+
+**Vacancies are shown as work, not as missing data.** Four of six departments
+have no HOD, five classes have no class teacher and six subjects have no
+teacher — all real states (`hod_id` and `class_teacher_id` are nullable), and
+all the thing these pages exist to fix. Inventing values would have hidden
+every empty state the pages were built for.
+
+**Read-only for the Principal and Vice Principal.** §4.3 grants
+institution-wide visibility but not structural edit, so they get the data and
+a "View only" chip with *no* create, edit, delete, assign or unlink control —
+asserted against the raw server HTML across all 8 pages, with a positive
+control proving the probes fire on the Admin's copy.
+
+**Deviations, flagged.**
+1. **C-IA-04 moved out of Settings.** An Academic Year section already existed
+   inside `/settings`; it is now a read-only summary that links to
+   `/academic-years` rather than carrying a second copy of the same form.
+2. **C-IA-12 is school-only (§6.7)** and ABC College is a college, so the page
+   *explains itself* instead of showing an empty table. `?tenantType=SCHOOL`
+   previews the school case.
+3. **Class enrolment counts show the named demo cohort** (10 students), while
+   department totals are the institution's real 910. Both are stated on the
+   page so "4/60" doesn't read as a bug.
+4. **FY-A's subject list was aligned to the timetable.** The timetable module
+   already scheduled Algorithms, Databases and Operating Systems for `fy-a`;
+   attaching them to the second-year classes made the class detail page
+   contradict itself. The older owner wins.
+
+---
+
 ## Support Staff console
 
 C-SP-01…04, under `app/(platform)/platform/support/`.

@@ -56,7 +56,17 @@ const ID = {
   staffEce: "s3", // ECE — proves the HOD department fence
   room: "A-104",
   book: "b1",
+  department: "cse",
+  klass: "fy-a",
 };
+
+/** §4.2 / §4.3 — mirrors `structureAccess()` in `lib/structure.ts`. */
+const structureOk = (role: string) =>
+  role === "INSTITUTION_ADMIN" ||
+  role === "PRINCIPAL" ||
+  role === "VICE_PRINCIPAL"
+    ? "ok"
+    : "denied";
 
 /** Shape of the thread `ID.thread` points at, so the expectation can model
  *  the per-thread scope + tag fence the detail page applies. */
@@ -105,6 +115,16 @@ const PAGES = [
   { label: "Leave", path: () => `/leaves`, expect: () => "ok" },
   { label: "Audit Logs", path: () => `/audit-logs`, expect: (r) =>
       r.role === "INSTITUTION_ADMIN" || r.role === "PRINCIPAL" ? "ok" : "denied" },
+  // C-IA-02…07, 11, 12 — §4.2 gives the Admin create/edit/delete; §4.3 lets
+  // the Principal and VP read. Everyone else is refused.
+  { label: "Departments", path: () => `/departments`, expect: (r) => structureOk(r.role) },
+  { label: "Department detail", path: () => `/departments/${ID.department}`, expect: (r) => structureOk(r.role) },
+  { label: "Academic years", path: () => `/academic-years`, expect: (r) => structureOk(r.role) },
+  { label: "Classes", path: () => `/classes`, expect: (r) => structureOk(r.role) },
+  { label: "Class detail", path: () => `/classes/${ID.klass}`, expect: (r) => structureOk(r.role) },
+  { label: "Subjects", path: () => `/subjects`, expect: (r) => structureOk(r.role) },
+  { label: "Enrolment", path: () => `/enrollments`, expect: (r) => structureOk(r.role) },
+  { label: "Parent links", path: () => `/parent-links`, expect: (r) => structureOk(r.role) },
   { label: "Library hub", path: () => `/library/dashboard`, expect: () => "ok" },
   { label: "Hostel hub", path: () => `/hostel/dashboard`, expect: () => "ok" },
   { label: "Transport hub", path: () => `/transport/dashboard`, expect: () => "ok" },

@@ -120,6 +120,21 @@ export function getModuleToggles(enabled: ModuleKey[]): ModuleToggle[] {
 
 /* ── Academic years (§6.1) ──────────────────────────────────────────────── */
 
+/**
+ * The institution's academic years — the single owner.
+ *
+ * Exported because C-IA-04 (`/academic-years`), C-IA-05 (the class year
+ * filter) and C-IA-11 (enrolment, which is always *into* a year) all need
+ * them. Re-seeding a second list would let the class list filter by a year
+ * the settings page has never heard of.
+ *
+ * §6.1 enforces one `is_current = TRUE` per tenant via a partial unique
+ * index, so exactly one row here carries it.
+ */
+export function getAcademicYears(): AcademicYearRow[] {
+  return ACADEMIC_YEARS;
+}
+
 const ACADEMIC_YEARS: AcademicYearRow[] = [
   {
     id: "ay-2024",

@@ -3,10 +3,13 @@ import {
   Handshake,
   BadgeIndianRupee,
   BookMarked,
+  BookOpen,
   Boxes,
+  Building,
   Building2,
   CalendarClock,
   CalendarDays,
+  CalendarRange,
   ClipboardCheck,
   Contact,
   FileBarChart,
@@ -15,8 +18,10 @@ import {
   GraduationCap,
   LayoutDashboard,
   Library,
+  Link2,
   Megaphone,
   MessagesSquare,
+  School,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -86,6 +91,41 @@ const NAV_MODULES: NavItem[] = [
   { label: "HR", href: "/hr/dashboard", icon: Users, module: "hr" },
   { label: "Admission", href: "/admission/dashboard", icon: UserRoundPlus, module: "admission" },
   { label: "Inventory", href: "/inventory/dashboard", icon: Boxes, module: "inventory" },
+];
+
+/**
+ * Institution structure — C-IA-02…07, C-IA-11, C-IA-12.
+ *
+ * Its own section rather than eight entries in the admin tail: these are the
+ * setup pages an admin visits at the start of a term and rarely after, so
+ * burying them among Reports and Users would push the daily links down.
+ *
+ * The Principal and Vice Principal see them read-only (§4.3 grants
+ * institution-wide visibility but not structural edit) — `structureAccess()`
+ * decides, and this list matches it so nobody sees a link they'd be 403'd on.
+ */
+const STRUCTURE_ROLES: Role[] = [
+  "INSTITUTION_ADMIN",
+  "PRINCIPAL",
+  "VICE_PRINCIPAL",
+];
+
+const NAV_STRUCTURE: NavItem[] = [
+  { label: "Departments", href: "/departments", icon: Building, core: true, roles: STRUCTURE_ROLES },
+  { label: "Classes", href: "/classes", icon: School, core: true, roles: STRUCTURE_ROLES },
+  { label: "Subjects", href: "/subjects", icon: BookOpen, core: true, roles: STRUCTURE_ROLES },
+  { label: "Enrolment", href: "/enrollments", icon: UserRoundPlus, core: true, roles: STRUCTURE_ROLES },
+  {
+    // School-type only (§6.7), but the page explains itself on a college
+    // rather than 404ing, so the link stays and the tenant type decides
+    // what it shows.
+    label: "Parent links",
+    href: "/parent-links",
+    icon: Link2,
+    core: true,
+    roles: STRUCTURE_ROLES,
+  },
+  { label: "Academic years", href: "/academic-years", icon: CalendarRange, core: true, roles: STRUCTURE_ROLES },
 ];
 
 /** Admin-only tail of the sidebar (§3). */
@@ -177,6 +217,10 @@ export function getNavSections(
 
   const modules = visible(NAV_MODULES, enabledModules, roles);
   if (modules.length) sections.push({ title: "Modules", items: modules });
+
+  const structure = visible(NAV_STRUCTURE, enabledModules, roles);
+  if (structure.length)
+    sections.push({ title: "Institution", items: structure });
 
   const admin = visible(NAV_ADMIN, enabledModules, roles);
   if (admin.length) sections.push({ title: "Manage", items: admin });
