@@ -14,6 +14,7 @@ import type {
   SubmissionStats,
   TimetableEntry,
 } from "@/types/examination";
+import { getClassRoster } from "./attendance-data";
 
 /**
  * Examination data source.
@@ -36,6 +37,7 @@ import type {
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+const MINUTES = 60 * 1000;
 const HOURS = 60 * 60 * 1000;
 const DAYS = 24 * HOURS;
 /** Fixed base time so server and client render identically. */
@@ -56,12 +58,22 @@ const EXAMS: ExamSummary[] = [
     totalMarks: 50,
     passingMarks: 20,
     durationMinutes: 90,
-    scheduledAt: at(-2 * HOURS),
+    // Started 55 minutes ago, so 35 remain. It was `at(-2 * HOURS)` against a
+    // 90-minute paper, which meant the only ONGOING exam in the fixture had
+    // *already ended* — the live monitor (C-EC-05) then showed a countdown
+    // reading "overdue by 30m" and nothing a controller could act on.
+    scheduledAt: at(-55 * MINUTES),
     status: "ONGOING",
     createdBy: "Priya Sharma",
     questionCount: 25,
-    enrolledCount: 32,
-    submittedCount: 18,
+    // Matches the attempt roster: 7 candidates, all of whom started. A cohort
+    // of 32 against 7 attempt rows reported "25 not started" 40 minutes into
+    // the paper, which reads as a system failure rather than a demo fixture.
+    enrolledCount: 7,
+    // 4 of the 7 attempts have been handed in (2 SUBMITTED + 2 GRADED).
+    // Left at 18 after the cohort was corrected to 7, this claimed more
+    // submissions than there were candidates.
+    submittedCount: 4,
     gradedCount: 0,
     malpracticeFlags: 1,
     hallsAllocated: 0,
@@ -494,15 +506,40 @@ export function getExamSettings(id: string): ExamSettings {
  * statistic read from this one array, so the counts can't disagree with the
  * rows — the mistake that produced phantom timetable clashes on PAGE 10.
  */
-const ATTEMPTS: LiveAttempt[] = [
-  { id: "a1", studentName: "Aryan Mehta", rollNo: "ROLL142", startedAt: at(-100 * 60 * 1000), status: "IN_PROGRESS", answeredCount: 4, tabSwitchCount: 4 },
-  { id: "a2", studentName: "Sneha Rao", rollNo: "ROLL126", startedAt: at(-105 * 60 * 1000), status: "SUBMITTED", answeredCount: 6, tabSwitchCount: 0 },
-  { id: "a3", studentName: "Imran Shaikh", rollNo: "ROLL133", startedAt: at(-102 * 60 * 1000), status: "IN_PROGRESS", answeredCount: 5, tabSwitchCount: 1 },
-  { id: "a4", studentName: "Divya Nair", rollNo: "ROLL107", startedAt: at(-108 * 60 * 1000), status: "SUBMITTED", answeredCount: 6, tabSwitchCount: 0 },
-  { id: "a5", studentName: "Kiran Patel", rollNo: "ROLL118", startedAt: at(-99 * 60 * 1000), status: "MALPRACTICE", answeredCount: 3, tabSwitchCount: 11 },
-  { id: "a6", studentName: "Meera Iyer", rollNo: "ROLL151", startedAt: at(-107 * 60 * 1000), status: "GRADED", answeredCount: 6, tabSwitchCount: 0 },
-  { id: "a7", studentName: "Rahul Das", rollNo: "ROLL164", startedAt: at(-104 * 60 * 1000), status: "GRADED", answeredCount: 6, tabSwitchCount: 2 },
+/**
+ * [rosterIndex, minutesAgo, status, answeredCount, tabSwitchCount]
+ *
+ * The students are read from `getClassRoster()` rather than typed here. The
+ * hand-written list had drifted: ROLL151 was "Meera Iyer" while the roster
+ * (and the fee ledger, the hostel roll-call and global search) call her
+ * "Rhea Kapoor", and "Rahul Das / ROLL164" existed nowhere else in the app.
+ * A malpractice log naming a student who cannot be looked up is worse than
+ * useless to an Exam Controller.
+ */
+const ATTEMPT_SEED: [number, number, LiveAttempt["status"], number, number][] = [
+  [0, 100, "IN_PROGRESS", 4, 4],
+  [1, 105, "SUBMITTED", 6, 0],
+  [2, 102, "IN_PROGRESS", 5, 1],
+  [3, 108, "SUBMITTED", 6, 0],
+  [4, 99, "MALPRACTICE", 3, 11],
+  [5, 107, "GRADED", 6, 0],
+  [6, 104, "GRADED", 6, 2],
 ];
+
+const ATTEMPTS: LiveAttempt[] = ATTEMPT_SEED.map(
+  ([index, minutesAgo, status, answeredCount, tabSwitchCount], i) => {
+    const student = getClassRoster()[index]!;
+    return {
+      id: `a${i + 1}`,
+      studentName: student.name,
+      rollNo: student.rollNo,
+      startedAt: at(-minutesAgo * 60 * 1000),
+      status,
+      answeredCount,
+      tabSwitchCount,
+    };
+  },
+);
 
 /** Exam Controller — live attempt monitor for an ongoing exam. */
 export function getLiveAttempts(): LiveAttempt[] {

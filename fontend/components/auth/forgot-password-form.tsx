@@ -44,9 +44,9 @@ export function ForgotPasswordForm({ tenant }: { tenant: Tenant }) {
           <MailCheck className="h-5 w-5 text-success" aria-hidden="true" />
         </div>
 
-        <h2 className="font-display text-[22px] font-bold text-[#0F172A]">
+        <h1 className="font-display text-[22px] font-bold text-[#0F172A]">
           Check your inbox
-        </h2>
+        </h1>
         <p className="mt-2 text-[13px] leading-relaxed text-[#64748B]">
           If an account matches what you entered, we&apos;ve sent a reset link.
           It expires in 30 minutes.
@@ -66,9 +66,9 @@ export function ForgotPasswordForm({ tenant }: { tenant: Tenant }) {
   return (
     <div className="rounded-card bg-white p-0 lg:border lg:border-[#E2E8F0] lg:p-8 lg:shadow-card">
       <div className="mb-7">
-        <h2 className="font-display text-[22px] font-bold text-[#0F172A]">
+        <h1 className="font-display text-[22px] font-bold text-[#0F172A]">
           Reset your password
-        </h2>
+        </h1>
         <p className="mt-1 text-[13px] text-[#64748B]">
           We&apos;ll email you a secure link to set a new one.
         </p>

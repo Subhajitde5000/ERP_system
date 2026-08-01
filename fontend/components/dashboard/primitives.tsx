@@ -215,6 +215,51 @@ export function ProgressRing({
   );
 }
 
+/**
+ * A single headline number on a card — the KPI strip every board carries.
+ *
+ * Extracted after five near-identical private copies appeared (hall board,
+ * malpractice board, monitor board, mentor board, subscription board), each
+ * with its own slightly different tone union and its own hand-rolled ternary
+ * chain. They only ever differed by which tones they happened to use, so the
+ * union is `Tone` and the colour comes from `TONE_TEXT` — which is already
+ * the AA-safe darkened set.
+ *
+ * `accent` and `muted` render as plain foreground: a KPI value is the loudest
+ * thing on the card, and indigo-on-white for a neutral number reads as a link.
+ */
+export function Kpi({
+  label,
+  value,
+  hint,
+  tone = "accent",
+}: {
+  label: string;
+  value: string;
+  /** Optional caption under the number. */
+  hint?: string;
+  tone?: Tone;
+}) {
+  return (
+    <Card className="min-w-0 p-5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-2 font-display text-2xl font-bold tabular-nums",
+          tone === "accent" || tone === "muted"
+            ? "text-foreground"
+            : TONE_TEXT[tone],
+        )}
+      >
+        {value}
+      </p>
+      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
+    </Card>
+  );
+}
+
 /** Empty state — §7. */
 export function EmptyState({ message }: { message: string }) {
   return (

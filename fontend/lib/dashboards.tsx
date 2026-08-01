@@ -483,6 +483,7 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         kind: "list",
         title: "Today's Substitutions",
         span: 5,
+        link: { label: "All substitutions", href: "/coordinator/substitutions" },
         items: [
           { title: "CS201 → Arun K.", subtitle: "09:00 AM · Room 105", tone: "success", meta: "Confirmed" },
           { title: "EC202 → Meena T.", subtitle: "11:00 AM · Room 302", tone: "warning", meta: "Pending" },
@@ -495,7 +496,7 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         span: 12,
         items: [
           { label: "Timetable Builder", icon: CalendarDays, href: "/timetable", primary: true },
-          { label: "Add Substitution", icon: RefreshCw, href: "/timetable" },
+          { label: "Add Substitution", icon: RefreshCw, href: "/coordinator/substitutions/new" },
           { label: "Post Academic Notice", icon: Megaphone, href: "/notices/new" },
         ],
       },
@@ -556,8 +557,10 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "Create Schedule", icon: CalendarPlus, href: "/examination", primary: true },
-          { label: "Allocate Halls", icon: DoorOpen, href: "/examination" },
+          // C-EC-03 / C-EC-04 — these were stand-ins pointing at the shared
+          // examination list before the controller's own pages existed.
+          { label: "Create Schedule", icon: CalendarPlus, href: "/exam-controller/schedule/new", primary: true },
+          { label: "Allocate Halls", icon: DoorOpen, href: "/exam-controller/halls" },
           { label: "Compile Results", icon: Layers, href: "/results" },
           { label: "Publish Results", icon: FileCheck2, href: "/results" },
         ],
@@ -816,7 +819,7 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Overdue Books",
         span: 7,
         action: "Send reminder",
-        link: { label: "Full list", href: "/library/dashboard" },
+        link: { label: "Full list", href: "/library/overdue" },
         columns: [
           { key: "student", label: "Student" },
           { key: "book", label: "Book" },
@@ -844,10 +847,10 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "Issue Book", icon: BookOpen, href: "/library/dashboard", primary: true },
-          { label: "Return Book", icon: RefreshCw, href: "/library/dashboard" },
-          { label: "Add Book", icon: BookPlus, href: "/library/dashboard" },
-          { label: "E-Resources", icon: MonitorPlay, href: "/library/dashboard" },
+          { label: "Issue Book", icon: BookOpen, href: "/library/issues/new", primary: true },
+          { label: "Return Book", icon: RefreshCw, href: "/library/issues" },
+          { label: "Add Book", icon: BookPlus, href: "/library/books" },
+          { label: "E-Resources", icon: MonitorPlay, href: "/library/e-resources" },
         ],
       },
     ],

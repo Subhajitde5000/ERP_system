@@ -148,3 +148,130 @@ export interface BookDetail {
     fineAmount: number;
   } | null;
 }
+
+/* ── Librarian console (C-LB-02, C-LB-04…C-LB-07) ───────────────────────── */
+
+/**
+ * One row of the catalogue list. `BookSummary` already carries every column
+ * `books` has plus the derived counters, so the catalogue reuses it rather
+ * than declaring a near-identical shape.
+ */
+export interface BookCatalogue {
+  books: BookSummary[];
+  /** Distinct `subject_area` values, for the filter. */
+  subjects: string[];
+  totals: {
+    titles: number;
+    copies: number;
+    available: number;
+    onLoan: number;
+    outOfCirculation: number;
+  };
+  canManage: boolean;
+}
+
+/**
+ * A live loan, flattened across every title.
+ *
+ * `BookIssueRecord` is per-title (the detail page already knows which book it
+ * is showing); the circulation desk needs the title on the row itself.
+ */
+export interface LoanRow extends BookIssueRecord {
+  bookId: string;
+  bookTitle: string;
+}
+
+/** C-LB-06 — "Issued Books List", and C-LB-07 filtered to the late ones. */
+export interface CirculationDesk {
+  /** Loans with `returned_at IS NULL`. */
+  outstanding: LoanRow[];
+  /** Returned loans, most recent first — the audit trail behind a return. */
+  returned: LoanRow[];
+  totals: {
+    onLoan: number;
+    overdue: number;
+    dueToday: number;
+    dueThisWeek: number;
+    outstandingFines: number;
+    borrowers: number;
+  };
+  today: string;
+  canManage: boolean;
+}
+
+/** A copy that can be issued right now — C-LB-04. */
+export interface IssuableCopy {
+  copyId: string;
+  accessionNumber: string;
+  condition: BookCondition;
+  bookId: string;
+  bookTitle: string;
+  authors: string[];
+  locationCode: string | null;
+}
+
+/** Someone who may borrow — `book_issues.borrower_id` is any user (§8.1). */
+export interface BorrowerOption {
+  id: string;
+  name: string;
+  ref: string;
+  kind: "STUDENT" | "STAFF";
+  /** Live loans they already hold, so the desk can see a serial defaulter. */
+  currentLoans: number;
+  overdueLoans: number;
+}
+
+/** Everything C-LB-04's form needs, resolved on the server. */
+export interface IssueFormContext {
+  copies: IssuableCopy[];
+  borrowers: BorrowerOption[];
+  /** Default loan length in days. */
+  loanDays: number;
+  today: string;
+  /** Max concurrent loans one borrower may hold. */
+  borrowLimit: number;
+}
+
+/** Why a proposed issue cannot (or should not) go ahead — C-LB-04. */
+export type IssueIssueKind =
+  | "COPY_UNAVAILABLE"
+  | "BORROWER_AT_LIMIT"
+  | "BORROWER_OVERDUE"
+  | "PAST_DUE_DATE";
+
+export interface IssueIssue {
+  kind: IssueIssueKind;
+  message: string;
+  blocking: boolean;
+}
+
+/** C-LB-05 — the return screen for one live loan. */
+export interface ReturnContext {
+  loan: LoanRow;
+  /** Fine owed right now, recomputed from the due date — never trusted stale. */
+  fineDue: number;
+  today: string;
+}
+
+/* ── E-resources (`e_resources`, DB §8.1) ───────────────────────────────── */
+
+export type EResourceType = "EBOOK" | "JOURNAL" | "PAPER" | "LINK";
+
+export interface EResource {
+  id: string;
+  title: string;
+  resourceType: EResourceType;
+  /** External link, or null when the file is in S3. */
+  url: string | null;
+  /** S3 key — the DB stores one or the other. */
+  fileKey: string | null;
+  subjectArea: string | null;
+  uploadedByName: string;
+  createdAt: string;
+}
+
+export interface EResourceShelf {
+  resources: EResource[];
+  subjects: string[];
+  canManage: boolean;
+}

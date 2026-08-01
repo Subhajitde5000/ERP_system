@@ -36,7 +36,7 @@ export default async function LoginPage({
         <div className="w-full max-w-[400px] animate-fade-up py-4 lg:py-0">
           <LoginForm tenant={tenant} />
 
-          <p className="mt-6 text-center text-[11px] leading-relaxed text-[#94A3B8]">
+          <p className="mt-6 text-center text-[11px] leading-relaxed text-[#475569]">
             Protected by tenant isolation · All logins are audited ·{" "}
             <span className="font-medium text-[#0F172A]">v0.1.0</span>
           </p>

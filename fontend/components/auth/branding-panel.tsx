@@ -26,10 +26,15 @@ export function BrandingPanel() {
       </div>
 
       <div className="relative z-10">
-        <h1 className="font-display text-[32px] font-bold leading-[1.2] text-white">
+        {/*
+          A <p>, not an <h1>. This panel is `hidden lg:flex`, so on a phone it
+          contributed no heading at all and every auth page had zero h1. It is
+          also a slogan rather than the page's title — the card heading is.
+        */}
+        <p className="font-display text-[32px] font-bold leading-[1.2] text-white">
           One Platform for <br />
           <span className="text-accent-soft">Your Entire Institution</span>
-        </h1>
+        </p>
 
         <p className="mt-4 max-w-[360px] text-[15px] leading-6 text-[#94A3B8]">
           Attendance, exams, assignments, fees, hostel &amp; more — trusted by

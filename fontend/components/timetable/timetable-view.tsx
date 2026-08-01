@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Repeat, Upload } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { getClassSlots } from "@/lib/timetable-data";
+import { usePreviewHref } from "@/lib/use-preview-href";
 import { Card } from "@/components/dashboard/primitives";
 import { FormAlert } from "@/components/auth/form-alert";
 import { ConflictPanel } from "./conflict-panel";
@@ -50,6 +52,7 @@ export function TimetableView({
     childOptions?.[0]?.id ?? "",
   );
   const [status, setStatus] = useState<string | null>(null);
+  const href = usePreviewHref();
 
   const slots = personalSlots ?? getClassSlots(classId);
   const activeClass = classOptions?.find((c) => c.id === classId);
@@ -79,18 +82,16 @@ export function TimetableView({
             </button>
           )}
           {perms.canSubstitute && (
-            <button
-              type="button"
-              onClick={() =>
-                setStatus(
-                  "POST /timetable/substitutions — API not connected yet (Dev-B).",
-                )
-              }
+            // C-AC-06 is a real page now, so this navigates rather than
+            // firing a placeholder alert. `usePreviewHref` carries `?role=`
+            // — a bare <Link> would arrive as the default role and 403.
+            <Link
+              href={href("/coordinator/substitutions/new")}
               className="inline-flex h-10 items-center gap-1.5 rounded-field bg-accent px-4 text-sm font-semibold text-white shadow-accent transition-colors hover:bg-accent-hover"
             >
               <Repeat className="h-4 w-4" aria-hidden="true" />
               Add substitution
-            </button>
+            </Link>
           )}
         </div>
       )}

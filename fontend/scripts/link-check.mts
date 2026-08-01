@@ -59,6 +59,8 @@ const ID = {
   submission: "sub-as1-s6",
   department: "cse",
   klass: "fy-a",
+  /** A live loan, so C-LB-05 resolves rather than 404ing. */
+  loan: "b1-i1",
 };
 
 /** Mirrors the guard in `components/hod/hod-page.tsx` (§4.4 / §4.2 / §4.3). */
@@ -81,6 +83,45 @@ const structureOk = (role: string) =>
   role === "VICE_PRINCIPAL"
     ? "ok"
     : "denied";
+
+/** §4.6 — mirrors `examControlAccess()` in `lib/exam-control.ts`. The
+ *  Principal and VP read the console (they approve schedules) but cannot
+ *  edit; both states are reachable, so both are "ok". */
+const examControlOk = (role: string) =>
+  role === "EXAM_CONTROLLER" ||
+  role === "INSTITUTION_ADMIN" ||
+  role === "PRINCIPAL" ||
+  role === "VICE_PRINCIPAL"
+    ? "ok"
+    : "denied";
+
+/**
+ * §4.5 / §6 — mirrors `substitutionAccess()` in `lib/coordinator.ts`, which
+ * itself delegates to `timetablePermissions()`. Any role holding a timetable
+ * view reaches the board (read-only unless they can substitute); the roles
+ * with `view: "NONE"` are refused.
+ */
+const substitutionOk = (P) => (P.timetable.view === "NONE" ? "denied" : "ok");
+
+/** C-AC-06 is an edit, so only `canSubstitute` gets past the guard. */
+const addSubstitutionOk = (P) =>
+  P.timetable.view === "NONE" || !P.timetable.canSubstitute ? "denied" : "ok";
+
+/**
+ * PAGE 24 / §3 — mirrors `LibraryPage`. Two gates: the optional `library`
+ * module, then `bookPermissions()`. The link checker runs with every module
+ * enabled, so only the role gate varies here.
+ */
+const libraryReadOk = (P) => (P.book.view === "NONE" ? "denied" : "ok");
+
+/**
+ * Circulation pages name who borrowed what, which PAGE 24 gives to the
+ * Librarian alone — so they need manage rights, not merely a catalogue view.
+ */
+const libraryManageOk = (P) =>
+  P.book.view === "NONE" || !(P.book.canCirculate || P.book.canEditBook)
+    ? "denied"
+    : "ok";
 
 /** Shape of the thread `ID.thread` points at, so the expectation can model
  *  the per-thread scope + tag fence the detail page applies. */
@@ -148,6 +189,23 @@ const PAGES = [
   // it; everyone else is refused.
   { label: "HOD teacher list", path: () => `/hod/teachers`, expect: (r) => hodOk(r.role) },
   { label: "HOD mentor assignments", path: () => `/hod/mentors`, expect: (r) => hodOk(r.role) },
+  // C-EC-03 … C-EC-06 — the Exam Controller console, institution-wide.
+  { label: "Schedule an exam", path: () => `/exam-controller/schedule/new`, expect: (r) => examControlOk(r.role) },
+  { label: "Hall allocation", path: () => `/exam-controller/halls`, expect: (r) => examControlOk(r.role) },
+  { label: "Active exams monitor", path: () => `/exam-controller/monitor`, expect: (r) => examControlOk(r.role) },
+  { label: "Malpractice logs", path: () => `/exam-controller/malpractice`, expect: (r) => examControlOk(r.role) },
+  // C-AC-05 / C-AC-06 — the coordinator's substitution board. Reading it
+  // follows the timetable grant; arranging cover needs `canSubstitute`.
+  { label: "Substitutions", path: () => `/coordinator/substitutions`, expect: (r, P) => substitutionOk(P) },
+  { label: "Add substitution", path: () => `/coordinator/substitutions/new`, expect: (r, P) => addSubstitutionOk(P) },
+  // C-LB-02 … C-LB-08 — the librarian's desk. The catalogue and e-resources
+  // are for readers; the circulation pages name borrowers, so they are not.
+  { label: "Book catalogue", path: () => `/library/books`, expect: (r, P) => libraryReadOk(P) },
+  { label: "E-resources", path: () => `/library/e-resources`, expect: (r, P) => libraryReadOk(P) },
+  { label: "Issued books", path: () => `/library/issues`, expect: (r, P) => libraryManageOk(P) },
+  { label: "Overdue books", path: () => `/library/overdue`, expect: (r, P) => libraryManageOk(P) },
+  { label: "Issue a book", path: () => `/library/issues/new`, expect: (r, P) => libraryManageOk(P) },
+  { label: "Return a book", path: () => `/library/issues/${ID.loan}/return`, expect: (r, P) => libraryManageOk(P) },
   // C-TC-16 — one student's work. Reviewers only; everyone else gets a 404,
   // not a 403, so the URL space can't be probed. "404" is the expectation
   // for the roles without `canReview`.

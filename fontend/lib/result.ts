@@ -251,5 +251,7 @@ export function publishedOn(iso: string | null): string {
     day: "numeric",
     month: "short",
     year: "numeric",
+    // See `formatDate` — a missing timeZone renders the server's zone.
+    timeZone: "Asia/Kolkata",
   });
 }

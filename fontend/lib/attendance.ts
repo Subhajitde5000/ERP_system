@@ -232,6 +232,9 @@ export function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
+    // Without this the server's zone (UTC here) is used, rolling any
+    // timestamp before 05:30 IST back to the previous day.
+    timeZone: "Asia/Kolkata",
   });
 }
 

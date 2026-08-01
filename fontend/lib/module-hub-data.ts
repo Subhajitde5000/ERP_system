@@ -2,6 +2,7 @@ import {
   BadgeIndianRupee,
   BedDouble,
   Book,
+  BookPlus,
   Boxes,
   CalendarClock,
   CalendarPlus,
@@ -10,6 +11,7 @@ import {
   FileText,
   Handshake,
   MapPinned,
+  MonitorPlay,
   PackageMinus,
   PackagePlus,
   ShieldAlert,
@@ -124,10 +126,16 @@ const BUILDERS: Record<string, Builder> = {
       ],
       actions: canManage
         ? [
-            { label: "Circulation report", icon: TrendingUp, href: "/reports", primary: true },
-            { label: "Search catalogue", icon: Book, href: "/search?q=algorithms" },
+            { label: "Issue a book", icon: BookPlus, href: "/library/issues/new", primary: true },
+            { label: "Issued books", icon: Book, href: "/library/issues" },
+            { label: "Catalogue", icon: Book, href: "/library/books" },
+            { label: "Circulation report", icon: TrendingUp, href: "/reports" },
           ]
-        : [],
+        : [
+            // Readers get the two pages that are theirs, not the desk's.
+            { label: "Catalogue", icon: Book, href: "/library/books", primary: true },
+            { label: "E-resources", icon: MonitorPlay, href: "/library/e-resources" },
+          ],
     };
   },
 

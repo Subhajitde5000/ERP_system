@@ -10,6 +10,8 @@ import {
   CalendarClock,
   CalendarDays,
   CalendarRange,
+  Activity,
+  DoorOpen,
   ClipboardCheck,
   Contact,
   FileBarChart,
@@ -20,9 +22,11 @@ import {
   Library,
   Link2,
   Megaphone,
+  Repeat,
   MessagesSquare,
   School,
   ScrollText,
+  ShieldAlert,
   Settings,
   ShieldCheck,
   UserCheck,
@@ -194,6 +198,65 @@ const NAV_ADMIN: NavItem[] = [
     icon: Contact,
     core: true,
     roles: ["VICE_PRINCIPAL"],
+  },
+  {
+    // C-EC-03…06 — the Exam Controller's console. §4.6 scopes them to the
+    // examination module across all departments; the Admin and leadership
+    // read it (leadership read-only, §4.3 "approve exam schedules").
+    label: "Halls",
+    href: "/exam-controller/halls",
+    icon: DoorOpen,
+    core: true,
+    roles: ["EXAM_CONTROLLER"],
+  },
+  {
+    label: "Live exams",
+    href: "/exam-controller/monitor",
+    icon: Activity,
+    core: true,
+    roles: ["EXAM_CONTROLLER"],
+  },
+  {
+    label: "Malpractice",
+    href: "/exam-controller/malpractice",
+    icon: ShieldAlert,
+    core: true,
+    roles: ["EXAM_CONTROLLER"],
+  },
+  {
+    // C-LB-02 / C-LB-04 … C-LB-08 — the librarian's desk. Only the Librarian
+    // gets these: every other role reaches the catalogue through the module
+    // hub, and a circulation queue in fifteen other sidebars would be noise.
+    label: "Catalogue",
+    href: "/library/books",
+    icon: Library,
+    module: "library",
+    roles: ["LIBRARIAN"],
+  },
+  {
+    label: "Issued books",
+    href: "/library/issues",
+    icon: BookMarked,
+    module: "library",
+    roles: ["LIBRARIAN"],
+  },
+  {
+    label: "Overdue",
+    href: "/library/overdue",
+    icon: ShieldAlert,
+    module: "library",
+    roles: ["LIBRARIAN"],
+  },
+  {
+    // C-AC-05 / C-AC-06 — the coordinator's substitution board. Only the
+    // Academic Coordinator gets the sidebar link: every other timetable role
+    // can reach the page but has nothing to do there, and a link to a
+    // read-only list would be noise in fifteen other sidebars.
+    label: "Substitutions",
+    href: "/coordinator/substitutions",
+    icon: Repeat,
+    core: true,
+    roles: ["ACADEMIC_COORDINATOR"],
   },
   {
     // C-HD-07 / C-HD-08 — the HOD's own department management. Scoped to

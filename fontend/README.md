@@ -1433,6 +1433,218 @@ tenant while the platform overview correctly counted zero.
 
 ---
 
+## Exam Controller console
+
+C-EC-03…06, under `app/(institution)/exam-controller/`. The dashboard
+(C-EC-01), schedule (C-EC-02), results (C-EC-07/08), grade cards (C-EC-09) and
+reports (C-EC-10) are the shared pages the controller already reaches.
+
+| Task | Page | Route |
+|---|---|---|
+| C-EC-03 | Create / Edit Exam Schedule | `/exam-controller/schedule/new` |
+| C-EC-04 | Hall Allocation | `/exam-controller/halls` |
+| C-EC-05 | Active Exams Monitor | `/exam-controller/monitor` |
+| C-EC-06 | Malpractice Logs | `/exam-controller/malpractice` |
+
+**Access (`examControlAccess()` in `lib/exam-control.ts`).** Exam Controller
+and Institution Admin edit; Principal and Vice Principal read (§4.3 grants
+"approve exam schedules", which needs the view but not the levers); every other
+role is refused. The read-only state is threaded all the way to the buttons —
+a `canEdit` the component ignores is worse than no flag at all, which is how a
+Principal once got working Create/Edit/Delete on eight pages.
+
+**Clash detection is the point of C-EC-03**, so it is a pure function
+(`findScheduleClashes()`) with its own test rather than a check buried in the
+form. Three kinds **block**: `CLASS_BUSY` (a cohort cannot sit two papers at
+once), `ROOM_TAKEN`, and `PAST_DATE`. `INVIGILATOR_BUSY` only **warns** — a
+controller legitimately double-books one invigilator across two adjacent halls,
+and refusing that would model a rule the institution does not have.
+
+**Everything is IST.** `<input type="date">` and `<input type="time">` return
+a *wall-clock* value, so they go through `istToIso()` in `lib/utils.ts`. Pasting
+them into a `` `${date}T${time}:00.000Z` `` template claimed the controller's
+10:00 was 10:00 **UTC** — 15:30 IST — which slid every proposed exam 5½ hours
+and let a genuine double-booking through the clash check reporting "no
+clashes". `PAST_DATE` likewise compares `istDate()`, not `iso.slice(0, 10)`:
+the UTC slice rolls back before 05:30 and rejected a 01:00 exam booked for
+today.
+
+**Deviations, flagged.**
+1. **There is no `exam_halls` / rooms table.** §7.2 stores
+   `exam_hall_allocations.room_no` as free text `VARCHAR(50)`, so nothing
+   records that a hall exists, what it seats, or whether it is usable. Without
+   a capacity the page cannot answer "do these rooms fit 45 candidates?", which
+   is the whole task. `EXAM_ROOMS` in `lib/exam-control-data.ts` is the shape
+   that table needs, marked `TODO(Dev-A)` — the same call made for
+   `ticket_replies`, `trial_notes` and `mentor_assignments`.
+2. **`ExamSummary.className` holds the class *code*** ("FY-A"), not
+   `classes.name` ("FY-BSc-A"), so `resolveClassId()` joins on code + department
+   before falling back to the name. Matching on the name alone silently found
+   nothing and *every* class clash went undetected. Codes are only unique per
+   department (§6.3's composite key) — `SY-A` exists in both CSE and ECE — so
+   the department disambiguates.
+3. **The auto-flag threshold (3 tab switches) and the 48-hour "starting soon"
+   window are conventions, not documented rules.** They are two named constants
+   in `lib/exam-control.ts` with a TODO to move them into institution settings,
+   as `SLA_HOURS` did.
+4. **C-EC-05's "if Mentor role enabled" analogue.** MENTOR and EXAM_CONTROLLER
+   are *roles*, not module keys, so the gate is whether anyone holds the grant
+   rather than a `modules` lookup.
+
+**A student sees their own anti-cheat counter, and nothing else.** The exam
+detail payload for a STUDENT carries exactly one `tabSwitchCount` — their own
+attempt row (§7.2) — with `attempts`, `halls` and `malpractice` all empty. The
+regression suite asserts the count is theirs *and* runs a positive control
+proving the same probe finds all seven on the controller's payload, because a
+probe that never fires passes every time.
+
+---
+
+## Academic Coordinator substitutions
+
+C-AC-05 and C-AC-06, under `app/(institution)/coordinator/`. The dashboard
+(C-AC-01), timetable builder / grid / conflict checker (C-AC-02…04), academic
+calendar (C-AC-07) and notice composer (C-AC-08) are shared pages the
+coordinator already reaches.
+
+| Task | Page | Route |
+|---|---|---|
+| C-AC-05 | Substitution Management | `/coordinator/substitutions` |
+| C-AC-06 | Add Substitution | `/coordinator/substitutions/new` |
+
+**Access delegates to the timetable grant, it does not restate it.**
+`substitutionAccess()` calls `timetablePermissions()` (PAGE 10) and reads
+`canSubstitute`. A substitution *is* a timetable edit, so a second permission
+table here would be one refactor away from disagreeing with the grid that
+renders the same rows. That gives the Academic Coordinator the levers (§4.5 /
+§6 — the only institution role with a build grant), read-only to everyone
+holding a timetable view, and a refusal for roles whose view is `NONE`.
+C-AC-06 additionally requires `canSubstitute`, so the form context — the
+teacher list and the whole grid — is **never built** for a read-only role and
+never reaches the browser.
+
+**Clash detection is a pure function** (`findSubstitutionIssues()`) with its
+own unit suite, not a check buried in the form. Five kinds **block**:
+`ALREADY_COVERED` (violates `UNIQUE (slot_id, date)`, §7.8 — the insert would
+fail at the database anyway), `SUBSTITUTE_BUSY` (they teach their own class
+that period), `SAME_TEACHER`, `WRONG_DAY` (the slot's weekday doesn't match
+the chosen date) and `PAST_DATE`. `HEAVY_LOAD` only **warns** — asking one
+teacher to cover a third period is a judgement call a coordinator is entitled
+to make on a bad morning, and refusing it would model a rule the institution
+does not have.
+
+**Dates are plain DATEs, compared as strings.** §7.8 stores `date DATE` with
+no time, so `whenFor()` and the `PAST_DATE` check are string comparisons and
+no `Date` is ever constructed — which is what makes them immune to the UTC
+roll-back that shifted the exam scheduler by 5½ hours. `dowOf()` parses at UTC
+midnight and reads `getUTCDay()` for the same reason.
+
+**Deviations, flagged.**
+1. **`timetable_substitutions.reason` has no FK to `leave_requests`.** The
+   schema does not connect a substitution to *why* the teacher is away, so
+   neither does this page — the reason is free text, as §7.8 defines it.
+   Deriving "who is absent today" from the leave module would be inventing a
+   join the database has not got. (The leave fixture also has nobody away
+   today, so an "uncovered periods" panel would have been permanently empty —
+   the fixture-state trap.)
+2. **Substitute candidates are read off the timetable, not filtered by role.**
+   The grid is the only place that knows a person actually takes classes;
+   `getStaffDirectory()` still supplies department and designation so two
+   names can be told apart.
+3. **`HEAVY_COVER_LOAD = 2` is a convention, not a documented rule** — one
+   named constant in `lib/coordinator.ts` with a TODO to move it into
+   institution settings, as `SLA_HOURS` did.
+4. **Only the Academic Coordinator gets the sidebar link.** Every other
+   timetable role can reach the page but has nothing to do there, and a link
+   to a read-only list would be noise in fifteen other sidebars.
+
+**Two stubs became real.** The coordinator dashboard's "Add Substitution"
+quick action pointed at `/timetable`, and the timetable builder's "Add
+substitution" button only fired a placeholder alert. Both now navigate to
+C-AC-06 through `usePreviewHref()`, so `?role=` survives the click.
+
+**`Kpi` is now a shared primitive.** Five boards (hall, malpractice, monitor,
+mentor, subscription) had each grown a private near-identical copy with its
+own tone union and its own hand-rolled ternary chain. They are one
+`components/dashboard/primitives.tsx` export taking `Tone`, coloured from the
+AA-safe `TONE_TEXT` map.
+
+---
+
+## Librarian console + password reset
+
+Built as one batch because both close **dead ends the app already pointed
+at**, not because a role was next in the list. Evidence, measured: 24
+quick-action buttons across 7 roles linked to their own dashboard, and
+`/forgot-password` promised a reset link to a page that did not exist. See
+`BUILD-PRIORITY.md` at the repo root for the full ranking.
+
+| Task | Page | Route |
+|---|---|---|
+| C-PB-03 | Reset Password | `/reset-password?token=` |
+| C-LB-02 | Book Catalogue | `/library/books` |
+| C-LB-04 | Issue Book | `/library/issues/new` |
+| C-LB-05 | Return Book | `/library/issues/:id/return` |
+| C-LB-06 | Issued Books List | `/library/issues` |
+| C-LB-07 | Overdue List | `/library/overdue` |
+| C-LB-08 | E-Resources | `/library/e-resources` |
+
+**C-LB-06 and C-LB-07 are one component.** "Overdue" is a *filter* over the
+loans, not a separate query — two screens reading two sources would eventually
+disagree about how many books are late. `/library/overdue` opens the same desk
+on the overdue tab.
+
+**Nothing was re-seeded.** `library-data.ts` already owned the catalogue,
+copies and issue history feeding PAGE 24; the new pages add cross-title
+accessors (`allLoans()`, `getCirculationDesk()`) built from the same
+`buildIssues()` the book page uses, so a loan on the desk is byte-for-byte the
+loan on the book page. Borrowers come from `getClassRoster()` and
+`getStaffDirectory()`.
+
+**Who sees borrower identity.** PAGE 24 gives "current borrowers" and "full
+issue history" to the Librarian alone. The catalogue and e-resources are for
+readers; the three circulation pages are not, so `LibraryPage requireManage`
+refuses them — the roll numbers, accession numbers and fines never enter the
+RSC payload. Verified by grepping raw server HTML for 7 roles × 5 routes, with
+three positive controls proving the probes fire on the Librarian's payload.
+
+**Deviations, flagged.**
+1. **`LOAN_DAYS = 14`, `BORROW_LIMIT = 3`, `DUE_SOON_DAYS = 7` are
+   conventions.** §8.1 stores `due_date` per loan but no doc gives a default
+   term or a borrowing cap. Three named constants in `lib/library.ts` beside
+   `FINE_PER_DAY`, with a TODO to move them to `tenant_settings`.
+2. **A borrower at their limit only warns.** A librarian routinely lends one
+   more while the late book is promised for tomorrow; refusing it would model
+   a rule the institution has not got. Only `COPY_UNAVAILABLE` and
+   `PAST_DUE_DATE` block.
+3. **`verifyResetToken()` is a stub with a demo convention** — any token
+   containing "expired" models the closed 30-minute window (§4.3
+   `password_reset_expires`), so both dead-end states are reviewable without a
+   backend.
+4. **The return screen recomputes the fine** rather than reading
+   `book_issues.fine_amount`, which is written when the loan starts and is
+   stale the moment the book is late.
+
+## Pre-existing bugs found and fixed this batch
+
+- **All four auth pages had no `h1` on mobile.** The only `h1` lived in
+  `BrandingPanel`, which is `hidden lg:flex` — so on a phone login,
+  forgot-password and reset-password had zero headings. It was also a slogan
+  rather than the page title. The slogan is now a `<p>` and each card heading
+  is the `h1`.
+- **Auth footer text was 2.45:1** (`#94A3B8` on `#F8FAFC`), far below AA for
+  11px. Now `#475569` at **7.24:1**.
+- **`Button` defaults to `w-full`** unless the caller passes an explicit
+  width, so a submit beside a Cancel link wraps to its own full-width row.
+  Fixed on the two new library forms and on C-AC-06, which had the same latent
+  bug from last turn.
+- **A library KPI pinned at zero.** `ACC-11890` was issued 6 days into a
+  14-day loan, leaving "due this week" permanently at 0. Retimed to 8 days.
+- **`LOAN_DAYS` was defined twice** — a private copy in `library-data.ts` and
+  the new shared one. Consolidated.
+
+---
+
 ## Link integrity
 
 `npm run link-check` probes every page for all 18 roles **and crawls every

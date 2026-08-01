@@ -107,9 +107,9 @@ export function LoginForm({ tenant }: { tenant: Tenant }) {
   return (
     <div className="rounded-card bg-white p-0 lg:border lg:border-[#E2E8F0] lg:p-8 lg:shadow-card">
       <div className="mb-7">
-        <h2 className="font-display text-[22px] font-bold text-[#0F172A]">
+        <h1 className="font-display text-[22px] font-bold text-[#0F172A]">
           Welcome back
-        </h2>
+        </h1>
         <p className="mt-1 text-[13px] text-[#64748B]">
           {tenant.isPlatform
             ? "Sign in to the xyz.com platform console"

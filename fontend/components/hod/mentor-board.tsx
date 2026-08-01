@@ -6,7 +6,7 @@ import { Info, TriangleAlert, UserMinus, UserPlus, Users } from "lucide-react";
 
 import { cn, formatDate } from "@/lib/utils";
 import { FormAlert } from "@/components/auth/form-alert";
-import { EmptyState } from "@/components/dashboard/primitives";
+import { EmptyState, Kpi } from "@/components/dashboard/primitives";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -304,40 +304,6 @@ export function MentorBoardView({
   );
 }
 
-function Kpi({
-  label,
-  value,
-  hint,
-  tone = "accent",
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  tone?: "accent" | "warning" | "danger" | "success";
-}) {
-  return (
-    <StructureCard className="!p-5">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "mt-2 font-display text-2xl font-bold tabular-nums",
-          tone === "accent"
-            ? "text-foreground"
-            : tone === "warning"
-              ? "text-[#B45309]"
-              : tone === "danger"
-                ? "text-destructive-text"
-                : "text-success-text",
-        )}
-      >
-        {value}
-      </p>
-      <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>
-    </StructureCard>
-  );
-}
 
 function MentorGroupCard({
   group,

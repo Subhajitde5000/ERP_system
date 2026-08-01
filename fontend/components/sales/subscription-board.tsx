@@ -21,12 +21,7 @@ import {
   toMrr,
 } from "@/lib/sales";
 import { FormAlert } from "@/components/auth/form-alert";
-import {
-  Card,
-  EmptyState,
-  TONE_BG,
-  TONE_TEXT,
-} from "@/components/dashboard/primitives";
+import { Card, EmptyState, Kpi, TONE_BG, TONE_TEXT } from "@/components/dashboard/primitives";
 import { Button } from "@/components/ui/button";
 import {
   FilterBar,
@@ -343,34 +338,6 @@ export function SubscriptionBoard({
   );
 }
 
-function Kpi({
-  label,
-  value,
-  hint,
-  tone = "accent",
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  tone?: "accent" | "warning" | "danger" | "success" | "muted";
-}) {
-  return (
-    <Card className="min-w-0 p-5">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "mt-2 font-display text-2xl font-bold",
-          tone === "accent" ? "text-foreground" : TONE_TEXT[tone],
-        )}
-      >
-        {value}
-      </p>
-      <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>
-    </Card>
-  );
-}
 
 /**
  * Suspension beats billing status: `is_active` (§4.2) and
