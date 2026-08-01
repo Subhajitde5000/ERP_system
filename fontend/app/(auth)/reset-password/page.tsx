@@ -30,9 +30,9 @@ export default async function ResetPasswordPage({
   searchParams: Promise<{ tenant?: string; token?: string }>;
 }) {
   const [headerList, params] = await Promise.all([headers(), searchParams]);
-  const tenant = resolveTenant(headerList.get("host"), params.tenant);
+  const tenant = await resolveTenant(headerList.get("host"), params.tenant);
   const token = typeof params.token === "string" ? params.token : "";
-  const state = verifyResetToken(token);
+  const state = await verifyResetToken(token);
 
   return (
     <div className="flex min-h-screen flex-col bg-[#F8FAFC] lg:flex-row">

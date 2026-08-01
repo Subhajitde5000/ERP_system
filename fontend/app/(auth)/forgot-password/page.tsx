@@ -18,7 +18,7 @@ export default async function ForgotPasswordPage({
   searchParams: Promise<{ tenant?: string }>;
 }) {
   const [headerList, params] = await Promise.all([headers(), searchParams]);
-  const tenant = resolveTenant(headerList.get("host"), params.tenant);
+  const tenant = await resolveTenant(headerList.get("host"), params.tenant);
 
   return (
     <div className="flex min-h-screen flex-col bg-[#F8FAFC] lg:flex-row">

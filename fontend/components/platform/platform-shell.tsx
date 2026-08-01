@@ -67,6 +67,8 @@ export function PlatformShell({
       userName={userName}
       roleChip={PLATFORM_ROLE_LABELS[role]}
       onNavigate={() => setOpen(false)}
+      // Platform staff have no account on any tenant login.
+      logoutHref="/platform/login"
     />
   );
 

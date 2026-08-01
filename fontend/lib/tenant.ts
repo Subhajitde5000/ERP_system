@@ -1,15 +1,20 @@
 import type { Tenant } from "@/types/auth";
+import { API_BASE_URL } from "./auth";
 
 /**
  * Subdomain → tenant resolution.
  *
- * Production wiring is Dev-A / A-11 TenantMiddleware (design §11). Until the
- * tenant API exists this resolves from the Host header and validates the slug
- * against a local fixture so the "Tenant Not Found" state (§7) is reachable.
+ * In production: calls GET /api/v1/tenants/by-slug/:slug which returns
+ * { name, type, logo_url } or 404.
+ *
+ * In local development (localhost / *.localhost): the API call is still
+ * attempted but falls back to the fixture map so the UI is reviewable
+ * without a running database.
  */
 
 /** Root domain; override per-environment with NEXT_PUBLIC_ROOT_DOMAIN. */
-export const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "xyz.com";
+export const ROOT_DOMAIN =
+  process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "xyz.com";
 
 /** Hosts that never carry a tenant slug. */
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "[::1]"]);
@@ -18,10 +23,10 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "[::1]"]);
 const PLATFORM_SLUGS = new Set(["app", "admin", "www", "api"]);
 
 /**
- * TODO(Dev-A): replace with GET /api/v1/tenants/by-slug/:slug
- * Demo fixture so the tenant badge + not-found state render without a backend.
+ * Local fixture — used as fallback when the backend is unreachable during
+ * development. Remove entries here as real institutions are seeded.
  */
-const KNOWN_TENANTS: Record<string, Omit<Tenant, "host" | "slug">> = {
+const FIXTURE_TENANTS: Record<string, Omit<Tenant, "host" | "slug">> = {
   "abc-college": {
     name: "ABC College",
     type: "COLLEGE",
@@ -60,7 +65,6 @@ function platformTenant(host: string): Tenant {
 export function slugFromHost(host: string | null | undefined): string | null {
   if (!host) return null;
 
-  // Strip port and normalise
   const hostname = host.split(":")[0]!.toLowerCase().trim();
   if (!hostname || LOCAL_HOSTS.has(hostname)) return null;
 
@@ -72,45 +76,98 @@ export function slugFromHost(host: string | null | undefined): string | null {
 
   const rootParts = ROOT_DOMAIN.split(".").length;
   const parts = hostname.split(".");
-  if (parts.length <= rootParts) return null; // apex, e.g. xyz.com
+  if (parts.length <= rootParts) return null;
 
   const sub = parts.slice(0, parts.length - rootParts).join(".");
   return sub || null;
 }
 
 /**
+ * Fetch tenant details from the API.
+ * Returns null on any error (404, network failure, etc.) so the caller can
+ * fall back to the fixture map or show "Institution not found".
+ *
+ * This is a server-side only call — it runs inside Next.js Server Components
+ * and page functions, never in the browser.
+ */
+async function fetchTenantBySlug(
+  slug: string,
+): Promise<Omit<Tenant, "host" | "slug"> | null> {
+  try {
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/tenants/by-slug/${encodeURIComponent(slug)}`,
+      {
+        // Next.js server fetch — revalidate every 5 minutes (matches Redis TTL)
+        next: { revalidate: 300 },
+      },
+    );
+    if (!res.ok) return null;
+
+    const envelope = await res.json() as {
+      success: boolean;
+      data: {
+        name: string;
+        type: string;
+        logo_url: string | null;
+        sso_provider: string | null;
+      };
+    };
+    if (!envelope.success || !envelope.data) return null;
+
+    return {
+      name: envelope.data.name,
+      type: envelope.data.type as Tenant["type"],
+      logoUrl: envelope.data.logo_url,
+      ssoProvider: envelope.data.sso_provider ?? undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resolve a Host header into the tenant the login page should render for.
+ * Async because it calls the API in production.
  *
  * @param host  Raw Host header, e.g. "abc-college.xyz.com"
  * @param slugOverride  Optional ?tenant= query value, for local development
  */
-export function resolveTenant(
+export async function resolveTenant(
   host: string | null | undefined,
   slugOverride?: string | null,
-): Tenant {
+): Promise<Tenant> {
   const displayHost = (host ?? ROOT_DOMAIN).split(":")[0]!.toLowerCase();
-  const slug = slugOverride?.trim().toLowerCase() || slugFromHost(host);
+  const slug =
+    slugOverride?.trim().toLowerCase() || slugFromHost(host);
 
-  // No subdomain → platform console
   if (!slug) return platformTenant(displayHost);
   if (PLATFORM_SLUGS.has(slug)) return platformTenant(displayHost);
 
-  const match = KNOWN_TENANTS[slug];
-  const badgeHost = slugOverride ? `${slug}.${ROOT_DOMAIN}` : displayHost;
+  const badgeHost = slugOverride
+    ? `${slug}.${ROOT_DOMAIN}`
+    : displayHost;
 
-  // Unknown slug → "Institution not found. Check subdomain." (§7)
-  if (!match) {
-    return {
-      slug,
-      name: slug,
-      host: badgeHost,
-      type: "COLLEGE",
-      notFound: true,
-      logoUrl: null,
-    };
+  // 1. Try the real API
+  const apiResult = await fetchTenantBySlug(slug);
+  if (apiResult) {
+    return { slug, host: badgeHost, ...apiResult };
   }
 
-  return { slug, host: badgeHost, ...match };
+  // 2. Fall back to local fixture (dev only)
+  const fixture = FIXTURE_TENANTS[slug];
+  if (fixture) {
+    return { slug, host: badgeHost, ...fixture };
+  }
+
+  // 3. Unknown slug — "Institution not found" state (design §7)
+  return {
+    slug,
+    name: slug,
+    host: badgeHost,
+    type: "COLLEGE",
+    notFound: true,
+    logoUrl: null,
+  };
 }
 
 /** Human label for the identifier field — colleges use roll numbers. */

@@ -82,7 +82,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
         {error && (
           <p
             id={errorId}
-            className="mt-1.5 text-[12px] font-medium text-destructive"
+            className="mt-1.5 text-[12px] font-medium text-destructive-text"
           >
             {error}
           </p>

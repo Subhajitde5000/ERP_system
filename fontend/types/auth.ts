@@ -130,3 +130,33 @@ export class AuthError extends Error {
     this.code = code;
   }
 }
+
+/* ── Platform console sign-in (app.xyz.com) ─────────────────────────────── */
+
+/**
+ * Platform staff credentials.
+ *
+ * Deliberately NOT `LoginCredentials`: platform users live in their own table
+ * (`platform_users`, DB §4.5) with **no `tenant_id`**, and the column is
+ * `email VARCHAR(255) UNIQUE` — there is no roll-number path, so the field is
+ * an email, not the tenant side's polymorphic `identifier`.
+ */
+export interface PlatformLoginCredentials {
+  email: string;
+  password: string;
+  remember: boolean;
+}
+
+/** What a successful platform sign-in returns. */
+export interface PlatformLoginResponse {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    /** `platform_users.last_login_at` — shown as "Last sign-in" on the console. */
+    lastLoginAt: string | null;
+  };
+  /** Exactly one. Unlike institution users, platform staff hold a single role. */
+  role: PlatformRole;
+  accessToken?: string;
+}

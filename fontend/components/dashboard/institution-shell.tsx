@@ -23,7 +23,7 @@ export async function InstitutionShell({
   }) => React.ReactNode;
 }) {
   const headerList = await headers();
-  const tenant = resolveTenant(headerList.get("host"), search.tenant);
+  const tenant = await resolveTenant(headerList.get("host"), search.tenant);
   const session = getSession(null, search);
   const role = session.roles[0]!;
 

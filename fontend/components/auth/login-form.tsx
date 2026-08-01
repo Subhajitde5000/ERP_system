@@ -204,7 +204,7 @@ export function LoginForm({ tenant }: { tenant: Tenant }) {
                 <div className="w-full border-t border-[#E2E8F0]" />
               </div>
               <div className="relative flex justify-center">
-                <span className="bg-white px-3 text-[12px] text-[#94A3B8]">
+                <span className="bg-white px-3 text-[12px] text-[#475569]">
                   or continue with
                 </span>
               </div>

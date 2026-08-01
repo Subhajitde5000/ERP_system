@@ -19,6 +19,7 @@ export function SidebarNav({
   userName,
   roleChip,
   onNavigate,
+  logoutHref = "/login",
 }: {
   sections: NavSection[];
   tenantName: string;
@@ -27,6 +28,12 @@ export function SidebarNav({
   roleChip: string;
   /** Closes the mobile drawer after a tap */
   onNavigate?: () => void;
+  /**
+   * Where "Log out" goes. Defaults to the institution login; the platform
+   * console passes its own, because signing a Super Admin out to a tenant
+   * login they have no account on is a dead end.
+   */
+  logoutHref?: string;
 }) {
   const pathname = usePathname();
 
@@ -118,7 +125,7 @@ export function SidebarNav({
         </Link>
 
         <Link
-          href="/login"
+          href={logoutHref}
           className="mt-1 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-[#94A3B8] transition-colors hover:bg-white/5 hover:text-white"
         >
           <LogOut className="h-4 w-4" aria-hidden="true" />
