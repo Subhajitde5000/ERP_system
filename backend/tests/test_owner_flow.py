@@ -265,7 +265,11 @@ async def test_owner_signup_endpoint_returns_201(client):
     assert res.status_code == 201, res.text
     body = res.json()["data"]
     assert body["email"] == "rahul@gmail.com"
-    assert body["is_email_verified"] is False
+    # camelCase on the wire — `fontend/types/owner.ts` declares
+    # `isEmailVerified`, so a snake_case payload would read as `undefined`
+    # in the UI. Owner responses derive from `Wire` to guarantee this.
+    assert body["isEmailVerified"] is False
+    assert "is_email_verified" not in body
 
 
 async def test_owner_login_invalid_returns_401(client):

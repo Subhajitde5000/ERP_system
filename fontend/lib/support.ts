@@ -61,7 +61,10 @@ export function isOpenTicket(t: { status: TicketStatus }): boolean {
  * Response-time target by priority, in hours.
  *
  * No doc states an SLA, so it lives here as one table rather than being
- * scattered through the UI — the same call made for `LATE_FINE_PER_DAY`.
+ * scattered through the UI. Mirrored by `SLA_HOURS` in
+ * `app/models/support_ticket.py`, which the dashboard's triage order uses —
+ * the two must stay in step, so change them together.
+ *
  * TODO(Dev-A): belongs in platform settings once the plans carry support
  * tiers; a Premium tenant should not wait as long as a Basic one.
  */
@@ -112,5 +115,11 @@ export const STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
   CLOSED: [],
 };
 
-/** The signed-in agent. TODO(Dev-A): read from the platform JWT. */
-export const CURRENT_AGENT = { id: "pu-2", name: "Nandini Rao" };
+/**
+ * The signed-in agent is NOT a constant.
+ *
+ * This module used to export `CURRENT_AGENT = { id: "pu-2", name: "Nandini
+ * Rao" }`, so every agent saw the same name on the reply box and "assigned to
+ * me" filtered on somebody else's id. It now comes from the platform session
+ * (`usePlatformSession`) and is passed to the components that need it.
+ */

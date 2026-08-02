@@ -11,6 +11,7 @@
  */
 
 import { API_BASE_URL } from "./auth";
+import { APIError, requestJson } from "./api-client";
 import type {
   BillingSummary,
   OwnerCredentials,
@@ -53,41 +54,17 @@ function clearOwnerRefresh(): void {
   }
 }
 
-/** Response envelope shared by every backend endpoint. */
-interface Envelope<T> {
-  success: boolean;
-  data: T;
-  message: string;
-}
-
-class APIError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = "APIError";
-    this.status = status;
-  }
-}
-
-async function ownerFetch<T>(
+const ownerFetch = <T>(
   path: string,
   init: RequestInit = {},
   auth = false,
-): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init.headers as Record<string, string> | undefined),
-  };
-  if (auth && _ownerAccessToken) headers.Authorization = `Bearer ${_ownerAccessToken}`;
-
-  const res = await fetch(`${BASE}${path}`, { ...init, headers, credentials: "include" });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new APIError(body?.detail ?? body?.message ?? `Request failed (${res.status})`, res.status);
-  }
-  const env = body as Envelope<T>;
-  return env.data;
-}
+): Promise<T> =>
+  requestJson<T>(
+    `${BASE}${path}`,
+    init,
+    auth ? _ownerAccessToken : null,
+    "OwnerAPIError",
+  );
 
 // ── Signup & verification ────────────────────────────────────────────────────
 
@@ -121,39 +98,15 @@ export async function resendOwnerVerification(email: string): Promise<void> {
 export async function ownerLogin(
   credentials: OwnerCredentials,
 ): Promise<OwnerLoginResponse> {
-  const data = await ownerFetch<{
-    tokens: { access_token: string; refresh_token: string; expires_in: number };
-    owner: {
-      id: string;
-      name: string;
-      email: string;
-      is_email_verified: boolean;
-      is_active: boolean;
-      last_login_at: string | null;
-      created_at: string;
-    };
-  }>("/login", {
+  // The API serialises camelCase (schemas/owner.py derives from `Wire`), so the
+  // payload already *is* OwnerLoginResponse — no hand-written key mapping.
+  const data = await ownerFetch<OwnerLoginResponse>("/login", {
     method: "POST",
     body: JSON.stringify(credentials),
   });
-  setOwnerAccessToken(data.tokens.access_token);
-  saveOwnerRefresh(data.tokens.refresh_token);
-  return {
-    tokens: {
-      accessToken: data.tokens.access_token,
-      refreshToken: data.tokens.refresh_token,
-      expiresIn: data.tokens.expires_in,
-    },
-    owner: {
-      id: data.owner.id,
-      name: data.owner.name,
-      email: data.owner.email,
-      isEmailVerified: data.owner.is_email_verified,
-      isActive: data.owner.is_active,
-      lastLoginAt: data.owner.last_login_at,
-      createdAt: data.owner.created_at,
-    },
-  };
+  setOwnerAccessToken(data.tokens.accessToken);
+  saveOwnerRefresh(data.tokens.refreshToken);
+  return data;
 }
 
 export async function ownerLogout(): Promise<void> {
@@ -174,12 +127,12 @@ export async function refreshOwnerToken(): Promise<string | null> {
   const refresh = loadOwnerRefresh();
   if (!refresh) return null;
   try {
-    const data = await ownerFetch<{ access_token: string; expires_in: number }>(
+    const data = await ownerFetch<{ accessToken: string; expiresIn: number }>(
       "/refresh",
       { method: "POST", body: JSON.stringify({ refresh_token: refresh }) },
     );
-    setOwnerAccessToken(data.access_token);
-    return data.access_token;
+    setOwnerAccessToken(data.accessToken);
+    return data.accessToken;
   } catch {
     setOwnerAccessToken(null);
     clearOwnerRefresh();
@@ -190,24 +143,7 @@ export async function refreshOwnerToken(): Promise<string | null> {
 export async function getOwnerMe(): Promise<OwnerProfile | null> {
   if (!_ownerAccessToken) return null;
   try {
-    const data = await ownerFetch<{
-      id: string;
-      name: string;
-      email: string;
-      is_email_verified: boolean;
-      is_active: boolean;
-      last_login_at: string | null;
-      created_at: string;
-    }>("/me", { method: "GET" }, true);
-    return {
-      id: data.id,
-      name: data.name,
-      email: data.email,
-      isEmailVerified: data.is_email_verified,
-      isActive: data.is_active,
-      lastLoginAt: data.last_login_at,
-      createdAt: data.created_at,
-    };
+    return await ownerFetch<OwnerProfile>("/me", { method: "GET" }, true);
   } catch {
     return null;
   }
@@ -307,4 +243,5 @@ export async function changeOwnerPassword(
   }, true);
 }
 
+/** Re-exported for the owner auth forms — one error class, shared. */
 export { APIError };

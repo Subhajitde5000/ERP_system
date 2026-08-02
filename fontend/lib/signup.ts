@@ -163,11 +163,6 @@ export const SETUP_STEPS = [
 
 export type SetupStepName = (typeof SETUP_STEPS)[number];
 
-async function getJson<T>(url: string, authToken?: string): Promise<T> {
-  const res = await fetch(url, {
-    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-  });
-
 function toCamel(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(toCamel);
   if (!value || typeof value !== "object") return value;
@@ -179,8 +174,10 @@ function toCamel(value: unknown): unknown {
   );
 }
 
-async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+async function getJson<T>(url: string, authToken?: string): Promise<T> {
+  const res = await fetch(url, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body?.detail ?? body?.message ?? `Request failed (${res.status})`);

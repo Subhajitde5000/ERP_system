@@ -1,33 +1,18 @@
-import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { PlatformPage } from "@/components/platform/platform-page";
-import { InstitutionReadonly } from "@/components/support/institution-readonly";
-import { getInstitutionSnapshot } from "@/lib/support-data";
-import { getTenant, getTenantIds } from "@/lib/platform-data";
+import { LiveInstitutionReadonly } from "@/components/support/consoles";
 
-export function generateStaticParams() {
-  return getTenantIds().map((id) => ({ id }));
-}
-
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}): Promise<Metadata> {
-  const { id } = await params;
-  const t = getTenant(id);
-  return { title: t ? `${t.name} — read only` : "Institution" };
-}
+export const metadata: Metadata = { title: "Institution (read-only)" };
 
 /**
  * C-SP-04 — Institution Read-Only View.
  * "Read-only audit-mode view of any institution's data"
  *
- * §4.1: Support Staff "cannot modify institution data or settings", so there
- * is no mutation on this page and no corresponding PATCH endpoint. The data
- * layer returns a diagnostic snapshot — configuration and health only, never
- * student records.
+ * §4.1: Support Staff "cannot modify institution data or settings", so this
+ * is a diagnostic snapshot — plan, modules, seat usage, health checks, recent
+ * activity, open tickets — and the API exposes no write counterpart.
+ * Data: GET /api/v1/platform/institutions/:id/readonly.
  */
 export default async function SupportInstitutionPage({
   params,
@@ -38,12 +23,9 @@ export default async function SupportInstitutionPage({
 }) {
   const [{ id }, search] = await Promise.all([params, searchParams]);
 
-  const snapshot = getInstitutionSnapshot(id);
-  if (!snapshot) notFound();
-
   return (
     <PlatformPage search={search} allow={["SUPPORT_STAFF", "SUPER_ADMIN"]}>
-      {() => <InstitutionReadonly snapshot={snapshot} />}
+      {() => <LiveInstitutionReadonly tenantId={id} />}
     </PlatformPage>
   );
 }

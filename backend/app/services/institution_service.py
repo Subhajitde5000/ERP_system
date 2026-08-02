@@ -21,8 +21,9 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings as get_app_settings
 from app.models.academic import AcademicYear, Department, SchoolClass, Subject
-from app.models.billing import OutboxEmail, Subscription, TenantModule, TenantSetting
+from app.models.billing import Subscription, TenantModule, TenantSetting
 from app.models.catalog import Module, Plan
 from app.models.enrollment import Enrollment, TeacherSubject
 from app.models.role import Role, RoleAssignment
@@ -54,6 +55,7 @@ from app.schemas.institution import (
     SubjectOut,
     SubjectUpdate,
 )
+from app.services.mailer import queue_email
 from app.utils.security import generate_secure_token, hash_password, hash_token
 
 ONBOARDING_KEY = "onboarding"
@@ -855,19 +857,19 @@ class InstitutionService:
 
     @staticmethod
     async def _queue_invite_email(db, tenant: Tenant, user: User, raw_token: str) -> None:
-        domain = "xyz.com"
+        domain = get_app_settings().PUBLIC_ROOT_DOMAIN or "xyz.com"
         link = f"https://{tenant.slug}.{domain}/reset-password?token={raw_token}"
-        db.add(OutboxEmail(
-            id=uuid.uuid4(), event="staff.invited", to_address=user.email or "",
-            subject=f"You are invited to {tenant.name}",
-            body=(
-                f"Hi {user.name},\n\n"
-                f"You have been added to {tenant.name} on xyz.com.\n"
-                f"Set your password to activate your account:\n{link}\n\n"
-                "This link expires in 7 days."
-            ),
-            status="QUEUED", tenant_id=tenant.id,
-        ))
+        queue_email(
+            db,
+            "staff.invited",
+            to=user.email or "",
+            context={
+                "name": user.name,
+                "tenant_name": tenant.name,
+                "invite_url": link,
+            },
+            tenant_id=tenant.id,
+        )
 
 
 def _year_out(y: AcademicYear) -> AcademicYearOut:
