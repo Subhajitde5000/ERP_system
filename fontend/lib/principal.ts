@@ -2,8 +2,8 @@
  * Principal console API client.
  *
  * This is the sole frontend data boundary for C-PR-01 … C-PR-10.  Components
- * consume these typed, tenant-scoped responses; no Principal screen imports a
- * fixture or derives an institution metric in the browser.
+ * consume these typed, tenant-scoped responses; no Principal screen imports an
+ * in-memory data source or derives an institution metric in the browser.
  */
 
 import { API_BASE_URL, getAccessToken } from "./auth";
