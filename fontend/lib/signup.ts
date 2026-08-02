@@ -65,6 +65,11 @@ export interface Quote {
   coupon: CouponResult | null;
 }
 
+export interface OwnerDraft {
+  name: string;
+  email: string;
+}
+
 export interface InstitutionDraft {
   name: string;
   type: "SCHOOL" | "COLLEGE";
@@ -132,6 +137,8 @@ export interface ProvisionResult {
   tenant: ProvisionedTenant;
   subscription: ProvisionedSubscription;
   invoice: ProvisionedInvoice | null;
+  ownerEmail: string;
+  platformDashboardUrl: string;
   adminEmail: string;
   enabledModules: string[];
   welcomeEmail: WelcomeEmail;
@@ -156,6 +163,18 @@ export const SETUP_STEPS = [
 
 export type SetupStepName = (typeof SETUP_STEPS)[number];
 
+
+function toCamel(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toCamel);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, val]) => [
+      key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()),
+      toCamel(val),
+    ]),
+  );
+}
+
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) {
@@ -164,7 +183,7 @@ async function getJson<T>(url: string): Promise<T> {
   }
   const envelope = (await res.json()) as { success: boolean; data: T; message: string };
   if (!envelope.success) throw new Error(envelope.message);
-  return envelope.data;
+  return toCamel(envelope.data) as T;
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
@@ -179,7 +198,7 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   }
   const envelope = (await res.json()) as { success: boolean; data: T; message: string };
   if (!envelope.success) throw new Error(envelope.message);
-  return envelope.data;
+  return toCamel(envelope.data) as T;
 }
 
 /** GET /api/v1/public/catalog — plans + modules for the pricing page. */
@@ -187,7 +206,7 @@ export async function fetchCatalog(): Promise<Catalog> {
   const res = await fetch(`${API_BASE_URL}/api/v1/public/catalog`);
   if (!res.ok) throw new Error("Catalogue unavailable");
   const envelope = (await res.json()) as { data: Catalog };
-  return envelope.data;
+  return toCamel(envelope.data) as Catalog;
 }
 
 /** GET /api/v1/public/subdomains/check?slug=green */
@@ -222,6 +241,7 @@ export async function createOrder(payload: {
   moduleKeys: string[];
   billingCycle: "MONTHLY" | "YEARLY";
   couponCode: string | null;
+  owner: OwnerDraft;
   institution: InstitutionDraft;
   urlSlug: string;
   password: string;

@@ -33,29 +33,73 @@
 
 ## 1. The two doors: who creates an institution
 
-**There is no public "Register your school" page.** Page 206–211 of the master
-table are Login, Forgot Password, Reset Password, Public Admission Form, 404
-and 403 — no signup. This is deliberate: a multi-tenant ERP that provisions a
-subdomain, a database tenant and an admin account cannot do so from an
-anonymous form without becoming a spam target.
-
-An institution therefore enters the system through one of exactly two doors:
+The public entry point is now owner-first, like AWS, Shopify or Zoho. The
+account at `xyz.com` belongs to the owner, not to one institution. One owner
+can create and manage many tenants from the platform dashboard.
 
 ```
-   DOOR A — Sales-led (the normal path)
-   ─────────────────────────────────────
-   Prospect enquires  →  Sales Executive creates a TRIAL tenant
-                      →  14-day trial, no card
-                      →  Sales converts to paid  (C-SL-03)
+Visit xyz.com
+  │
+  ▼  Sign Up (Owner name, email, password)
+  │
+  ▼  Verify Email
+  │
+  ▼  Platform Dashboard
+  │
+  ├── My Institutions
+  ├── Billing
+  ├── Subscriptions
+  ├── Invoices
+  ├── Support Tickets
+  └── Profile
+  │
+  ▼  Create New Institution
+  │
+  ▼  Choose Plan
+  │
+  ▼  Choose Subdomain
+  │
+  ▼  Payment
+  │
+  ▼  Institution Created
+  │
+  ▼  Go To green.xyz.com
+```
 
-   DOOR B — Super Admin (direct/enterprise)
-   ─────────────────────────────────────────
-   Signed contract    →  Super Admin creates the tenant  (C-SA-04)
+Example ownership model:
+
+```
+Owner: Rahul Sharma
+Platform account: rahul@gmail.com
+
+rahul@gmail.com
+  ├── Green College
+  ├── ABC School
+  └── XYZ Academy
+```
+
+There are still staff-assisted doors for sales-led trials and enterprise
+contracts, but all paths link the tenant back to a platform owner account and
+end at the same place: a row in `tenants`, a row in `subscriptions`, and one
+user holding `INSTITUTION_ADMIN`.
+
+```
+   DOOR A — Self-service owner
+   ───────────────────────────
+   Owner signs up  →  verifies email  →  creates institution
+                   →  pays / starts trial
+                   →  tenant is provisioned automatically
+
+   DOOR B — Sales-led
+   ─────────────────
+   Prospect enquires  →  Sales Executive assists the owner / trial
+                      →  14-day trial or paid conversion
+
+   DOOR C — Super Admin (direct/enterprise)
+   ────────────────────────────────────────
+   Signed contract    →  Super Admin creates or links owner + tenant
                       →  Starts ACTIVE on day one, invoiced offline
 ```
-
-Both doors end at the same place: a row in `tenants`, a row in
-`subscriptions`, and one user holding `INSTITUTION_ADMIN`.
 
 **Who is "buying" at each step matters, because there are two different
 purchases in this system and they are easy to confuse:**

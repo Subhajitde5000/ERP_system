@@ -39,11 +39,14 @@ from app.models.billing import (
     TenantSetting,
 )
 from app.models.catalog import Module, Plan
+from app.models.platform_user import PlatformRole, PlatformUser
 from app.models.role import Role, RoleAssignment, ScopeLevel
 from app.models.tenant import Tenant, TenantType
 from app.models.user import User
 from app.schemas.signup import (
     OrderCreateRequest,
+    PlatformAccountCreateRequest,
+    PlatformAccountResponse,
     OrderPayRequest,
     OrderResponse,
     PriceQuoteResponse,
@@ -52,10 +55,11 @@ from app.schemas.signup import (
     ProvisionedTenant,
     ProvisionResult,
     SubdomainCheckResponse,
+    VerifyEmailResponse,
     WelcomeEmailResult,
 )
 from app.services.catalog_service import CatalogService
-from app.utils.security import hash_password
+from app.utils.security import generate_secure_token, hash_password, hash_token
 
 settings = get_settings()
 
@@ -63,6 +67,7 @@ INVOICE_PREFIX = "INV"
 GST_RATE = Decimal("18.00")
 
 PROVISION_STEPS = [
+    "Link Platform Owner Account",
     "Create Tenant",
     "Reserve Subdomain",
     "Create Institution",
@@ -88,6 +93,153 @@ def _slugify(name: str) -> str:
 
 
 class SignupService:
+    # ── Platform owner account ────────────────────────────────────────────────
+
+    @staticmethod
+    async def create_platform_account(
+        db: AsyncSession, payload: PlatformAccountCreateRequest
+    ) -> PlatformAccountResponse:
+        """Create the xyz.com owner account and queue email verification.
+
+        The platform account is deliberately separate from any tenant user:
+        this owner can create Green College today and ABC School tomorrow, then
+        manage billing, invoices and support from one dashboard.
+        """
+        email = str(payload.email).lower()
+        existing_res = await db.execute(
+            select(PlatformUser).where(PlatformUser.email == email)
+        )
+        existing = existing_res.scalar_one_or_none()
+        if existing is not None:
+            if existing.platform_role != PlatformRole.OWNER:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="A platform staff account already uses this email",
+                )
+            if not existing.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="This platform account is inactive",
+                )
+            return PlatformAccountResponse(
+                id=existing.id,
+                name=existing.name,
+                email=existing.email,
+                role=existing.platform_role.value,
+                email_verified=existing.email_verified_at is not None,
+                verification_sent_to=existing.email,
+            )
+
+        token = generate_secure_token()
+        user = PlatformUser(
+            id=uuid.uuid4(),
+            name=payload.name.strip(),
+            email=email,
+            password_hash=hash_password(payload.password),
+            platform_role=PlatformRole.OWNER,
+            is_active=True,
+            email_verification_token_hash=hash_token(token),
+        )
+        db.add(user)
+        db.add(
+            OutboxEmail(
+                event="platform_owner.verify_email",
+                to_address=email,
+                subject="Verify your xyz.com platform account",
+                body=(
+                    "Welcome to xyz.com. Verify your platform account before "
+                    "creating institutions.\n\n"
+                    f"Verification token: {token}"
+                ),
+                status="QUEUED",
+                tenant_id=None,
+            )
+        )
+        await db.flush()
+        await db.commit()
+        return PlatformAccountResponse(
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            role=user.platform_role.value,
+            email_verified=False,
+            verification_sent_to=user.email,
+        )
+
+    @staticmethod
+    async def verify_platform_account(
+        db: AsyncSession, token: str
+    ) -> VerifyEmailResponse:
+        token_hash = hash_token(token)
+        res = await db.execute(
+            select(PlatformUser).where(
+                PlatformUser.platform_role == PlatformRole.OWNER,
+                PlatformUser.email_verification_token_hash == token_hash,
+            )
+        )
+        user = res.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired verification token",
+            )
+        user.email_verified_at = datetime.now(timezone.utc)
+        user.email_verification_token_hash = None
+        await db.flush()
+        await db.commit()
+        return VerifyEmailResponse(email=user.email, verified=True)
+
+    @staticmethod
+    async def _ensure_owner_account(
+        db: AsyncSession, payload: OrderCreateRequest
+    ) -> PlatformUser:
+        owner_email = str(
+            payload.owner.email if payload.owner else payload.institution.email
+        ).lower()
+        owner_name = (
+            payload.owner.name.strip()
+            if payload.owner
+            else f"{payload.institution.name.strip()} Owner"
+        )
+        res = await db.execute(select(PlatformUser).where(PlatformUser.email == owner_email))
+        user = res.scalar_one_or_none()
+        if user is not None:
+            if user.platform_role != PlatformRole.OWNER:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="A platform staff account already uses the owner email",
+                )
+            if not user.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Owner platform account is inactive",
+                )
+            return user
+
+        token = generate_secure_token()
+        user = PlatformUser(
+            id=uuid.uuid4(),
+            name=owner_name,
+            email=owner_email,
+            password_hash=hash_password(payload.password),
+            platform_role=PlatformRole.OWNER,
+            is_active=True,
+            email_verification_token_hash=hash_token(token),
+        )
+        db.add(user)
+        db.add(
+            OutboxEmail(
+                event="platform_owner.verify_email",
+                to_address=owner_email,
+                subject="Verify your xyz.com platform account",
+                body=f"Verify your xyz.com owner account.\n\nVerification token: {token}",
+                status="QUEUED",
+                tenant_id=None,
+            )
+        )
+        await db.flush()
+        return user
+
     # ── Catalogue ────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -238,6 +390,8 @@ class SignupService:
                 detail=f"Subdomain '{slug}' is already taken",
             )
 
+        owner = await SignupService._ensure_owner_account(db, payload)
+
         order = Order(
             id=uuid.uuid4(),
             mode=payload.mode,
@@ -254,6 +408,9 @@ class SignupService:
             institution_name=payload.institution.name.strip(),
             institution_type=payload.institution.type,
             contact_email=str(payload.institution.email).lower(),
+            owner_name=owner.name,
+            owner_email=owner.email,
+            owner_platform_user_id=owner.id,
             contact_phone=payload.institution.phone,
             country=payload.institution.country or "India",
             state=payload.institution.state,
@@ -372,6 +529,7 @@ class SignupService:
             slug=order.url_slug,
             type=TenantType(order.institution_type),
             plan_id=plan.id,
+            owner_platform_user_id=order.owner_platform_user_id,
             email=order.contact_email,
             phone=order.contact_phone,
             country=order.country,
@@ -477,7 +635,8 @@ class SignupService:
             subject=f"Welcome to {tenant.name} — your ERP is ready",
             body=(
                 f"Your institution {tenant.name} has been created.\n\n"
-                f"Login URL: {login_url}\n"
+                f"Platform dashboard: https://{domain}/platform/dashboard\n"
+                f"Institution login URL: {login_url}\n"
                 f"Plan: {plan.name}\n"
                 f"Modules: {', '.join(enabled) or 'core modules'}\n\n"
                 "Set your password and complete the setup wizard to get started."
@@ -520,6 +679,8 @@ class SignupService:
                 trial_ends_at=tenant.trial_ends_at,
             ),
             invoice=invoice_payload,
+            owner_email=order.owner_email or order.contact_email,
+            platform_dashboard_url=f"https://{domain}/platform/dashboard",
             admin_email=order.contact_email,
             enabled_modules=enabled,
             welcome_email=WelcomeEmailResult(
@@ -605,6 +766,8 @@ class SignupService:
                 if invoice
                 else None
             ),
+            owner_email=order.owner_email or order.contact_email,
+            platform_dashboard_url=f"https://{domain}/platform/dashboard",
             admin_email=order.contact_email,
             enabled_modules=order.module_keys or [],
             welcome_email=WelcomeEmailResult(

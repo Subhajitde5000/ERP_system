@@ -88,6 +88,50 @@ class PriceQuoteResponse(BaseModel):
     coupon: CouponResult | None = None
 
 
+# ── Platform account / owner ───────────────────────────────────────────────
+
+
+class OwnerDraft(BaseModel):
+    """Platform account owner captured before institution checkout.
+
+    This is the xyz.com account (AWS/Shopify style). One owner can later
+    create and manage many institutions from the platform dashboard.
+    """
+
+    name: str = Field(..., min_length=2, max_length=255)
+    email: EmailStr
+
+
+class PlatformAccountCreateRequest(BaseModel):
+    """Body for POST /public/platform/accounts."""
+
+    name: str = Field(..., min_length=2, max_length=255)
+    email: EmailStr
+    password: str = Field(..., min_length=6, max_length=128)
+
+
+class PlatformAccountResponse(BaseModel):
+    """Owner platform account created from public signup."""
+
+    id: uuid.UUID
+    name: str
+    email: str
+    role: str
+    email_verified: bool
+    verification_sent_to: str
+
+
+class VerifyEmailRequest(BaseModel):
+    """Body for POST /public/platform/accounts/verify-email."""
+
+    token: str = Field(..., min_length=1)
+
+
+class VerifyEmailResponse(BaseModel):
+    email: str
+    verified: bool
+
+
 # ── Order ─────────────────────────────────────────────────────────────────────
 
 class InstitutionDraft(BaseModel):
@@ -111,6 +155,7 @@ class OrderCreateRequest(BaseModel):
     module_keys: list[str] = Field(default_factory=list)
     billing_cycle: str = Field(default="MONTHLY", pattern="^(MONTHLY|YEARLY)$")
     coupon_code: str | None = Field(default=None, max_length=50)
+    owner: OwnerDraft | None = None
     institution: InstitutionDraft
     url_slug: str = Field(..., min_length=2, max_length=100)
     password: str = Field(..., min_length=6, max_length=128)
@@ -189,12 +234,16 @@ class ProvisionResult(BaseModel):
     tenant: ProvisionedTenant
     subscription: ProvisionedSubscription
     invoice: ProvisionedInvoice | None = None
+    owner_email: str
+    platform_dashboard_url: str
     admin_email: str
     enabled_modules: list[str]
     welcome_email: WelcomeEmailResult
     steps: list[str]  # the provisioning checklist, in order
 
 
+APIResponsePlatformAccount = APIResponse[PlatformAccountResponse]
+APIResponseVerifyEmail = APIResponse[VerifyEmailResponse]
 APIResponseCatalog = APIResponse[CatalogResponse]
 APIResponseSubdomain = APIResponse[SubdomainCheckResponse]
 APIResponseQuote = APIResponse[PriceQuoteResponse]

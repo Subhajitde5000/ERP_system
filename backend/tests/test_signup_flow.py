@@ -260,7 +260,9 @@ async def test_provision_pipeline_creates_tenant_invoice_admin_email():
     assert result.admin_email == "admin@green.edu"
     assert "attendance" in result.enabled_modules
     assert result.welcome_email.status == "QUEUED"
-    assert len(result.steps) == 11
+    assert len(result.steps) == 12
+    assert result.owner_email == "admin@green.edu"
+    assert result.platform_dashboard_url == "https://xyz.com/platform/dashboard"
     assert db.committed is True
 
     # The writes the pipeline performed
