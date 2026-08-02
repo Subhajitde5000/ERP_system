@@ -4,6 +4,11 @@ Pydantic Schemas — platform owner (customer account) API
 Covers the AWS/Shopify-style "account-holder" journey: signup, email
 verification, login, the platform dashboard (My Institutions, Subscriptions,
 Invoices, Payments, Billing summary), Support Tickets and Profile.
+
+Response models derive from `Wire`, so they serialise camelCase to match
+`fontend/types/owner.ts`. They previously emitted snake_case, which the client
+silently read as `undefined` — every owner page would have rendered blank
+fields. Requests stay on BaseModel; `Wire` accepts either spelling anyway.
 """
 
 import uuid
@@ -12,7 +17,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, EmailStr, Field
 
-from app.schemas.common import APIResponse
+from app.schemas.common import APIResponse, Wire
 
 # ── Auth: signup / verification ──────────────────────────────────────────────
 
@@ -27,7 +32,7 @@ class OwnerSignupRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=128)
 
 
-class OwnerSignupResponse(BaseModel):
+class OwnerSignupResponse(Wire):
     """Returned after signup. Email is unverified; login is blocked until it is
     confirmed. The verification token is included only so a dev/no-mailer
     environment can complete the flow — production delivers it by email."""
@@ -52,14 +57,14 @@ class OwnerLoginRequest(BaseModel):
     password: str = Field(..., min_length=1)
 
 
-class TokenResponse(BaseModel):
+class TokenResponse(Wire):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
 
 
-class OwnerInfo(BaseModel):
+class OwnerInfo(Wire):
     id: uuid.UUID
     name: str
     email: str
@@ -69,12 +74,12 @@ class OwnerInfo(BaseModel):
     created_at: datetime
 
 
-class OwnerLoginResponse(BaseModel):
+class OwnerLoginResponse(Wire):
     tokens: TokenResponse
     owner: OwnerInfo
 
 
-class AccessTokenResponse(BaseModel):
+class AccessTokenResponse(Wire):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
@@ -110,7 +115,7 @@ class ResetPasswordRequest(BaseModel):
 
 # ── Dashboard: institutions ──────────────────────────────────────────────────
 
-class OwnerInstitution(BaseModel):
+class OwnerInstitution(Wire):
     id: uuid.UUID
     name: str
     slug: str
@@ -123,13 +128,13 @@ class OwnerInstitution(BaseModel):
     created_at: datetime
 
 
-class OwnerInstitutionsResponse(BaseModel):
+class OwnerInstitutionsResponse(Wire):
     institutions: list[OwnerInstitution]
 
 
 # ── Dashboard: billing ───────────────────────────────────────────────────────
 
-class BillingSummaryResponse(BaseModel):
+class BillingSummaryResponse(Wire):
     total_institutions: int
     active_subscriptions: int
     trialing: int
@@ -139,7 +144,7 @@ class BillingSummaryResponse(BaseModel):
     outstanding: Decimal
 
 
-class OwnerSubscription(BaseModel):
+class OwnerSubscription(Wire):
     id: uuid.UUID
     tenant_id: uuid.UUID
     tenant_name: str
@@ -151,7 +156,7 @@ class OwnerSubscription(BaseModel):
     ends_at: datetime | None = None
 
 
-class OwnerInvoice(BaseModel):
+class OwnerInvoice(Wire):
     id: uuid.UUID
     invoice_number: str
     tenant_id: uuid.UUID
@@ -163,7 +168,7 @@ class OwnerInvoice(BaseModel):
     currency: str
 
 
-class OwnerPayment(BaseModel):
+class OwnerPayment(Wire):
     id: uuid.UUID
     tenant_id: uuid.UUID | None
     tenant_name: str | None
@@ -178,14 +183,14 @@ class OwnerPayment(BaseModel):
 
 # ── Support tickets ──────────────────────────────────────────────────────────
 
-class TicketMessageOut(BaseModel):
+class TicketMessageOut(Wire):
     id: uuid.UUID
     author_role: str
     body: str
     created_at: datetime
 
 
-class SupportTicketOut(BaseModel):
+class SupportTicketOut(Wire):
     id: uuid.UUID
     subject: str
     category: str

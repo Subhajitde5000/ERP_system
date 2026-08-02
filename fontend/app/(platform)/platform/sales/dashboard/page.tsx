@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { PlatformPage } from "@/components/platform/platform-page";
+import { tenantHost } from "@/lib/platform-shared";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { DashboardPanel } from "@/components/dashboard/panel";
 import { Card, EmptyState } from "@/components/dashboard/primitives";
@@ -200,7 +201,7 @@ export default async function SalesDashboardPage({
                             {t.name}
                           </p>
                           <p className="min-w-0 truncate text-[11px] text-muted-foreground">
-                            {t.slug}.xyz.com · {t.planName}
+                            {tenantHost(t.slug)} · {t.planName}
                           </p>
                         </div>
                         <span className="shrink-0 text-[11px] text-muted-foreground">

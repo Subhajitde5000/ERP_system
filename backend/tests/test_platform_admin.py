@@ -514,3 +514,66 @@ def test_audit_target_prefers_a_human_label():
         action="X", entity="thing", entity_id=None,
     )
     assert _target(bare) == "thing"
+
+
+# ── Wire contract ────────────────────────────────────────────────────────────
+# The TypeScript clients (`fontend/types/platform.ts`, `types/owner.ts`) declare
+# camelCase. A snake_case payload does not fail — it reads as `undefined` and
+# renders blank fields, which is exactly how the Owner console shipped broken.
+# These lock the contract for both consoles.
+
+def test_every_client_facing_schema_serialises_camel_case():
+    from app.schemas.common import Wire
+    from app.schemas import owner as owner_schemas
+    from app.schemas import platform_admin as admin_schemas
+
+    def offenders(module, names):
+        bad = []
+        for name in names:
+            model = getattr(module, name)
+            for field in model.model_fields:
+                if "_" not in field:
+                    continue
+                if not issubclass(model, Wire):
+                    bad.append(f"{name}.{field}")
+        return bad
+
+    admin_models = [
+        "TenantRow", "TenantDetail", "PlanRow", "PlatformUserRow",
+        "AuditEntry", "AuditPage", "PlatformStats", "PlatformSettingsOut",
+        "SubscriptionRow", "TenantCreated",
+    ]
+    owner_models = [
+        "OwnerInfo", "OwnerSignupResponse", "OwnerLoginResponse", "TokenResponse",
+        "OwnerInstitution", "BillingSummaryResponse", "OwnerSubscription",
+        "OwnerInvoice", "OwnerPayment", "SupportTicketOut", "TicketMessageOut",
+    ]
+
+    assert offenders(admin_schemas, admin_models) == []
+    assert offenders(owner_schemas, owner_models) == []
+
+
+def test_owner_billing_summary_emits_camel_case():
+    """Regression: this shipped as snake_case and rendered blank in the UI."""
+    from decimal import Decimal
+
+    from app.schemas.owner import BillingSummaryResponse
+
+    payload = BillingSummaryResponse(
+        total_institutions=2, active_subscriptions=1, trialing=1,
+        next_renewal_at=None, lifetime_spend=Decimal("100"),
+        currency="INR", outstanding=Decimal("0"),
+    ).model_dump(by_alias=True)
+
+    assert "totalInstitutions" in payload
+    assert "total_institutions" not in payload
+
+
+def test_wire_is_defined_once():
+    """Both schema modules must share one Wire, not each roll their own."""
+    from app.schemas.common import Wire
+    from app.schemas.owner import OwnerInfo
+    from app.schemas.platform_admin import TenantRow
+
+    assert issubclass(TenantRow, Wire)
+    assert issubclass(OwnerInfo, Wire)

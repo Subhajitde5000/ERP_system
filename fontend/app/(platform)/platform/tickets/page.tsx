@@ -1,20 +1,27 @@
 import type { Metadata } from "next";
 
 import { PlatformPage } from "@/components/platform/platform-page";
-import { OwnerSectionPage } from "@/components/platform/owner-section-page";
-import { getTenants } from "@/lib/platform-data";
+import { LiveOwnerTickets } from "@/components/platform/owner-consoles";
 
-export const metadata: Metadata = { title: "Owner tickets" };
+export const metadata: Metadata = { title: "Support Tickets" };
 
-export default async function OwnerticketsPage({
+/**
+ * Owner console — Support Tickets.
+ *
+ * Raise and track support requests (GET/POST /api/v1/owner/tickets).
+ * Scoped to the signed-in owner by the API, which resolves the account from
+ * the JWT; one owner can never read another's data.
+ */
+export default async function OwnerTicketsPage({
   searchParams,
 }: {
   searchParams: Promise<{ role?: string }>;
 }) {
   const search = await searchParams;
+
   return (
     <PlatformPage search={search} allow={["OWNER"]}>
-      {() => <OwnerSectionPage section="tickets" tenants={getTenants()} />}
+      {() => <LiveOwnerTickets />}
     </PlatformPage>
   );
 }

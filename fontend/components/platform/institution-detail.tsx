@@ -6,7 +6,7 @@ import { ArrowLeft, Ban, ExternalLink, Play, ScrollText } from "lucide-react";
 
 import { cn, formatDate } from "@/lib/utils";
 import { compactINR, planLimit, seatUsage } from "@/lib/platform";
-import { moduleLabel } from "@/lib/platform-shared";
+import { moduleLabel, tenantHost, tenantUrl } from "@/lib/platform-shared";
 import { FormAlert } from "@/components/auth/form-alert";
 import {
   Card,
@@ -68,7 +68,7 @@ export function InstitutionDetail({
             <TenantStateChip tenant={tenant} />
           </div>
           <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 text-[13px] text-muted-foreground">
-            <span className="font-mono">{tenant.slug}.xyz.com</span>
+            <span className="font-mono">{tenantHost(tenant.slug)}</span>
             <span className="capitalize">· {tenant.type.toLowerCase()}</span>
             <span>· since {formatDate(tenant.createdAt)}</span>
           </p>
@@ -313,10 +313,10 @@ export function InstitutionDetail({
           )}
 
           <a
-            href={`https://${tenant.slug}.xyz.com`}
+            href={tenantUrl(tenant.slug)}
             className="mt-3 inline-flex items-center gap-1.5 rounded text-[12px] font-medium text-accent transition-colors hover:text-accent-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15"
           >
-            Open {tenant.slug}.xyz.com
+            Open {tenantHost(tenant.slug)}
             <ExternalLink className="h-3 w-3" aria-hidden="true" />
           </a>
         </Card>

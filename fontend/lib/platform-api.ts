@@ -20,6 +20,7 @@
  */
 
 import { API_BASE_URL, getAccessToken, normalizePlatformRole } from "./auth";
+import { APIError, requestJson } from "./api-client";
 import type { ModuleKey, PlatformRole } from "@/types/auth";
 import type {
   PlanRow,
@@ -34,47 +35,11 @@ import type {
 
 const BASE = `${API_BASE_URL}/api/v1/platform`;
 
-interface Envelope<T> {
-  success: boolean;
-  data: T;
-  message: string;
-}
+/** Re-exported so console code can `catch (e) { if (e instanceof …) }`. */
+export { APIError as PlatformAPIError };
 
-export class PlatformAPIError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = "PlatformAPIError";
-    this.status = status;
-  }
-}
-
-async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getAccessToken();
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init.headers as Record<string, string> | undefined),
-    },
-    credentials: "include",
-  });
-
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    // FastAPI puts validation errors in `detail` as an array; flatten so the
-    // console shows "Slug: ..." rather than "[object Object]".
-    const detail = body?.detail;
-    const message = Array.isArray(detail)
-      ? detail.map((d: { loc?: string[]; msg?: string }) =>
-          `${d.loc?.[d.loc.length - 1] ?? "field"}: ${d.msg ?? "invalid"}`,
-        ).join("; ")
-      : detail ?? body?.message ?? `Request failed (${res.status})`;
-    throw new PlatformAPIError(message, res.status);
-  }
-  return (body as Envelope<T>).data;
-}
+const call = <T>(path: string, init: RequestInit = {}): Promise<T> =>
+  requestJson<T>(`${BASE}${path}`, init, getAccessToken(), "PlatformAPIError");
 
 const qs = (params: Record<string, string | number | boolean | undefined>) => {
   const s = new URLSearchParams();

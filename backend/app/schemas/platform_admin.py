@@ -12,22 +12,9 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import EmailStr, Field
 
-from app.schemas.common import APIResponse
-
-
-def _camel(s: str) -> str:
-    head, *rest = s.split("_")
-    return head + "".join(w.capitalize() for w in rest)
-
-
-class Wire(BaseModel):
-    """Serialises snake_case fields as camelCase, accepts either on input."""
-
-    model_config = ConfigDict(
-        alias_generator=_camel, populate_by_name=True, from_attributes=True
-    )
+from app.schemas.common import APIResponse, Wire
 
 
 TenantTypeT = Literal["SCHOOL", "COLLEGE"]

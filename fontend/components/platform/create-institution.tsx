@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { compactINR, planLimit, RESERVED_SLUGS, slugify } from "@/lib/platform";
+import { tenantHost } from "@/lib/platform-shared";
 import { FormAlert } from "@/components/auth/form-alert";
 import { Card } from "@/components/dashboard/primitives";
 import { Button } from "@/components/ui/button";
@@ -174,7 +175,7 @@ export function CreateInstitution({
             id="inst-slug"
             label="Subdomain"
             error={errors.slug}
-            hint={slug ? `${slug || "…"}.xyz.com` : undefined}
+            hint={slug ? tenantHost(slug) : undefined}
           >
             <input
               id="inst-slug"

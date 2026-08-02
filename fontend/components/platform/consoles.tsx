@@ -23,7 +23,7 @@ import { Building2, Check, GraduationCap, LifeBuoy, Minus, Wallet } from "lucide
 
 import { cn } from "@/lib/utils";
 import { compactINR, planLimit } from "@/lib/platform";
-import { moduleLabel } from "@/lib/platform-shared";
+import { moduleLabel, ROOT_DOMAIN_LABEL } from "@/lib/platform-shared";
 import { ALL_MODULES } from "@/lib/session";
 import { Card, Chip } from "@/components/dashboard/primitives";
 import { StatsCard } from "@/components/dashboard/stats-card";
@@ -131,7 +131,7 @@ export function LiveDashboard() {
                 Platform dashboard
               </h1>
               <p className="mt-1 text-[13px] text-muted-foreground">
-                Every institution on xyz.com, at a glance.
+                Every institution on {ROOT_DOMAIN_LABEL}, at a glance.
               </p>
             </div>
 
@@ -510,7 +510,7 @@ function InviteStaff({
             className={field}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@xyz.com"
+            placeholder={`name@${ROOT_DOMAIN_LABEL}`}
             required
           />
         </div>

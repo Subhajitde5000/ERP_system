@@ -7,20 +7,28 @@ import {
   PlatformAuthProvider,
   usePlatformAuth,
 } from "@/hooks/use-platform-auth";
+import { OwnerAuthProvider, useOwnerAuth } from "@/hooks/use-owner-auth";
 
 /**
  * Platform console session gate — `app.xyz.com`.
  *
- * Every page under `(platform)` now reads live data over an authenticated
- * API, so the console needs a session provider and a redirect for anonymous
- * visitors. Mirrors `app/admin/layout.tsx`, the same pattern the institution
- * admin console uses.
+ * Every page under `(platform)` reads live data over an authenticated API, so
+ * the console needs a session provider and a redirect for anonymous visitors.
+ * Mirrors `app/admin/layout.tsx`, the pattern the institution admin console
+ * uses.
+ *
+ * **Two different account types share this route group** and neither is a
+ * superset of the other:
+ *   - `platform_users` — Super Admin / Support / Sales / Finance (staff)
+ *   - `platform_owners` — the paying customer who owns institutions
+ * Both providers are mounted, and the gate accepts either, so an owner is not
+ * bounced out of their own dashboard by the staff check (and vice versa).
  *
  * `?role=` still bypasses the gate: the design docs use it to preview a
- * platform role without a backend, and several pages are linked that way from
- * the docs. It is a *rendering* preview only — the API rejects any request
- * whose bearer token is missing or not SUPER_ADMIN with 401/403, so previewing
- * shows the console's empty and error states rather than another tenant's data.
+ * platform role without a backend. It is a *rendering* preview only — the API
+ * rejects any request whose bearer token is missing or of the wrong type with
+ * 401/403, so previewing shows empty and error states, never another
+ * account's data.
  */
 export default function PlatformLayout({
   children,
@@ -29,12 +37,14 @@ export default function PlatformLayout({
 }) {
   return (
     <PlatformAuthProvider>
-      {/* `Gate` reads useSearchParams for `?role=`, which opts the tree into
-          client rendering; without a boundary the prerender of every platform
-          page fails at build time. */}
-      <Suspense fallback={<ConsoleSpinner />}>
-        <Gate>{children}</Gate>
-      </Suspense>
+      <OwnerAuthProvider>
+        {/* `Gate` reads useSearchParams for `?role=`, which opts the tree into
+            client rendering; without a boundary the prerender of every
+            platform page fails at build time. */}
+        <Suspense fallback={<ConsoleSpinner />}>
+          <Gate>{children}</Gate>
+        </Suspense>
+      </OwnerAuthProvider>
     </PlatformAuthProvider>
   );
 }
@@ -51,7 +61,8 @@ function ConsoleSpinner() {
 }
 
 function Gate({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = usePlatformAuth();
+  const staff = usePlatformAuth();
+  const owner = useOwnerAuth();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -59,10 +70,13 @@ function Gate({ children }: { children: React.ReactNode }) {
   // Design-doc preview mode — render without a session.
   const preview = params.get("role") !== null;
 
+  // Either session grants access; each console's own pages then check the role.
+  const isLoading = staff.isLoading || owner.isLoading;
+  const isAuthenticated = staff.isAuthenticated || owner.isAuthenticated;
+
   useEffect(() => {
     if (!preview && !isLoading && !isAuthenticated) {
-      const next = encodeURIComponent(pathname);
-      router.replace(`/platform/login?next=${next}`);
+      router.replace(`/platform/login?next=${encodeURIComponent(pathname)}`);
     }
   }, [preview, isLoading, isAuthenticated, pathname, router]);
 
