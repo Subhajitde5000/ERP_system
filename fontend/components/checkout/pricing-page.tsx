@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { formatINR, getCatalog } from "@/lib/signup";
 import type { Catalog, PlanInfo } from "@/lib/signup";
+import { MarketingShell } from "@/components/marketing/marketing-shell";
 
 /**
  * Public pricing page — Features / Pricing / Book Demo funnel.
@@ -44,27 +45,7 @@ export function PricingPage() {
   const plans = (catalog?.plans.length ? catalog.plans : FALLBACK_PLANS).filter((p) => p.isActive);
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] text-primary">
-      <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8 lg:px-10">
-        <Link href="/" className="flex items-center gap-2" aria-label="xyz.com home">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white">
-            <Rocket className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <span className="font-display text-xl font-bold tracking-tight">xyz.com</span>
-        </Link>
-        <nav className="hidden items-center gap-7 text-sm font-medium text-[#475569] md:flex">
-          <Link href="/#platform" className="hover:text-accent">Features</Link>
-          <Link href="/pricing" className="font-semibold text-accent">Pricing</Link>
-          <Link href="/#consultation" className="hover:text-accent">Book Demo</Link>
-        </nav>
-        <Link
-          href="/login"
-          className="rounded-field border border-border bg-white px-4 py-2 text-sm font-semibold text-primary transition hover:border-accent hover:text-accent"
-        >
-          Sign in
-        </Link>
-      </header>
-
+    <MarketingShell>
       <section className="mx-auto max-w-7xl px-5 pb-20 pt-12 sm:px-8 lg:px-10">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-sm font-bold uppercase tracking-[0.14em] text-accent">Pricing</p>
@@ -201,7 +182,7 @@ export function PricingPage() {
               Start Free Trial <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
             <Link
-              href="/#consultation"
+              href="/contact"
               className="inline-flex h-11 items-center justify-center rounded-field border border-white/20 bg-white/5 px-6 text-sm font-semibold text-white transition hover:bg-white/10"
             >
               Book Demo
@@ -209,6 +190,6 @@ export function PricingPage() {
           </div>
         </div>
       </section>
-    </main>
+    </MarketingShell>
   );
 }
