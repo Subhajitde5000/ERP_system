@@ -78,6 +78,10 @@ Arts, Primary School…).
 Each department card shows how many classes and staff belong to it. You can
 delete a department only when it has no classes left in it.
 
+When you select a department **HOD**, the platform also creates that person’s
+HOD department scope automatically. That is what lets them open the HOD console
+and see only their own classes, teachers, students and academic work.
+
 ---
 
 ## Step 3 — Add Staff (teachers and team)
@@ -85,7 +89,10 @@ delete a department only when it has no classes left in it.
 1. Go to **Staff** and click **Invite**.
 2. Enter the person's **name, email, phone** and pick a **role**
    (Teacher, Principal, HOD, Accountant, …).
-3. Click **Send invite**.
+3. If the role is **Vice Principal**, choose their **delegated department**.
+   A Vice Principal can only see attendance, exams, results, staff and notices
+   for delegated departments; leaving this blank is intentionally blocked.
+4. Click **Send invite**.
 
 What happens next:
 - The person gets an **email with a "set your password" link**.
@@ -95,6 +102,13 @@ What happens next:
 To give someone an **extra role** later (for example, make a Teacher also a
 Mentor), find them in the list and click the small role buttons under their name
 (`+ teacher`, `+ hod`, …).
+
+For a **Vice Principal**, use the **Delegate VP department** selector on their
+staff card. Select a department and choose **Assign VP role** or **Add
+department**. To remove one delegation, select that department and choose
+**Revoke selected scope**. Removing one scope does not remove their other
+assigned departments. If you remove the last scope, that person can no longer
+open the Vice Principal console.
 
 ---
 

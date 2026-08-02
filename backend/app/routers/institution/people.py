@@ -48,7 +48,7 @@ async def invite_staff(
     admin: Annotated[User, Depends(get_current_tenant_user_admin)],
 ):
     tenant = await _tenant(db, admin)
-    data = await InstitutionService.invite_staff(db, tenant, payload)
+    data = await InstitutionService.invite_staff(db, tenant, payload, actor=admin)
     return APIResponse(success=True, data=data, message="Staff invited — set-password link emailed")
 
 
@@ -59,8 +59,34 @@ async def assign_role(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_tenant_user_admin)],
 ):
-    data = await InstitutionService.assign_role(db, admin.tenant_id, user_id, payload.role_name, admin.id)
+    data = await InstitutionService.assign_role(
+        db,
+        admin.tenant_id,
+        user_id,
+        payload.role_name,
+        admin,
+        department_id=payload.department_id,
+    )
     return APIResponse(success=True, data=data, message="Role assigned")
+
+
+@router.delete("/staff/{user_id}/roles/{role_name}", response_model=APIResponseStaffOne)
+async def revoke_role(
+    user_id: uuid.UUID,
+    role_name: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    department_id: uuid.UUID | None = None,
+):
+    data = await InstitutionService.revoke_role(
+        db,
+        admin.tenant_id,
+        user_id,
+        role_name,
+        admin,
+        department_id=department_id,
+    )
+    return APIResponse(success=True, data=data, message="Role assignment revoked")
 
 
 @router.put("/staff/{user_id}/active", response_model=APIResponseStaffOne)
