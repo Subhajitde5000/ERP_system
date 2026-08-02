@@ -37,9 +37,9 @@ export function LandingPage() {
           <span className="font-display text-xl font-bold tracking-tight">xyz.com</span>
         </Link>
         <nav className="hidden items-center gap-7 text-sm font-medium text-[#475569] md:flex" aria-label="Main navigation">
-          <a href="#platform" className="hover:text-accent">Features</a>
-          <Link href="/pricing" className="hover:text-accent">Pricing</Link>
-          <a href="#consultation" className="hover:text-accent">Book Demo</a>
+          <a href="#platform" className="hover:text-accent">Platform</a>
+          <a href="#why-us" className="hover:text-accent">Why xyz.com</a>
+          <a href="#consultation" className="hover:text-accent">Contact</a>
         </nav>
         <Link href="/login" className="rounded-field border border-border px-4 py-2 text-sm font-semibold text-primary transition hover:border-accent hover:text-accent">
           Sign in
@@ -54,10 +54,10 @@ export function LandingPage() {
             <h1 className="mt-6 font-display text-4xl font-extrabold leading-[1.08] tracking-tight text-primary sm:text-5xl lg:text-6xl">One calm, connected home for your institution.</h1>
             <p className="mt-6 max-w-xl text-lg leading-8 text-[#475569]">Bring academics, learning and administration together with a platform that gives every team the clarity to do their best work.</p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link href="/pricing" className="inline-flex h-12 items-center justify-center gap-2 rounded-field bg-accent px-5 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover">Start free trial <ArrowRight className="h-4 w-4" aria-hidden="true" /></Link>
-              <Link href="/pricing" className="inline-flex h-12 items-center justify-center gap-2 rounded-field border border-border bg-white px-5 text-sm font-semibold text-primary transition hover:border-accent">See pricing <ChevronRight className="h-4 w-4" aria-hidden="true" /></Link>
+              <a href="#consultation" className="inline-flex h-12 items-center justify-center gap-2 rounded-field bg-accent px-5 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover">Book a consultation <ArrowRight className="h-4 w-4" aria-hidden="true" /></a>
+              <a href="#platform" className="inline-flex h-12 items-center justify-center gap-2 rounded-field border border-border bg-white px-5 text-sm font-semibold text-primary transition hover:border-accent">Explore the platform <ChevronRight className="h-4 w-4" aria-hidden="true" /></a>
             </div>
-            <p className="mt-5 flex items-center gap-2 text-sm text-muted-foreground"><Check className="h-4 w-4 text-success-text" aria-hidden="true" /> Self-service signup with automatic provisioning — or book a guided consultation.</p>
+            <p className="mt-5 flex items-center gap-2 text-sm text-muted-foreground"><Check className="h-4 w-4 text-success-text" aria-hidden="true" /> Guided evaluation. No automatic account creation.</p>
           </div>
           <div className="rounded-[24px] border border-white/80 bg-white p-4 shadow-[0_24px_60px_rgba(15,23,42,0.12)] sm:p-5">
             <div className="rounded-[18px] bg-primary p-5 text-white sm:p-6">

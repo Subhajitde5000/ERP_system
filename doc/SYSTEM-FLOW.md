@@ -694,18 +694,17 @@ the redirect just shows a spinner until the webhook lands.
 
 ## Summary of gaps flagged
 
-| # | Gap | Severity | Where | Status |
-|---|---|---|---|---|
-| 1 | **No invoice / payment tables** — C-FM-02 and C-FM-03 have no data source | 🔴 | §9 | ✅ Implemented — `platform_invoices`, `platform_invoice_lines`, `platform_payments`, `coupons`, `orders` (migration `8a1e4b2c5f01`); gapless `INV-YYYY-NNNNNN` numbering, GST 18% |
-| 2 | **`plans.allowed_modules` is never enforced** — Starter can enable every module free | 🔴 | §5.2 | ✅ Enforced in the signup quote engine and the setup-wizard module sync (`_sync_modules` is plan-gated) |
-| 3 | **`max_students` / `max_teachers` never checked** — no seat limit exists | 🔴 | §5.5 | 🟡 Open — surfaced on the pricing cards; enforcement on enrolment is future work |
-| 4 | No self-service signup (by design — confirm it is intentional) | 🟡 | §1 | ✅ Implemented — public `/pricing` → `/signup` checkout (registration → subdomain check → plan/BYO → review/coupon → payment → auto-provisioning) plus the 12-step admin setup wizard |
-| 5 | No payment gateway specified; conversion assumes out-of-band payment | 🟡 | §3.3 | 🟡 Mock gateway with `UNIQUE(gateway, gateway_ref)` replay protection; swap `SignupService.mark_paid` for the real webhook (§9.1) |
-| 6 | Single-admin lockout has no automated recovery | 🟡 | §8.3 | 🟡 Open — reset link flow already exists for tenant users |
+| # | Gap | Severity | Where |
+|---|---|---|---|
+| 1 | **No invoice / payment tables** — C-FM-02 and C-FM-03 have no data source | 🔴 | §9 |
+| 2 | **`plans.allowed_modules` is never enforced** — Starter can enable every module free | 🔴 | §5.2 |
+| 3 | **`max_students` / `max_teachers` never checked** — no seat limit exists | 🔴 | §5.5 |
+| 4 | No self-service signup (by design — confirm it is intentional) | 🟡 | §1 |
+| 5 | No payment gateway specified; conversion assumes out-of-band payment | 🟡 | §3.3 |
+| 6 | Single-admin lockout has no automated recovery | 🟡 | §8.3 |
 
 Gaps 2 and 3 are the ones that cost money on day one: today the plan a
-customer pays for constrains nothing at all. (2 is fixed; 3 is the seat
-check at enrolment time.)
+customer pays for constrains nothing at all.
 
 ---
 
