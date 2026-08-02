@@ -1,4 +1,4 @@
-# Super Admin Console — C-SA-01 … C-SA-08
+# Platform Console — Super Admin (C-SA-01…08) + Owner
 
 End-to-end: database → API → client → hook → page. All eight pages from
 `complete_webpage_developer_assignment.md` §2.1 now run on real data.
@@ -143,15 +143,71 @@ Suspense boundary (`next build` prerender error).
 
 ---
 
+## Owner console
+
+The same route group serves the **Owner** — the paying customer who owns
+institutions. Its backend (`/api/v1/owner/*`) and client (`lib/owner.ts`)
+already existed; the seven pages were the last fixtures and are now live:
+
+| Page | Route | Endpoint |
+|---|---|---|
+| Dashboard | `/platform/dashboard` (OWNER) | `/owner/institutions`, `/billing/summary` |
+| My Institutions | `/platform/my-institutions` | `GET /owner/institutions` |
+| Billing | `/platform/billing` | `GET /owner/billing/summary`, `/payments` |
+| Subscriptions | `/platform/subscriptions` | `GET /owner/subscriptions` |
+| Invoices | `/platform/invoices` | `GET /owner/invoices` |
+| Support Tickets | `/platform/tickets` | `GET·POST /owner/tickets`, `…/reply` |
+| Profile | `/platform/profile` | `PUT /owner/profile`, `POST /change-password` |
+
+Two account types now share `app.xyz.com` (`platform_users` staff and
+`platform_owners` customers). The gate accepts either; each API rejects the
+other's token, which the test suite asserts in both directions.
+
+---
+
+## Production audit
+
+Five defects found and fixed after the initial build:
+
+| # | Defect | Effect |
+|---|---|---|
+| 1 | Trial countdown measured against a frozen 2026-07-29 clock | a 14-day trial displayed "19d left" |
+| 2 | `.xyz.com` hardcoded in 11 places | staging / white-label deploys showed the wrong host; "Open" links went to the wrong environment |
+| 3 | Sidebar always showed the demo name "Vikram" | every Super Admin saw the same wrong identity |
+| 4 | `rahul@gmail.com` and an invented "2 tickets" in the Owner dashboard | fake data on a customer-facing page |
+| 5 | Owner API returned snake_case, `types/owner.ts` expects camelCase | **silent** — every owner field read `undefined` and rendered blank, no error anywhere |
+
+Defect 5 is the dangerous class: a wrong key is not an exception, it is an
+empty screen. Three regression tests now lock the camelCase contract for both
+consoles, and were verified by reverting the fix and confirming they fail.
+
+### Duplication removed
+
+| Was | Now |
+|---|---|
+| `Wire` inside `platform_admin.py` | `schemas/common.py`, shared by both schema modules |
+| `Envelope` + error class + fetch/unwrap/422-flatten in 3 clients | `lib/api-client.ts`; clients keep only base path + token |
+| `lib/owner.ts` hand-mapping snake→camel in 3 places | removed — the API emits camelCase |
+| `useResource` inside `use-platform-admin` | `hooks/use-resource.tsx`, reused by the Owner hooks |
+| `owner-console.tsx`, `owner-section-page.tsx` | deleted (dead once pages went live) |
+
+---
+
 ## Verification
 
 | Check | Result |
 |---|---|
-| Backend unit tests | **91 passed** (was 30 passing + 1 failing) |
-| End-to-end vs. real PostgreSQL 16 | **73 assertions**, on both an upgraded and a from-scratch DB |
-| Client↔server contract | **21 assertions** — every response matches `types/platform.ts` |
-| `next build` | succeeds; all 8 routes compile |
-| `tsc --noEmit` / ESLint | clean on all new files |
+| Backend unit tests | **94 passed** (was 30 passing + 1 failing at the start) |
+| End-to-end vs. real PostgreSQL 16 | **52 assertions** — Super Admin, Owner, and cross-console isolation |
+| Client↔server contract | **23 assertions** — every response key matches `types/platform.ts` / `types/owner.ts` |
+| `next build` | succeeds; all platform routes compile |
+| `tsc --noEmit` / ESLint | clean on every touched file |
+
+The end-to-end run covers authorisation (401/403/200 for anonymous, staff,
+owner and Super Admin), tenant CRUD with provisioning side effects, plan
+scoping, module downgrade, suspend/reactivate, staff management, the
+last-Super-Admin guard, audit filters, settings persistence, soft delete, and
+the full owner journey (login → institutions → billing → tickets → profile).
 
 The end-to-end run covers authorisation (401/403/200), tenant CRUD with
 provisioning side effects (admin user, role, academic year, activation
