@@ -1,20 +1,27 @@
 import type { Metadata } from "next";
 
 import { PlatformPage } from "@/components/platform/platform-page";
-import { OwnerSectionPage } from "@/components/platform/owner-section-page";
-import { getTenants } from "@/lib/platform-data";
+import { LiveOwnerInstitutions } from "@/components/platform/owner-consoles";
 
-export const metadata: Metadata = { title: "Owner my-institutions" };
+export const metadata: Metadata = { title: "My Institutions" };
 
-export default async function OwnermyinstitutionsPage({
+/**
+ * Owner console — My Institutions.
+ *
+ * Institutions owned by this platform account (GET /api/v1/owner/institutions).
+ * Scoped to the signed-in owner by the API, which resolves the account from
+ * the JWT; one owner can never read another's data.
+ */
+export default async function OwnerInstitutionsPage({
   searchParams,
 }: {
   searchParams: Promise<{ role?: string }>;
 }) {
   const search = await searchParams;
+
   return (
     <PlatformPage search={search} allow={["OWNER"]}>
-      {() => <OwnerSectionPage section="institutions" tenants={getTenants()} />}
+      {() => <LiveOwnerInstitutions />}
     </PlatformPage>
   );
 }

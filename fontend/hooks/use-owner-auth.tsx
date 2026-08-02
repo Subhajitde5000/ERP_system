@@ -41,7 +41,14 @@ interface OwnerAuthContextType {
   refresh: () => Promise<string | null>;
 }
 
-const OwnerAuthContext = createContext<OwnerAuthContextType | undefined>(undefined);
+/**
+ * Exported so `usePlatformSession` can read the session without throwing when
+ * no provider is mounted (shared chrome, `?role=` previews). Consumers that
+ * need login/logout should use `useOwnerAuth` instead.
+ */
+export const OwnerAuthContext = createContext<OwnerAuthContextType | undefined>(
+  undefined,
+);
 
 export function OwnerAuthProvider({ children }: { children: ReactNode }) {
   const [owner, setOwner] = useState<OwnerProfile | null>(null);

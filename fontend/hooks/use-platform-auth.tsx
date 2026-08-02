@@ -47,9 +47,14 @@ interface PlatformAuthContextType {
   refresh: () => Promise<string | null>;
 }
 
-const PlatformAuthContext = createContext<PlatformAuthContextType | undefined>(
-  undefined
-);
+/**
+ * Exported so `usePlatformSession` can read the session without throwing when
+ * no provider is mounted (shared chrome, `?role=` previews). Consumers that
+ * need login/logout should use `usePlatformAuth` instead.
+ */
+export const PlatformAuthContext = createContext<
+  PlatformAuthContextType | undefined
+>(undefined);
 
 export function PlatformAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<PlatformUser | null>(null);
@@ -108,8 +113,9 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
         setRole(res.role);
         setIsLoading(false);
         return res;
-      } catch (err: any) {
-        const errMsg = err?.message || "Platform authentication failed";
+      } catch (err) {
+        const errMsg =
+          err instanceof Error ? err.message : "Platform authentication failed";
         setError(errMsg);
         setIsLoading(false);
         throw err;

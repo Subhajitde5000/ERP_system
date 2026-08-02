@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 
 import { PlatformPage } from "@/components/platform/platform-page";
-import { InstitutionList } from "@/components/platform/institution-list";
-import { getPlans, getTenants } from "@/lib/platform-data";
+import { LiveInstitutionList } from "@/components/platform/consoles";
 
 export const metadata: Metadata = { title: "Institutions" };
 
 /**
  * C-SA-02 — Institution List.
  * "All tenants table: name, plan, status, student count"
+ *
+ * Rows come from GET /api/v1/platform/tenants.
  */
 export default async function InstitutionsPage({
   searchParams,
@@ -19,7 +20,7 @@ export default async function InstitutionsPage({
 
   return (
     <PlatformPage search={search}>
-      {() => <InstitutionList tenants={getTenants()} plans={getPlans()} />}
+      {() => <LiveInstitutionList />}
     </PlatformPage>
   );
 }

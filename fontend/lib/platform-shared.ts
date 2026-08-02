@@ -22,6 +22,26 @@ export function moduleLabel(key: ModuleKey): string {
 export const ROOT_DOMAIN_LABEL = ROOT_DOMAIN;
 
 /**
+ * A tenant's public host — `green.xyz.com`.
+ *
+ * Defined once because the console printed `{slug}.xyz.com` inline in six
+ * places, which hardcoded the production domain into the markup: a staging or
+ * white-label deployment (NEXT_PUBLIC_ROOT_DOMAIN) showed the wrong host, and
+ * "Open" links pointed at the wrong environment.
+ */
+export function tenantHost(slug: string): string {
+  return `${slug}.${ROOT_DOMAIN}`;
+}
+
+/** A tenant's login URL — what the console links to. */
+export function tenantUrl(slug: string, path = ""): string {
+  return `https://${tenantHost(slug)}${path}`;
+}
+
+/** The platform console's own host — `app.xyz.com`. */
+export const PLATFORM_HOST = `app.${ROOT_DOMAIN}`;
+
+/**
  * Normalise a charge to a month so mixed billing cycles can be summed.
  *
  * A yearly commitment is still recurring revenue every month. Lives here

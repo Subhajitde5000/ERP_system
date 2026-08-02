@@ -8,41 +8,15 @@
  */
 
 import { API_BASE_URL, getAccessToken } from "./auth";
+import { APIError, requestJson } from "./api-client";
 
 const BASE = `${API_BASE_URL}/api/v1/institution`;
 
-interface Envelope<T> {
-  success: boolean;
-  data: T;
-  message: string;
-}
+/** Re-exported so admin pages can `catch (e) { if (e instanceof …) }`. */
+export { APIError as InstitutionAPIError };
 
-export class InstitutionAPIError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = "InstitutionAPIError";
-    this.status = status;
-  }
-}
-
-async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getAccessToken();
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init.headers as Record<string, string> | undefined),
-    },
-    credentials: "include",
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new InstitutionAPIError(body?.detail ?? body?.message ?? `Request failed (${res.status})`, res.status);
-  }
-  return (body as Envelope<T>).data;
-}
+const call = <T>(path: string, init: RequestInit = {}): Promise<T> =>
+  requestJson<T>(`${BASE}${path}`, init, getAccessToken(), "InstitutionAPIError");
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

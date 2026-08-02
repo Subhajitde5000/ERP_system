@@ -59,6 +59,7 @@ from app.schemas.signup import (
     WelcomeEmailResult,
 )
 from app.services.catalog_service import CatalogService
+from app.services.mailer import deliver_row, queue_email
 from app.utils.security import generate_secure_token, hash_password, hash_token
 
 settings = get_settings()
@@ -141,19 +142,11 @@ class SignupService:
             email_verification_token_hash=hash_token(token),
         )
         db.add(user)
-        db.add(
-            OutboxEmail(
-                event="platform_owner.verify_email",
-                to_address=email,
-                subject="Verify your xyz.com platform account",
-                body=(
-                    "Welcome to xyz.com. Verify your platform account before "
-                    "creating institutions.\n\n"
-                    f"Verification token: {token}"
-                ),
-                status="QUEUED",
-                tenant_id=None,
-            )
+        queue_email(
+            db,
+            "platform_owner.verify_email",
+            to=email,
+            context={"name": user.name, "token": token},
         )
         await db.flush()
         await db.commit()
@@ -227,15 +220,11 @@ class SignupService:
             email_verification_token_hash=hash_token(token),
         )
         db.add(user)
-        db.add(
-            OutboxEmail(
-                event="platform_owner.verify_email",
-                to_address=owner_email,
-                subject="Verify your xyz.com platform account",
-                body=f"Verify your xyz.com owner account.\n\nVerification token: {token}",
-                status="QUEUED",
-                tenant_id=None,
-            )
+        queue_email(
+            db,
+            "platform_owner.verify_email",
+            to=owner_email,
+            context={"name": user.name, "token": token},
         )
         await db.flush()
         return user
@@ -627,27 +616,31 @@ class SignupService:
         )
         db.add(template)
 
-        # 11. Welcome email (queued in the outbox — retried by a worker).
+        # 11. Welcome email — queued inside this transaction so a mail outage
+        # can never roll back a paid signup; delivered right after the commit.
         domain = settings.PUBLIC_ROOT_DOMAIN or "xyz.com"
         login_url = f"https://{tenant.slug}.{domain}/login"
-        email = OutboxEmail(
-            event="tenant.provisioned",
-            to_address=order.contact_email,
-            subject=f"Welcome to {tenant.name} — your ERP is ready",
-            body=(
-                f"Your institution {tenant.name} has been created.\n\n"
-                f"Platform dashboard: https://{domain}/platform/dashboard\n"
-                f"Institution login URL: {login_url}\n"
-                f"Plan: {plan.name}\n"
-                f"Modules: {', '.join(enabled) or 'core modules'}\n\n"
-                "Set your password and complete the setup wizard to get started."
-            ),
-            status="QUEUED",
+        email = queue_email(
+            db,
+            "tenant.provisioned",
+            to=order.contact_email,
+            context={
+                "tenant_name": tenant.name,
+                "login_url": login_url,
+                "dashboard_url": f"https://{domain}/platform/dashboard",
+                "plan_name": plan.name,
+                "modules": enabled,
+                "admin_email": order.contact_email,
+            },
             tenant_id=tenant.id,
         )
-        db.add(email)
         await db.flush()
 
+        await db.commit()
+
+        # Provisioning is durable now — attempt delivery. A failure only leaves
+        # the row QUEUED for the next drain; the signup itself still succeeded.
+        await deliver_row(db, email)
         await db.commit()
 
         invoice_payload = None

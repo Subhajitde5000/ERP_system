@@ -259,7 +259,9 @@ async def test_provision_pipeline_creates_tenant_invoice_admin_email():
     assert result.subscription.status == "ACTIVE"
     assert result.admin_email == "admin@green.edu"
     assert "attendance" in result.enabled_modules
-    assert result.welcome_email.status == "QUEUED"
+    # Queued inside the transaction, then delivered right after the commit.
+    # Tests pin the console provider (conftest), so delivery always succeeds.
+    assert result.welcome_email.status == "SENT"
     assert len(result.steps) == 12
     assert result.owner_email == "admin@green.edu"
     assert result.platform_dashboard_url == "https://xyz.com/platform/dashboard"
@@ -340,7 +342,7 @@ async def test_pay_endpoint_provisions_and_returns_success(client):
     assert data["tenant"]["name"] == "Green College"
     assert data["tenant"]["login_url"] == "https://green.xyz.com/login"
     assert data["invoice"]["number"].startswith("INV-2026-")
-    assert data["welcome_email"]["status"] == "QUEUED"
+    assert data["welcome_email"]["status"] == "SENT"
 
     # The payment row was recorded with the idempotency anchor
     from app.models.billing import PlatformPayment

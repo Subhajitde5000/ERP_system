@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { MailCheck, ShieldCheck, XCircle } from "lucide-react";
@@ -22,6 +22,16 @@ type State =
  * success screen).
  */
 export default function VerifyEmailPage() {
+  // useSearchParams opts the tree into client-side rendering, so Next requires
+  // a Suspense boundary or the static export of this route fails at build.
+  return (
+    <Suspense fallback={null}>
+      <VerifyEmail />
+    </Suspense>
+  );
+}
+
+function VerifyEmail() {
   const params = useSearchParams();
   const router = useRouter();
   const token = params.get("token");

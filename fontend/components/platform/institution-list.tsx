@@ -6,6 +6,7 @@ import { Building2, Plus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { seatUsage } from "@/lib/platform";
+import { tenantHost } from "@/lib/platform-shared";
 import { Card, EmptyState } from "@/components/dashboard/primitives";
 import {
   FilterBar,
@@ -156,7 +157,7 @@ export function InstitutionList({
                             {t.name}
                           </Link>
                           <span className="block truncate font-mono text-[11px] font-normal text-muted-foreground">
-                            {t.slug}.xyz.com
+                            {tenantHost(t.slug)}
                           </span>
                         </th>
                         <td className="py-3 pr-3 align-top text-[12px] capitalize text-muted-foreground">
@@ -206,7 +207,7 @@ export function InstitutionList({
                         {t.name}
                       </Link>
                       <p className="truncate font-mono text-[11px] text-muted-foreground">
-                        {t.slug}.xyz.com
+                        {tenantHost(t.slug)}
                       </p>
                     </div>
                     <TenantStateChip tenant={t} />
