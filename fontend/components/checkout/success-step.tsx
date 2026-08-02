@@ -17,13 +17,14 @@ export function SuccessStep({ result }: { result: ProvisionResult }) {
           Congratulations!
         </h1>
         <p className="mt-2 text-sm text-[#64748B]">
-          Your institution has been created — the provisioning pipeline ran every step
-          automatically.
+          Your institution has been created. Manage billing and more institutions from
+          the platform account; use the subdomain for daily ERP work.
         </p>
 
         <dl className="mx-auto mt-8 max-w-sm space-y-3 rounded-field bg-[#F8FAFC] p-5 text-left">
           <Row label="Institution" value={result.tenant.name} />
-          <Row label="Login URL" value={result.tenant.loginUrl} mono />
+          <Row label="Platform dashboard" value={result.platformDashboardUrl} mono />
+          <Row label="Institution login" value={result.tenant.loginUrl} mono />
           <Row
             label="Subscription"
             value={
@@ -47,18 +48,24 @@ export function SuccessStep({ result }: { result: ProvisionResult }) {
           </p>
         ) : null}
 
-        <div className="mt-8">
+        <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+          <Link
+            href={result.platformDashboardUrl}
+            className="inline-flex h-12 items-center gap-2 rounded-field border border-accent px-7 text-sm font-semibold text-accent transition hover:bg-accent-light"
+          >
+            Open platform dashboard
+          </Link>
           <Link
             href={result.tenant.loginUrl}
             className="inline-flex h-12 items-center gap-2 rounded-field bg-accent px-7 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover"
           >
-            Go To Login <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            Go to institution login <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
-          <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-[#64748B]">
-            <CheckCircle2 className="h-3.5 w-3.5 text-success-text" aria-hidden="true" />
-            A welcome email with your login link was sent to {result.adminEmail}.
-          </p>
         </div>
+        <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-[#64748B]">
+          <CheckCircle2 className="h-3.5 w-3.5 text-success-text" aria-hidden="true" />
+          Owner: {result.ownerEmail}. Institution admin welcome email sent to {result.adminEmail}.
+        </p>
       </div>
     </div>
   );

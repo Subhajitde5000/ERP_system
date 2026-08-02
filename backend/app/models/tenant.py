@@ -9,7 +9,7 @@ Mirrors the tenants table in database.sql exactly.
 import enum
 import uuid
 
-from sqlalchemy import Boolean, Enum as SAEnum, String, Text
+from sqlalchemy import Boolean, Enum as SAEnum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -36,12 +36,8 @@ class Tenant(Base):
     plan_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
-    # The platform owner (customer account) this institution belongs to. One
-    # owner can hold many institutions (Rahul owns Green College, ABC School,
-    # XYZ Academy). Nullable for institutions created by Sales / Super Admin
-    # before the owner-account model existed.
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+    owner_platform_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform_users.id"), nullable=True
     )
     logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)

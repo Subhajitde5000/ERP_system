@@ -47,6 +47,7 @@ const PLATFORM_ROLES: PlatformRole[] = [
   "SUPPORT_STAFF",
   "SALES_EXECUTIVE",
   "FINANCE_MANAGER",
+  "OWNER",
 ];
 
 export function parsePlatformRole(value?: string | null): PlatformRole {
@@ -61,5 +62,6 @@ function firstName(role: PlatformRole): string {
     SUPPORT_STAFF: "Nandini",
     SALES_EXECUTIVE: "Rohit",
     FINANCE_MANAGER: "Sanjay",
+    OWNER: "Rahul",
   }[role];
 }
