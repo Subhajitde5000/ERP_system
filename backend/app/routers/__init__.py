@@ -9,6 +9,8 @@ from app.routers.public.signup import router as public_signup_router
 from app.routers.owner import router as owner_router
 from app.routers.institution import router as institution_router
 from app.routers.setup import router as setup_router
+from app.routers.examination import router as examination_router
+from app.routers.email import router as email_router
 
 __all__ = [
     "platform_auth_router",
@@ -18,4 +20,6 @@ __all__ = [
     "owner_router",
     "institution_router",
     "setup_router",
+    "examination_router",
+    "email_router",
 ]

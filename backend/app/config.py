@@ -52,6 +52,24 @@ class Settings(BaseSettings):
     TRIAL_DAYS: int = 14
     TENANT_DEFAULT_TIMEZONE: str = "Asia/Kolkata"
 
+    # ── Frontend / URLs ───────────────────────────────────────────────────────
+    FRONTEND_URL: str = "http://localhost:3000"
+
+    # ── Email / SMTP ──────────────────────────────────────────────────────────
+    EMAIL_ENABLED: bool = True
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "noreply@xyz.com"
+    SMTP_FROM_NAME: str = "XYZ ERP"
+    SMTP_TLS: bool = True
+    SMTP_SSL: bool = False
+    # When SMTP_HOST is empty, emails are logged to console and marked SENT
+    # (dev/no-mailer mode). Set to true to force console fallback even if SMTP
+    # is configured.
+    EMAIL_FORCE_CONSOLE: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -8,14 +8,9 @@ Step 7 of the institution-admin journey, end to end:
   Default Roles → Enable Purchased Modules → Create Default Settings →
   Create Academic Year Template → Send Welcome Email → Redirect to Login
 
-`provision_order()` runs the whole pipeline in ONE database transaction:
-an order that half-provisions must not exist, so every row commits together
-or nothing does (SYSTEM-FLOW §2.1 — same invariant as the sales flow).
-
-The payment is intentionally mocked: `mark_paid` records the payment row
-and the gateway reference (idempotency anchor) but no real gateway is
-called — wiring Razorpay/Cashfree is a drop-in at `OrderPayService`'s
-single choke point. Trial orders skip the invoice (nothing to bill).
+provision_order() runs the whole pipeline in ONE database transaction.
+Email sending is now handled by EmailService which attempts SMTP delivery
+and falls back to console logging in dev.
 """
 
 import uuid
@@ -85,9 +80,7 @@ SUGGESTION_SUFFIXES = ["-campus", "", "-edu", "-academy", "-school", "-college"]
 
 
 def _slugify(name: str) -> str:
-    """Lowercase, strip non-alphanumerics, collapse spaces to single hyphens."""
     import re
-
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return slug or "institution"
 
@@ -99,12 +92,6 @@ class SignupService:
     async def create_platform_account(
         db: AsyncSession, payload: PlatformAccountCreateRequest
     ) -> PlatformAccountResponse:
-        """Create the xyz.com owner account and queue email verification.
-
-        The platform account is deliberately separate from any tenant user:
-        this owner can create Green College today and ABC School tomorrow, then
-        manage billing, invoices and support from one dashboard.
-        """
         email = str(payload.email).lower()
         existing_res = await db.execute(
             select(PlatformUser).where(PlatformUser.email == email)
@@ -141,22 +128,27 @@ class SignupService:
             email_verification_token_hash=hash_token(token),
         )
         db.add(user)
-        db.add(
-            OutboxEmail(
-                event="platform_owner.verify_email",
-                to_address=email,
-                subject="Verify your xyz.com platform account",
-                body=(
-                    "Welcome to xyz.com. Verify your platform account before "
-                    "creating institutions.\n\n"
-                    f"Verification token: {token}"
-                ),
-                status="QUEUED",
-                tenant_id=None,
-            )
-        )
         await db.flush()
+
+        # FIXED: use EmailService for real delivery
+        from app.services.email_service import EmailService
+        try:
+            await EmailService.send_platform_owner_verification(db, email, token)
+        except Exception:
+            # still record outbox as FAILED for retry
+            db.add(
+                OutboxEmail(
+                    event="platform_owner.verify_email",
+                    to_address=email,
+                    subject="Verify your xyz.com platform account",
+                    body=f"Verification token: {token}\nVerify at {settings.FRONTEND_URL}/verify-email?token={token}",
+                    status="FAILED",
+                    tenant_id=None,
+                )
+            )
+            await db.flush()
         await db.commit()
+
         return PlatformAccountResponse(
             id=user.id,
             name=user.name,
@@ -227,17 +219,24 @@ class SignupService:
             email_verification_token_hash=hash_token(token),
         )
         db.add(user)
-        db.add(
-            OutboxEmail(
-                event="platform_owner.verify_email",
-                to_address=owner_email,
-                subject="Verify your xyz.com platform account",
-                body=f"Verify your xyz.com owner account.\n\nVerification token: {token}",
-                status="QUEUED",
-                tenant_id=None,
-            )
-        )
         await db.flush()
+
+        from app.services.email_service import EmailService
+        try:
+            await EmailService.send_platform_owner_verification(db, owner_email, token)
+        except Exception:
+            db.add(
+                OutboxEmail(
+                    event="platform_owner.verify_email",
+                    to_address=owner_email,
+                    subject="Verify your xyz.com platform account",
+                    body=f"Verify your xyz.com owner account.\n\nVerification token: {token}",
+                    status="FAILED",
+                    tenant_id=None,
+                )
+            )
+            await db.flush()
+
         return user
 
     # ── Catalogue ────────────────────────────────────────────────────────────
@@ -281,7 +280,6 @@ class SignupService:
     @staticmethod
     def normalize_slug(raw: str) -> str:
         import re
-
         slug = re.sub(r"[^a-z0-9-]+", "-", raw.strip().lower()).strip("-")
         return slug[:100]
 
@@ -365,7 +363,6 @@ class SignupService:
     async def create_order(
         db: AsyncSession, payload: OrderCreateRequest
     ) -> OrderResponse:
-        # Resolve + price first — a bad quote must never become a row.
         data = await CatalogService.quote(
             db,
             payload.mode,
@@ -422,6 +419,7 @@ class SignupService:
         )
         db.add(order)
         await db.flush()
+        await db.commit()
 
         return SignupService._order_response(order)
 
@@ -462,13 +460,6 @@ class SignupService:
     async def mark_paid(
         db: AsyncSession, order: Order, method: str, gateway_ref: str | None
     ) -> None:
-        """
-        Record the payment for an order.
-
-        This is the single integration point for a real payment gateway:
-        replace the body with `verify`-webhook handling (SYSTEM-FLOW §9.1) —
-        UNIQUE(gateway, gateway_ref) already guards against replays.
-        """
         payment = PlatformPayment(
             tenant_id=None,
             order_id=order.id,
@@ -490,12 +481,6 @@ class SignupService:
     async def provision_with_payment(
         db: AsyncSession, order_id: uuid.UUID, payload: OrderPayRequest
     ) -> ProvisionResult:
-        """
-        Step 6 → Step 7 hand-off: record the payment for a PENDING order,
-        then immediately run the provisioning pipeline. One transaction —
-        a payment that does not provision is refunded by the mock gateway
-        (real gateways handle this via the webhook path, SYSTEM-FLOW §9.1).
-        """
         order = await SignupService._load_order(db, order_id)
         if order.status != "PENDING":
             raise HTTPException(
@@ -508,7 +493,6 @@ class SignupService:
 
     @staticmethod
     async def provision(db: AsyncSession, order_id: uuid.UUID) -> ProvisionResult:
-        """Step 7 — the automatic provisioning pipeline (one transaction)."""
         order = await SignupService._load_order(db, order_id)
         if order.status not in ("PAID", "TRIAL_STARTED"):
             raise HTTPException(
@@ -523,7 +507,6 @@ class SignupService:
 
         plan = await CatalogService.get_plan(db, order.plan_slug)
 
-        # 1–3. Tenant (subdomain is reserved by the unique slug).
         tenant = Tenant(
             id=uuid.uuid4(),
             name=order.institution_name,
@@ -550,7 +533,6 @@ class SignupService:
             tenant.trial_ends_at = now + timedelta(days=trial_days)
         order.tenant_id = tenant.id
 
-        # 4. Subscription.
         starts_at = now
         ends_at = (
             None
@@ -570,18 +552,14 @@ class SignupService:
         db.add(subscription)
         await db.flush()
 
-        # 5. Invoice (paid orders only — a trial has nothing to bill).
-        invoice: PlatformInvoice | None = None
+        invoice_data: dict | None = None
         if not is_trial:
-            invoice = await SignupService._generate_invoice(
+            invoice_data = await SignupService._generate_invoice(
                 db, tenant, subscription, order
             )
-            invoice_row = invoice
 
-        # Module keys are needed for the admin's role grants too.
         module_keys = list(dict.fromkeys(order.module_keys or []))
 
-        # 6–7. Institution admin + default roles.
         admin = User(
             tenant_id=tenant.id,
             name=order.institution_name + " Admin",
@@ -596,10 +574,8 @@ class SignupService:
             db, admin, tenant.id, has_finance=("finance" in module_keys)
         )
 
-        # 8. Enable purchased modules (core always on).
         enabled = await SignupService._enable_modules(db, tenant.id, module_keys)
 
-        # 9. Default settings — onboarding state starts at step 0.
         onboarding = (
             '{"completed": false, "step": 0, "profile": null, "logo": null, '
             '"academic_year": null, "departments": [], "programs": [], '
@@ -616,7 +592,6 @@ class SignupService:
                 TenantSetting(tenant_id=tenant.id, key=key, value=value)
             )
 
-        # 10. Academic year template (wizard pre-fills from this).
         year = date.today().year
         template = AcademicYear(
             tenant_id=tenant.id,
@@ -626,40 +601,55 @@ class SignupService:
             is_current=True,
         )
         db.add(template)
+        await db.flush()
 
-        # 11. Welcome email (queued in the outbox — retried by a worker).
+        # FIXED: welcome email via EmailService (real SMTP + outbox tracking)
         domain = settings.PUBLIC_ROOT_DOMAIN or "xyz.com"
         login_url = f"https://{tenant.slug}.{domain}/login"
-        email = OutboxEmail(
-            event="tenant.provisioned",
-            to_address=order.contact_email,
-            subject=f"Welcome to {tenant.name} — your ERP is ready",
-            body=(
-                f"Your institution {tenant.name} has been created.\n\n"
-                f"Platform dashboard: https://{domain}/platform/dashboard\n"
-                f"Institution login URL: {login_url}\n"
-                f"Plan: {plan.name}\n"
-                f"Modules: {', '.join(enabled) or 'core modules'}\n\n"
-                "Set your password and complete the setup wizard to get started."
-            ),
-            status="QUEUED",
-            tenant_id=tenant.id,
-        )
-        db.add(email)
-        await db.flush()
+        from app.services.email_service import EmailService
+
+        outbox_email: OutboxEmail
+        try:
+            outbox_email = await EmailService.send_welcome_email(
+                db,
+                to_address=order.contact_email,
+                institution_name=tenant.name,
+                login_url=login_url,
+                plan_name=plan.name,
+                modules=enabled,
+                tenant_id=tenant.id,
+            )
+        except Exception:
+            outbox_email = OutboxEmail(
+                event="tenant.provisioned",
+                to_address=order.contact_email,
+                subject=f"Welcome to {tenant.name} — your ERP is ready",
+                body=(
+                    f"Your institution {tenant.name} has been created.\n\n"
+                    f"Platform dashboard: https://{domain}/platform/dashboard\n"
+                    f"Institution login URL: {login_url}\n"
+                    f"Plan: {plan.name}\n"
+                    f"Modules: {', '.join(enabled) or 'core modules'}\n\n"
+                    "Set your password and complete the setup wizard to get started."
+                ),
+                status="FAILED",
+                tenant_id=tenant.id,
+            )
+            db.add(outbox_email)
+            await db.flush()
 
         await db.commit()
 
         invoice_payload = None
-        if invoice is not None:
+        if invoice_data is not None:
             invoice_payload = ProvisionedInvoice(
-                number=invoice["number"],
-                status=invoice["status"],
-                issued_at=invoice["issued_at"].isoformat(),
-                subtotal=invoice["subtotal"],
-                tax_amount=invoice["tax_amount"],
-                total=invoice["total"],
-                amount_paid=invoice["amount_paid"],
+                number=invoice_data["number"],
+                status=invoice_data["status"],
+                issued_at=invoice_data["issued_at"].isoformat(),
+                subtotal=invoice_data["subtotal"],
+                tax_amount=invoice_data["tax_amount"],
+                total=invoice_data["total"],
+                amount_paid=invoice_data["amount_paid"],
             )
 
         return ProvisionResult(
@@ -685,19 +675,15 @@ class SignupService:
             admin_email=order.contact_email,
             enabled_modules=enabled,
             welcome_email=WelcomeEmailResult(
-                to=email.to_address,
-                subject=email.subject,
-                status=email.status,
+                to=outbox_email.to_address,
+                subject=outbox_email.subject,
+                status=outbox_email.status,
             ),
             steps=PROVISION_STEPS,
         )
 
     @staticmethod
     async def result(db: AsyncSession, order_id: uuid.UUID) -> ProvisionResult:
-        """
-        Read-only success-page payload for an already-provisioned order.
-        Used by GET /orders/{id} — never re-runs the pipeline.
-        """
         order = await SignupService._load_order(db, order_id)
         if order.tenant_id is None:
             raise HTTPException(
@@ -786,7 +772,6 @@ class SignupService:
         db: AsyncSession, tenant: Tenant, subscription: Subscription, order: Order
     ) -> dict:
         from decimal import Decimal
-
         today = date.today()
         number = await SignupService._next_invoice_number(db)
         subtotal = order.total.quantize(Decimal("0.01"))
@@ -838,10 +823,6 @@ class SignupService:
 
     @staticmethod
     async def _next_invoice_number(db: AsyncSession) -> str:
-        """
-        Gapless per financial year — allocate inside the transaction
-        (SYSTEM-FLOW §9: never count(*) + 1, which races).
-        """
         year = date.today().year
         prefix = f"{INVOICE_PREFIX}-{year}-"
         res = await db.execute(
@@ -857,7 +838,6 @@ class SignupService:
     async def _assign_default_roles(
         db: AsyncSession, admin: User, tenant_id: uuid.UUID, has_finance: bool = False
     ) -> None:
-        """Assign INSTITUTION_ADMIN (+ ACCOUNTANT when finance is purchased)."""
         res = await db.execute(
             select(Role).where(
                 Role.name.in_(["INSTITUTION_ADMIN", "ACCOUNTANT"]),
@@ -882,7 +862,6 @@ class SignupService:
     async def _enable_modules(
         db: AsyncSession, tenant_id: uuid.UUID, module_keys: list[str]
     ) -> list[str]:
-        """Insert tenant_modules rows: core always ON, selected optional ON."""
         res = await db.execute(
             select(Module).order_by(Module.sort_order)
         )

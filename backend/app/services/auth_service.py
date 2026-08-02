@@ -436,8 +436,34 @@ class AuthService:
         user.password_reset_token = hash_token(raw_token)
         user.password_reset_expires = datetime.now(timezone.utc) + timedelta(minutes=30)
         await db.flush()
-        # TODO: enqueue outbox event with raw_token so mailer can send the link
-        # e.g. https://{slug}.xyz.com/reset-password?token={raw_token}
+
+        # FIXED: actually send password reset email via EmailService
+        try:
+            from app.services.email_service import EmailService
+
+            # Build reset URL: https://{slug}.domain/reset-password?token=...
+            domain = settings.PUBLIC_ROOT_DOMAIN or "xyz.com"
+            # Prefer FRONTEND_URL pattern if set, else subdomain pattern
+            frontend = settings.FRONTEND_URL.rstrip("/") if settings.FRONTEND_URL else ""
+            if frontend and "localhost" not in frontend:
+                reset_url = f"{frontend}/reset-password?token={raw_token}"
+            else:
+                reset_url = f"https://{slug}.{domain}/reset-password?token={raw_token}"
+
+            # Only send if user has email (students may not)
+            if user.email:
+                await EmailService.send_password_reset(
+                    db,
+                    to_address=user.email,
+                    name=user.name,
+                    reset_url=reset_url,
+                    is_owner=False,
+                    tenant_slug=slug,
+                )
+            await db.commit()
+        except Exception:
+            # Email failure should not block token creation — will be retried
+            await db.commit()
 
     @staticmethod
     async def verify_reset_token(token: str, db: AsyncSession) -> None:

@@ -8,6 +8,9 @@ Profile management.
 
 An owner owns many institutions (`tenants.owner_id`); everything here is
 scoped to the authenticated owner and never leaks another owner's data.
+
+Email FIX: all token generation now goes through EmailService which
+creates OutboxEmail row AND attempts SMTP delivery (console fallback in dev).
 """
 
 import uuid
@@ -63,9 +66,6 @@ from app.utils.security import (
 
 settings = get_settings()
 
-# A bcrypt hash that is syntactically valid but matches nothing, so the
-# password check always runs in constant time even when no account exists
-# (prevents user-enumeration timing).  Generated once with hash_password(...).
 _DUMMY_HASH = "$2b$12$CZmb7IjM5B19jizvARYHEuhnP.d0Wv4hMRaqVSwevmCb7ovXPXNWy"
 
 
@@ -112,39 +112,21 @@ class OwnerService:
         db.add(owner)
         await db.flush()
 
-        verify_url = (
-            f"https://{settings.PUBLIC_ROOT_DOMAIN or 'xyz.com'}/verify-email"
-            f"?token={raw_token}"
-        )
-        # The verification email is queued in the outbox; a worker delivers it.
-        # In dev/no-mailer mode the raw token is also returned to the caller so
-        # the flow can be completed end-to-end (see SignupService welcome mail
-        # for the same outbox pattern).
-        from app.models.billing import OutboxEmail
+        # FIXED: use EmailService to actually send verification email
+        try:
+            from app.services.email_service import EmailService
+            await EmailService.send_owner_verification(db, email_lc, owner.name, raw_token)
+        except Exception:
+            # Email failure should not block signup — outbox already has FAILED status to retry
+            pass
 
-        db.add(
-            OutboxEmail(
-                event="owner.verify_email",
-                to_address=email_lc,
-                subject="Verify your xyz.com account",
-                body=(
-                    f"Hi {owner.name},\n\n"
-                    f"Verify your email to activate your platform account:\n"
-                    f"{verify_url}\n\n"
-                    "This link expires in 24 hours."
-                ),
-                status="QUEUED",
-            )
-        )
-        await db.flush()
+        await db.commit()
 
         return OwnerSignupResponse(
             id=owner.id,
             name=owner.name,
             email=owner.email,
             is_email_verified=False,
-            # Included so a no-mailer environment can complete verification;
-            # never surface this to end users in production.
             verification_token=raw_token if settings.APP_DEBUG else None,
         )
 
@@ -168,6 +150,7 @@ class OwnerService:
         owner.email_verification_token = None
         owner.email_verification_expires = None
         await db.flush()
+        await db.commit()
         return OwnerService._info(owner)
 
     @staticmethod
@@ -178,7 +161,6 @@ class OwnerService:
             )
         )
         owner = res.scalar_one_or_none()
-        # Silent success — never reveals whether an account exists.
         if owner is None or owner.is_email_verified:
             return
         raw_token = generate_secure_token(32)
@@ -187,6 +169,15 @@ class OwnerService:
             hours=24
         )
         await db.flush()
+        # FIXED: actually send the verification email
+        try:
+            from app.services.email_service import EmailService
+            await EmailService.send_owner_verification(
+                db, owner.email, owner.name, raw_token
+            )
+            await db.commit()
+        except Exception:
+            await db.commit()
 
     # ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -235,6 +226,7 @@ class OwnerService:
             )
         )
         await db.flush()
+        await db.commit()
 
         return OwnerLoginResponse(
             tokens=TokenResponse(
@@ -253,6 +245,7 @@ class OwnerService:
             .where(OwnerSession.refresh_token_hash == th)
             .values(revoked_at=datetime.now(timezone.utc))
         )
+        await db.commit()
 
     @staticmethod
     async def refresh(db: AsyncSession, refresh_token: str) -> AccessTokenResponse:
@@ -299,6 +292,7 @@ class OwnerService:
     ) -> OwnerInfo:
         owner.name = name.strip()
         await db.flush()
+        await db.commit()
         return OwnerService._info(owner)
 
     @staticmethod
@@ -312,12 +306,12 @@ class OwnerService:
             )
         owner.password_hash = hash_password(payload.new_password)
         await db.flush()
-        # Invalidate every other session — a password change is a security event.
         await db.execute(
             OwnerSession.__table__.update()
             .where(OwnerSession.owner_id == owner.id)
             .values(revoked_at=datetime.now(timezone.utc))
         )
+        await db.commit()
 
     @staticmethod
     async def forgot_password(db: AsyncSession, email: str) -> None:
@@ -329,13 +323,26 @@ class OwnerService:
         )
         owner = res.scalar_one_or_none()
         if owner is None:
-            return  # Silent success — no account enumeration.
+            return
         raw = generate_secure_token(32)
         owner.password_reset_token = hash_token(raw)
         owner.password_reset_expires = datetime.now(timezone.utc) + timedelta(
             minutes=30
         )
         await db.flush()
+
+        # FIXED: actually queue and send password reset email
+        try:
+            from app.services.email_service import EmailService
+            s = get_settings()
+            frontend = s.FRONTEND_URL.rstrip("/") if s.FRONTEND_URL else f"https://{s.PUBLIC_ROOT_DOMAIN}"
+            reset_url = f"{frontend}/reset-password?token={raw}"
+            await EmailService.send_password_reset(
+                db, owner.email, owner.name, reset_url, is_owner=True
+            )
+            await db.commit()
+        except Exception:
+            await db.commit()
 
     @staticmethod
     async def reset_password(
@@ -364,6 +371,7 @@ class OwnerService:
             .where(OwnerSession.owner_id == owner.id)
             .values(revoked_at=now)
         )
+        await db.commit()
 
     # ── Dashboard: institutions ───────────────────────────────────────────────
 
@@ -388,7 +396,6 @@ class OwnerService:
             p_res = await db.execute(select(Plan).where(Plan.id.in_(plan_ids)))
             plans = {p.id: p.name for p in p_res.scalars().all()}
 
-        # Latest subscription per tenant (created_at desc, take first per tenant).
         sub_res = await db.execute(
             select(Subscription)
             .where(Subscription.tenant_id.in_(tenant_ids))
@@ -439,7 +446,6 @@ class OwnerService:
                 outstanding=__import__("decimal").Decimal("0"),
             )
 
-        # Latest subscription status per tenant.
         sub_res = await db.execute(
             select(Subscription)
             .where(Subscription.tenant_id.in_(tenant_ids))
@@ -621,7 +627,6 @@ class OwnerService:
         if priority not in TICKET_PRIORITIES:
             priority = "NORMAL"
 
-        # If a tenant is referenced, it must belong to this owner.
         if payload.tenant_id is not None:
             owned = await db.execute(
                 select(Tenant.id).where(
@@ -659,6 +664,7 @@ class OwnerService:
             )
         )
         await db.flush()
+        await db.commit()
         return await OwnerService._ticket_out(db, ticket)
 
     @staticmethod
@@ -684,10 +690,10 @@ class OwnerService:
                 body=message.strip(),
             )
         )
-        # A customer reply reopens a resolved/closed ticket.
         if ticket.status in ("RESOLVED", "CLOSED"):
             ticket.status = "IN_PROGRESS"
         await db.flush()
+        await db.commit()
         return await OwnerService._ticket_out(db, ticket, with_messages=True)
 
     # ── Helpers ───────────────────────────────────────────────────────────────

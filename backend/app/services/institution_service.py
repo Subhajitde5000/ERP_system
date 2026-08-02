@@ -855,19 +855,43 @@ class InstitutionService:
 
     @staticmethod
     async def _queue_invite_email(db, tenant: Tenant, user: User, raw_token: str) -> None:
-        domain = "xyz.com"
-        link = f"https://{tenant.slug}.{domain}/reset-password?token={raw_token}"
-        db.add(OutboxEmail(
-            id=uuid.uuid4(), event="staff.invited", to_address=user.email or "",
-            subject=f"You are invited to {tenant.name}",
-            body=(
-                f"Hi {user.name},\n\n"
-                f"You have been added to {tenant.name} on xyz.com.\n"
-                f"Set your password to activate your account:\n{link}\n\n"
-                "This link expires in 7 days."
-            ),
-            status="QUEUED", tenant_id=tenant.id,
-        ))
+        """FIXED: Uses EmailService to send real SMTP email + outbox tracking."""
+        from app.config import get_settings
+        from app.services.email_service import EmailService
+
+        settings = get_settings()
+        domain = settings.PUBLIC_ROOT_DOMAIN or "xyz.com"
+        # Use FRONTEND_URL for reset-password link if configured
+        frontend = settings.FRONTEND_URL.rstrip("/") if settings.FRONTEND_URL else f"https://{tenant.slug}.{domain}"
+        # For tenant-specific reset, use subdomain link pattern
+        if "{slug}" in frontend or "localhost" not in frontend:
+            link = f"{frontend}/reset-password?token={raw_token}"
+        else:
+            # subdomain pattern: https://{slug}.domain/reset-password?token=
+            link = f"https://{tenant.slug}.{domain}/reset-password?token={raw_token}"
+
+        try:
+            await EmailService.send_staff_invite(
+                db,
+                to_address=user.email or "",
+                staff_name=user.name,
+                institution_name=tenant.name,
+                invite_url=link,
+                tenant_id=tenant.id,
+            )
+        except Exception:
+            # Fallback: still create outbox as FAILED so worker can retry
+            db.add(OutboxEmail(
+                id=uuid.uuid4(), event="staff.invited", to_address=user.email or "",
+                subject=f"You are invited to {tenant.name}",
+                body=(
+                    f"Hi {user.name},\n\n"
+                    f"You have been added to {tenant.name} on xyz.com.\n"
+                    f"Set your password to activate your account:\n{link}\n\n"
+                    "This link expires in 7 days."
+                ),
+                status="FAILED", tenant_id=tenant.id,
+            ))
 
 
 def _year_out(y: AcademicYear) -> AcademicYearOut:
