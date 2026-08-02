@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import { InstitutionShell } from "@/components/dashboard/institution-shell";
 import { PermissionDenied } from "@/components/shared/permission-denied";
+import { SetupGate } from "@/components/setup/setup-gate";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { ModuleHubView } from "@/components/module/module-hub-view";
 import { getDashboard } from "@/lib/dashboards";
@@ -93,8 +94,8 @@ export default async function DashboardSegmentPage({
   const role = slugToRole(slug);
   if (!role) notFound();
 
-  // The URL segment is authoritative for which dashboard renders
-  return (
+  // The URL segment is authoritative for which dashboard renders.
+  const dashboard = (
     <InstitutionShell search={{ ...search, role: slug }}>
       {({ session }) => (
         <DashboardView
@@ -107,4 +108,12 @@ export default async function DashboardSegmentPage({
       )}
     </InstitutionShell>
   );
+
+  // Step 10 — the Institution Admin's first login lands on the setup wizard,
+  // not the dashboard. The gate is transparent in demo preview mode.
+  if (role === "INSTITUTION_ADMIN") {
+    return <SetupGate>{dashboard}</SetupGate>;
+  }
+
+  return dashboard;
 }

@@ -13,7 +13,9 @@ from app.config import get_settings
 from app.middleware.request_id import RequestIDMiddleware
 from app.routers import (
     platform_auth_router,
+    public_signup_router,
     service_requests_router,
+    setup_router,
     tenant_auth_router,
 )
 from app.schemas.common import ErrorDetail
@@ -75,3 +77,5 @@ api_prefix = "/api/v1"
 app.include_router(platform_auth_router, prefix=api_prefix)
 app.include_router(tenant_auth_router, prefix=api_prefix)
 app.include_router(service_requests_router, prefix=api_prefix)
+app.include_router(public_signup_router, prefix=api_prefix)
+app.include_router(setup_router, prefix=api_prefix)
