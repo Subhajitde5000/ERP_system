@@ -117,14 +117,14 @@ ALTER TABLE modules ADD COLUMN IF NOT EXISTS price_monthly NUMERIC(10,2) NOT NUL
 --    Caught by the end-to-end run against a real PostgreSQL instance.
 -- --------------------------------------------------------------------------
 
-DO $$
+DO $do$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'subscriptions' AND column_name = 'status'
       AND data_type = 'USER-DEFINED'
   ) THEN
-    ALTER TABLE subscriptions ALTER COLUMN status TYPE VARCHAR(20) USING status::TEXT;
+    EXECUTE 'ALTER TABLE subscriptions ALTER COLUMN status TYPE VARCHAR(20) USING status::TEXT';
   END IF;
 
   IF EXISTS (
@@ -132,7 +132,7 @@ BEGIN
     WHERE table_name = 'support_tickets' AND column_name = 'status'
       AND data_type = 'USER-DEFINED'
   ) THEN
-    ALTER TABLE support_tickets ALTER COLUMN status TYPE VARCHAR(20) USING status::TEXT;
+    EXECUTE 'ALTER TABLE support_tickets ALTER COLUMN status TYPE VARCHAR(20) USING status::TEXT';
   END IF;
 
   IF EXISTS (
@@ -140,9 +140,9 @@ BEGIN
     WHERE table_name = 'support_tickets' AND column_name = 'priority'
       AND data_type = 'USER-DEFINED'
   ) THEN
-    ALTER TABLE support_tickets ALTER COLUMN priority TYPE VARCHAR(20) USING priority::TEXT;
+    EXECUTE 'ALTER TABLE support_tickets ALTER COLUMN priority TYPE VARCHAR(20) USING priority::TEXT';
   END IF;
-END $$;
+END $do$;
 
 -- Keep the values valid now that the enum no longer does it.
 ALTER TABLE subscriptions DROP CONSTRAINT IF EXISTS ck_subscriptions_status;
@@ -322,27 +322,9 @@ ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NU
 CREATE INDEX IF NOT EXISTS idx_support_tickets_owner_status
   ON support_tickets (owner_id, status);
 
--- database.sql marks raised_by/description NOT NULL, but an owner-raised
--- ticket has neither (it comes from a platform_owners account, not a tenant
--- user). Relax them so both ticket sources can coexist in one table.
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.columns
-             WHERE table_name='support_tickets' AND column_name='raised_by'
-               AND is_nullable='NO') THEN
-    ALTER TABLE support_tickets ALTER COLUMN raised_by DROP NOT NULL;
-  END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.columns
-             WHERE table_name='support_tickets' AND column_name='description'
-               AND is_nullable='NO') THEN
-    ALTER TABLE support_tickets ALTER COLUMN description DROP NOT NULL;
-  END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.columns
-             WHERE table_name='support_tickets' AND column_name='tenant_id'
-               AND is_nullable='NO') THEN
-    ALTER TABLE support_tickets ALTER COLUMN tenant_id DROP NOT NULL;
-  END IF;
-END $$;
+ALTER TABLE support_tickets ALTER COLUMN raised_by DROP NOT NULL;
+ALTER TABLE support_tickets ALTER COLUMN description DROP NOT NULL;
+ALTER TABLE support_tickets ALTER COLUMN tenant_id DROP NOT NULL;
 
 
 -- --------------------------------------------------------------------------
@@ -415,31 +397,28 @@ UPDATE support_tickets
 ALTER TABLE support_tickets
   ALTER COLUMN reference SET DEFAULT 'TKT-' || nextval('support_ticket_reference_seq');
 
-DO $$
+DO $do$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'uq_support_tickets_reference'
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'support_tickets' AND column_name = 'reference'
   ) THEN
-    ALTER TABLE support_tickets
-      ADD CONSTRAINT uq_support_tickets_reference UNIQUE (reference);
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint c
+      JOIN pg_class t ON c.conrelid = t.oid
+      WHERE t.relname = 'support_tickets'
+        AND (c.conname = 'uq_support_tickets_reference' OR c.conname LIKE '%support_tickets_reference%')
+    ) THEN
+      EXECUTE 'ALTER TABLE support_tickets ADD CONSTRAINT uq_support_tickets_reference UNIQUE (reference)';
+    END IF;
   END IF;
-END $$;
+END $do$;
 
 -- Relax database.sql's NOT NULLs: an owner-raised ticket has no raised_by,
 -- no tenant and (until the first message) no description.
-DO $$
-DECLARE col TEXT;
-BEGIN
-  FOREACH col IN ARRAY ARRAY['raised_by', 'description', 'tenant_id'] LOOP
-    IF EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_name = 'support_tickets' AND column_name = col
-        AND is_nullable = 'NO'
-    ) THEN
-      EXECUTE format('ALTER TABLE support_tickets ALTER COLUMN %I DROP NOT NULL', col);
-    END IF;
-  END LOOP;
-END $$;
+ALTER TABLE support_tickets ALTER COLUMN raised_by DROP NOT NULL;
+ALTER TABLE support_tickets ALTER COLUMN description DROP NOT NULL;
+ALTER TABLE support_tickets ALTER COLUMN tenant_id DROP NOT NULL;
 
 -- Every ticket must be attributable to someone.
 ALTER TABLE support_tickets DROP CONSTRAINT IF EXISTS ck_support_tickets_raiser;

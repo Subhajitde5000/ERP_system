@@ -60,7 +60,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;    -- trigram search on names/titles
 -- ============================================================================
 
 CREATE TYPE tenant_type AS ENUM ('SCHOOL', 'COLLEGE');
-CREATE TYPE subscription_status AS ENUM ('TRIAL', 'ACTIVE', 'PAST_DUE', 'CANCELLED');
+-- subscription_status, ticket_priority, ticket_status are typed as VARCHAR with CHECK constraints to match SQLAlchemy models & asyncpg
 CREATE TYPE platform_role AS ENUM ('SUPER_ADMIN', 'SUPPORT', 'SALES', 'FINANCE', 'OWNER');
 CREATE TYPE scope_level AS ENUM ('PLATFORM', 'INSTITUTION', 'DEPARTMENT', 'CLASS', 'SUBJECT', 'SELF', 'CHILD');
 CREATE TYPE permission_action AS ENUM ('CREATE', 'READ', 'UPDATE', 'DELETE');
@@ -111,8 +111,6 @@ CREATE TYPE payment_mode AS ENUM ('CASH', 'ONLINE', 'CHEQUE', 'DD', 'UPI');
 CREATE TYPE scholarship_type AS ENUM ('PERCENTAGE', 'FIXED_AMOUNT', 'FULL_WAIVER');
 CREATE TYPE stock_txn_type AS ENUM ('STOCK_IN', 'STOCK_OUT', 'ADJUSTMENT', 'RETURN');
 CREATE TYPE po_status AS ENUM ('DRAFT', 'SENT', 'ACKNOWLEDGED', 'DELIVERED', 'CANCELLED');
-CREATE TYPE ticket_priority AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL');
-CREATE TYPE ticket_status AS ENUM ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED');
 
 
 -- ============================================================================
@@ -161,6 +159,37 @@ CREATE INDEX idx_service_requests_status_created_at
   ON service_requests (status, created_at);
 CREATE INDEX idx_service_requests_work_email ON service_requests (work_email);
 
+CREATE TABLE platform_owners (
+
+  id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                        VARCHAR(255) NOT NULL,
+  email                       VARCHAR(255) NOT NULL,
+  password_hash               VARCHAR(255) NOT NULL,
+  is_email_verified           BOOLEAN NOT NULL DEFAULT FALSE,
+  email_verification_token    VARCHAR(255),
+  email_verification_expires  TIMESTAMPTZ,
+  password_reset_token        VARCHAR(255),
+  password_reset_expires      TIMESTAMPTZ,
+  is_active                   BOOLEAN NOT NULL DEFAULT TRUE,
+  last_login_at               TIMESTAMPTZ,
+  created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_platform_owners_email UNIQUE (email)
+);
+
+CREATE TABLE owner_sessions (
+
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id            UUID NOT NULL REFERENCES platform_owners(id) ON DELETE CASCADE,
+  refresh_token_hash  VARCHAR(255) NOT NULL,
+  device_info         TEXT,
+  ip_address          INET,
+  expires_at          TIMESTAMPTZ NOT NULL,
+  revoked_at          TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_owner_sessions_refresh_token_hash UNIQUE (refresh_token_hash)
+);
+
 CREATE TABLE platform_users (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -176,6 +205,27 @@ CREATE TABLE platform_users (
   updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE platform_sessions (
+
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id             UUID NOT NULL REFERENCES platform_users(id) ON DELETE CASCADE,
+  refresh_token_hash  VARCHAR(255) NOT NULL UNIQUE,
+  device_info         TEXT,
+  ip_address          INET,
+  expires_at          TIMESTAMPTZ NOT NULL,
+  revoked_at          TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE platform_settings (
+
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key         VARCHAR(100) NOT NULL,
+  value       TEXT NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_platform_settings_key UNIQUE (key)
+);
+
 CREATE TABLE tenants (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -184,6 +234,7 @@ CREATE TABLE tenants (
   type                         tenant_type NOT NULL,
   plan_id                      UUID REFERENCES plans(id),
   owner_platform_user_id       UUID REFERENCES platform_users(id),
+  owner_id                     UUID REFERENCES platform_owners(id),
   logo_url                     TEXT,
   address                      TEXT,
   city                         VARCHAR(100),
@@ -215,13 +266,14 @@ CREATE TABLE subscriptions (
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id                    UUID NOT NULL REFERENCES tenants(id),
   plan_id                      UUID NOT NULL REFERENCES plans(id),
-  status                       subscription_status NOT NULL,
+  status                       VARCHAR(20) NOT NULL DEFAULT 'TRIAL',
   starts_at                    TIMESTAMPTZ NOT NULL,
   ends_at                      TIMESTAMPTZ,
   amount                       NUMERIC(10,2) NOT NULL,
   currency                     VARCHAR(3) NOT NULL DEFAULT 'INR',
   payment_reference            VARCHAR(255),
-  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_subscriptions_status CHECK (status IN ('TRIAL', 'ACTIVE', 'PAST_DUE', 'CANCELLED'))
 );
 
 CREATE TABLE modules (
@@ -232,7 +284,121 @@ CREATE TABLE modules (
   description                  TEXT,
   is_core                      BOOLEAN NOT NULL DEFAULT FALSE,
   icon                         VARCHAR(50),
-  sort_order                   INTEGER NOT NULL DEFAULT 0
+  sort_order                   INTEGER NOT NULL DEFAULT 0,
+  price_monthly                NUMERIC(10,2) NOT NULL DEFAULT 0
+);
+
+CREATE TABLE coupons (
+
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code           VARCHAR(50) NOT NULL UNIQUE,
+  discount_type  VARCHAR(10) NOT NULL,
+  value          NUMERIC(10,2) NOT NULL,
+  currency       VARCHAR(3) NOT NULL DEFAULT 'INR',
+  max_uses       INTEGER NOT NULL DEFAULT 0,
+  used_count     INTEGER NOT NULL DEFAULT 0,
+  valid_from     DATE,
+  valid_until    DATE,
+  is_active      BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE orders (
+
+  id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  mode                      VARCHAR(10) NOT NULL,
+  plan_slug                 VARCHAR(50) NOT NULL,
+  module_keys               VARCHAR(50)[] NOT NULL,
+  billing_cycle             VARCHAR(10) NOT NULL DEFAULT 'MONTHLY',
+  subtotal                  NUMERIC(12,2) NOT NULL,
+  discount                  NUMERIC(12,2) NOT NULL DEFAULT 0,
+  total                     NUMERIC(12,2) NOT NULL,
+  currency                  VARCHAR(3) NOT NULL DEFAULT 'INR',
+  coupon_code               VARCHAR(50),
+  institution_name          VARCHAR(255) NOT NULL,
+  institution_type          VARCHAR(20) NOT NULL,
+  contact_email             VARCHAR(255) NOT NULL,
+  contact_phone             VARCHAR(20),
+  country                   VARCHAR(100) NOT NULL DEFAULT 'India',
+  state                     VARCHAR(100),
+  city                      VARCHAR(100),
+  address                   TEXT,
+  url_slug                  VARCHAR(100) NOT NULL,
+  password_hash             TEXT NOT NULL,
+  status                    VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  payment_method            VARCHAR(20),
+  gateway_ref               VARCHAR(255),
+  tenant_id                 UUID REFERENCES tenants(id),
+  owner_id                  UUID REFERENCES platform_owners(id),
+  owner_platform_user_id    UUID REFERENCES platform_users(id),
+  owner_email               VARCHAR(255),
+  owner_name                VARCHAR(255),
+  created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  paid_at                   TIMESTAMPTZ
+);
+
+CREATE TABLE platform_invoices (
+
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL REFERENCES tenants(id),
+  subscription_id  UUID REFERENCES subscriptions(id),
+  invoice_number   VARCHAR(50) NOT NULL UNIQUE,
+  status           VARCHAR(20) NOT NULL,
+  issued_at        DATE NOT NULL,
+  due_at           DATE NOT NULL,
+  currency         VARCHAR(3) NOT NULL DEFAULT 'INR',
+  subtotal         NUMERIC(12,2) NOT NULL,
+  tax_amount       NUMERIC(12,2) NOT NULL DEFAULT 0,
+  total            NUMERIC(12,2) NOT NULL,
+  amount_paid      NUMERIC(12,2) NOT NULL DEFAULT 0,
+  gstin            VARCHAR(15),
+  place_of_supply  VARCHAR(2),
+  pdf_key          TEXT,
+  notes            TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE platform_invoice_lines (
+
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  invoice_id   UUID NOT NULL REFERENCES platform_invoices(id) ON DELETE CASCADE,
+  description  VARCHAR(500) NOT NULL,
+  hsn_sac      VARCHAR(10),
+  quantity     NUMERIC(10,2) NOT NULL DEFAULT 1,
+  unit_price   NUMERIC(12,2) NOT NULL,
+  tax_rate     NUMERIC(5,2) NOT NULL DEFAULT 0,
+  line_total   NUMERIC(12,2) NOT NULL
+);
+
+CREATE TABLE platform_payments (
+
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID REFERENCES tenants(id),
+  invoice_id      UUID REFERENCES platform_invoices(id),
+  order_id        UUID REFERENCES orders(id),
+  status          VARCHAR(20) NOT NULL,
+  method          VARCHAR(20) NOT NULL,
+  amount          NUMERIC(12,2) NOT NULL,
+  currency        VARCHAR(3) NOT NULL DEFAULT 'INR',
+  gateway         VARCHAR(50),
+  gateway_ref     VARCHAR(255),
+  failure_reason  TEXT,
+  received_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_platform_payments_gateway_ref UNIQUE (gateway, gateway_ref)
+);
+
+CREATE TABLE outbox_emails (
+
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event       VARCHAR(50) NOT NULL,
+  to_address  VARCHAR(255) NOT NULL,
+  subject     VARCHAR(255) NOT NULL,
+  body        TEXT NOT NULL,
+  status      VARCHAR(20) NOT NULL DEFAULT 'QUEUED',
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  tenant_id   UUID REFERENCES tenants(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE roles (
@@ -978,19 +1144,39 @@ CREATE TABLE scholarship_grants (
   remarks                      TEXT
 );
 
+CREATE SEQUENCE IF NOT EXISTS support_ticket_reference_seq START 1001;
+
 CREATE TABLE support_tickets (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id                    UUID NOT NULL REFERENCES tenants(id),
-  raised_by                    UUID NOT NULL REFERENCES users(id),
+  reference                    VARCHAR(20) CONSTRAINT uq_support_tickets_reference UNIQUE DEFAULT ('TKT-' || nextval('support_ticket_reference_seq')),
+  owner_id                     UUID REFERENCES platform_owners(id) ON DELETE CASCADE,
+  tenant_id                    UUID REFERENCES tenants(id),
+  raised_by                    UUID REFERENCES users(id),
   assigned_to                  UUID REFERENCES platform_users(id),
   subject                      VARCHAR(255) NOT NULL,
-  description                  TEXT NOT NULL,
-  priority                     ticket_priority NOT NULL DEFAULT 'MEDIUM',
-  status                       ticket_status NOT NULL DEFAULT 'OPEN',
+  description                  TEXT,
+  category                     VARCHAR(50) NOT NULL DEFAULT 'OTHER',
+  priority                     VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
+  status                       VARCHAR(20) NOT NULL DEFAULT 'OPEN',
   resolved_at                  TIMESTAMPTZ,
   created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_support_tickets_raiser CHECK (owner_id IS NOT NULL OR raised_by IS NOT NULL),
+  CONSTRAINT ck_support_tickets_priority CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
+  CONSTRAINT ck_support_tickets_status CHECK (status IN ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'))
+);
+
+CREATE TABLE support_ticket_messages (
+
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_id    UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+  author_role  VARCHAR(20) NOT NULL,
+  author_id    UUID,
+  body         TEXT NOT NULL,
+  is_internal  BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_ticket_messages_author CHECK (author_role IN ('OWNER', 'STAFF', 'SUPPORT', 'INSTITUTION'))
 );
 
 CREATE TABLE books (
@@ -1976,15 +2162,42 @@ CREATE INDEX IF NOT EXISTS idx_student_transport_student_id ON student_transport
 CREATE INDEX IF NOT EXISTS idx_student_transport_tenant_id ON student_transport (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_subjects_class_id ON subjects (class_id);
 CREATE INDEX IF NOT EXISTS idx_submission_files_submission_id ON submission_files (submission_id);
+CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_platform_owners_email ON platform_owners (email);
+CREATE INDEX IF NOT EXISTS idx_owner_sessions_owner_id ON owner_sessions (owner_id);
+CREATE INDEX IF NOT EXISTS idx_owner_sessions_expires_at ON owner_sessions (expires_at);
+CREATE INDEX IF NOT EXISTS idx_platform_sessions_user_id ON platform_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_platform_sessions_expires_at ON platform_sessions (expires_at);
+CREATE INDEX IF NOT EXISTS idx_platform_invoices_tenant_id ON platform_invoices (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_platform_invoices_subscription_id ON platform_invoices (subscription_id);
+CREATE INDEX IF NOT EXISTS idx_platform_invoice_lines_invoice_id ON platform_invoice_lines (invoice_id);
+CREATE INDEX IF NOT EXISTS idx_platform_payments_tenant_id ON platform_payments (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_platform_payments_invoice_id ON platform_payments (invoice_id);
+CREATE INDEX IF NOT EXISTS idx_platform_payments_order_id ON platform_payments (order_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status_created_at ON orders (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_contact_email ON orders (contact_email);
+CREATE INDEX IF NOT EXISTS idx_orders_tenant_id ON orders (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_orders_owner_id ON orders (owner_id);
+CREATE INDEX IF NOT EXISTS idx_orders_owner_platform_user_id ON orders (owner_platform_user_id);
+CREATE INDEX IF NOT EXISTS idx_outbox_emails_status ON outbox_emails (status);
+CREATE INDEX IF NOT EXISTS idx_outbox_emails_tenant_id ON outbox_emails (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_milestone_id ON submissions (milestone_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_reviewed_by ON submissions (reviewed_by);
 CREATE INDEX IF NOT EXISTS idx_submissions_student_id ON submissions (student_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_tenant_id ON submissions (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_plan_id ON subscriptions (plan_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_tenant_id ON subscriptions (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_tenant_created ON subscriptions (tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions (status);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_assigned_to ON support_tickets (assigned_to);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_owner_id ON support_tickets (owner_id);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_owner_status ON support_tickets (owner_id, status);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_raised_by ON support_tickets (raised_by);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets (status);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_priority ON support_tickets (priority);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_created_at ON support_tickets (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_tenant_id ON support_tickets (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_tenant_status ON support_tickets (tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_teacher_subjects_assigned_by ON teacher_subjects (assigned_by);
 CREATE INDEX IF NOT EXISTS idx_teacher_subjects_subject_id ON teacher_subjects (subject_id);
 CREATE INDEX IF NOT EXISTS idx_teacher_subjects_tenant_id ON teacher_subjects (tenant_id);
@@ -1993,6 +2206,10 @@ CREATE INDEX IF NOT EXISTS idx_tenant_modules_enabled_by ON tenant_modules (enab
 CREATE INDEX IF NOT EXISTS idx_tenant_modules_module_key ON tenant_modules (module_key);
 CREATE INDEX IF NOT EXISTS idx_tenants_plan_id ON tenants (plan_id);
 CREATE INDEX IF NOT EXISTS idx_tenants_owner_platform_user_id ON tenants (owner_platform_user_id);
+CREATE INDEX IF NOT EXISTS idx_tenants_owner_id ON tenants (owner_id);
+CREATE INDEX IF NOT EXISTS idx_tenants_is_active ON tenants (is_active);
+CREATE INDEX IF NOT EXISTS idx_tenants_created_at ON tenants (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_platform_users_role ON platform_users (platform_role);
 CREATE INDEX IF NOT EXISTS idx_timetable_slots_academic_year_id ON timetable_slots (academic_year_id);
 CREATE INDEX IF NOT EXISTS idx_timetable_slots_subject_id ON timetable_slots (subject_id);
 CREATE INDEX IF NOT EXISTS idx_timetable_slots_tenant_id ON timetable_slots (tenant_id);
@@ -2086,6 +2303,18 @@ INSERT INTO plans (name, slug, max_students, max_teachers, max_storage_gb,
      ARRAY['attendance','examination','assignment','notice','discussion','content','results','timetable',
            'library','hostel','transport','placement','hr','admission','inventory','finance'], TRUE)
 ON CONFLICT (slug) DO NOTHING;
+
+
+-- ── 6.4  Platform settings ─────────────────────────────────────────────────
+INSERT INTO platform_settings (key, value) VALUES
+  ('product_name',      'xyz.com'),
+  ('support_email',     'support@xyz.com'),
+  ('default_timezone',  'Asia/Kolkata'),
+  ('default_currency',  'INR'),
+  ('trial_length_days', '14'),
+  ('brand_primary',     '#0F172A'),
+  ('brand_accent',      '#4F46E5')
+ON CONFLICT (key) DO NOTHING;
 
 
 -- ============================================================================
@@ -2212,7 +2441,7 @@ ON CONFLICT (slug) DO NOTHING;
 --  · 0 unindexed foreign keys.
 -- ============================================================================
 
-DO $$
+DO $do$
 DECLARE
   v_tables   INTEGER;
   v_enums    INTEGER;
@@ -2261,8 +2490,8 @@ BEGIN
   RAISE NOTICE ' Seed: plans       : %', v_plans;
   RAISE NOTICE '─────────────────────────────────────────────';
 
-  IF v_tables <> 107 THEN
-    RAISE EXCEPTION 'Expected 107 tables, found %', v_tables;
+  IF v_tables <> 118 THEN
+    RAISE EXCEPTION 'Expected 118 tables, found %', v_tables;
   END IF;
   IF v_unindexed <> 0 THEN
     RAISE EXCEPTION 'Expected every FK to be indexed, found % unindexed', v_unindexed;
@@ -2272,7 +2501,7 @@ BEGIN
   END IF;
 
   RAISE NOTICE ' All checks passed.';
-END $$;
+END $do$;
 
 
 -- ============================================================================
