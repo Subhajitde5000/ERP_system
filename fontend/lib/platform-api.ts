@@ -13,6 +13,9 @@
  *   GET                   /api/v1/platform/audit-logs
  *   GET                   /api/v1/platform/dashboard-stats
  *   GET/PATCH             /api/v1/platform/settings
+ *   GET/PATCH             /api/v1/platform/tickets        (§2.2, Support)
+ *   POST                  /api/v1/platform/tickets/:id/reply
+ *   GET                   /api/v1/platform/institutions/:id/readonly
  *
  * The backend already serialises camelCase (see `Wire` in
  * `schemas/platform_admin.py`), so responses need no key translation — the
@@ -32,6 +35,14 @@ import type {
   TenantDetail,
   TenantRow,
 } from "@/types/platform";
+import type {
+  InstitutionSnapshot,
+  SupportStats,
+  TicketDetail,
+  TicketPriority,
+  TicketRow,
+  TicketStatus,
+} from "@/types/support";
 
 const BASE = `${API_BASE_URL}/api/v1/platform`;
 
@@ -275,4 +286,66 @@ export function updatePlatformSettings(
 
 export function fetchSubscriptions(status?: string): Promise<SubscriptionRow[]> {
   return call<SubscriptionRow[]>(`/subscriptions${qs({ status })}`);
+}
+
+// ── Support Staff · C-SP-01 … C-SP-04 ────────────────────────────────────────
+// Same origin, same bearer token and the same `call()` transport as the Super
+// Admin endpoints above, so these live here rather than in a second client
+// that would duplicate the base URL, the envelope and the error handling.
+
+export interface TicketQuery {
+  status?: string;
+  priority?: string;
+  tenantId?: string;
+  assignedTo?: string;
+  mine?: boolean;
+  unassigned?: boolean;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function fetchTickets(q: TicketQuery = {}): Promise<TicketRow[]> {
+  return call<TicketRow[]>(`/tickets${qs({ ...q })}`);
+}
+
+export function fetchTicketDetail(id: string): Promise<TicketDetail> {
+  return call<TicketDetail>(`/tickets/${id}`);
+}
+
+export function fetchSupportStats(): Promise<SupportStats> {
+  return call<SupportStats>("/support/stats");
+}
+
+export interface TicketPatch {
+  status?: TicketStatus;
+  priority?: TicketPriority;
+  /** `null` unassigns; omit the key to leave the assignee unchanged. */
+  assignedToId?: string | null;
+}
+
+export function updateTicket(id: string, patch: TicketPatch): Promise<TicketRow> {
+  return call<TicketRow>(`/tickets/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+/** `isInternal` keeps the note staff-only — the customer never sees it. */
+export function replyToTicket(
+  id: string,
+  body: string,
+  isInternal = false,
+): Promise<TicketDetail> {
+  return call<TicketDetail>(`/tickets/${id}/reply`, {
+    method: "POST",
+    body: JSON.stringify({ body, isInternal }),
+  });
+}
+
+/** C-SP-04 — read-only diagnostic snapshot. There is no write counterpart. */
+export function fetchInstitutionSnapshot(
+  tenantId: string,
+): Promise<InstitutionSnapshot> {
+  return call<InstitutionSnapshot>(`/institutions/${tenantId}/readonly`);
 }

@@ -206,7 +206,9 @@ class SupportTicketOut(Wire):
 class TicketCreateRequest(BaseModel):
     subject: str = Field(..., min_length=3, max_length=255)
     category: str = Field(default="OTHER")
-    priority: str = Field(default="NORMAL")
+    # LOW/MEDIUM/HIGH/CRITICAL — the spelling the DB CHECK enforces
+    # (update2.sql §8) and the whole frontend uses.
+    priority: str = Field(default="MEDIUM")
     tenant_id: uuid.UUID | None = None
     message: str = Field(..., min_length=3, max_length=4000)
 

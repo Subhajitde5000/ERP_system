@@ -33,6 +33,7 @@ from app.models.support_ticket import (
     SupportTicketMessage,
     TICKET_CATEGORIES,
     TICKET_PRIORITIES,
+    TICKET_PRIORITY_DEFAULT,
     TICKET_STATUSES,
 )
 from app.models.tenant import Tenant
@@ -634,7 +635,7 @@ class OwnerService:
         if category not in TICKET_CATEGORIES:
             category = "OTHER"
         if priority not in TICKET_PRIORITIES:
-            priority = "NORMAL"
+            priority = TICKET_PRIORITY_DEFAULT
 
         # If a tenant is referenced, it must belong to this owner.
         if payload.tenant_id is not None:
@@ -738,7 +739,13 @@ class OwnerService:
         if with_messages:
             m_res = await db.execute(
                 select(SupportTicketMessage)
-                .where(SupportTicketMessage.ticket_id == ticket.id)
+                .where(
+                    SupportTicketMessage.ticket_id == ticket.id,
+                    # Internal notes are staff-only (update2.sql §8). Filtered
+                    # in the query, not the loop, so a future refactor cannot
+                    # drop the guard and leak one to the customer.
+                    SupportTicketMessage.is_internal.is_(False),
+                )
                 .order_by(SupportTicketMessage.created_at.asc())
             )
             messages = [

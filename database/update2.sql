@@ -371,3 +371,116 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_tenant_created
   ON subscriptions (tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status      ON subscriptions (status);
 CREATE INDEX IF NOT EXISTS idx_platform_users_role       ON platform_users (platform_role);
+
+
+-- --------------------------------------------------------------------------
+-- 8. Support Staff console (C-SP-01 … C-SP-04).
+--
+--    `support_tickets` exists twice in this repo with different shapes:
+--      · database.sql §10.2 — institution-raised (raised_by → users,
+--        tenant_id NOT NULL, assigned_to, description, resolved_at)
+--      · update.sql §1      — owner-raised   (owner_id → platform_owners,
+--        category, tenant_id nullable)
+--    Whichever ran, the table is missing half of what the other defines, and
+--    the Support console needs the union: C-SP-02 says "All tickets", so one
+--    queue must show both an owner's billing question and an institution
+--    admin's bug report.
+--
+--    Columns are added rather than a second table created, because two ticket
+--    tables would mean two queues, two SLA clocks and two reply threads for
+--    what is one support conversation.
+-- --------------------------------------------------------------------------
+
+-- Union of both definitions. All nullable: a ticket has EITHER an owner_id
+-- (raised from the platform dashboard) OR a raised_by (raised inside a
+-- tenant), never both.
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS owner_id     UUID;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS tenant_id    UUID REFERENCES tenants(id);
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS raised_by    UUID REFERENCES users(id);
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS assigned_to  UUID REFERENCES platform_users(id);
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS description  TEXT;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS category     VARCHAR(50) NOT NULL DEFAULT 'OTHER';
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS resolved_at  TIMESTAMPTZ;
+
+-- Human reference (TKT-1042) shown in every Support screen. Generated from a
+-- sequence rather than count(*)+1, which races under concurrent inserts —
+-- the same rule invoice numbering follows (SYSTEM-FLOW §9).
+CREATE SEQUENCE IF NOT EXISTS support_ticket_reference_seq START 1001;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS reference VARCHAR(20);
+
+UPDATE support_tickets
+   SET reference = 'TKT-' || nextval('support_ticket_reference_seq')
+ WHERE reference IS NULL;
+
+ALTER TABLE support_tickets
+  ALTER COLUMN reference SET DEFAULT 'TKT-' || nextval('support_ticket_reference_seq');
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'uq_support_tickets_reference'
+  ) THEN
+    ALTER TABLE support_tickets
+      ADD CONSTRAINT uq_support_tickets_reference UNIQUE (reference);
+  END IF;
+END $$;
+
+-- Relax database.sql's NOT NULLs: an owner-raised ticket has no raised_by,
+-- no tenant and (until the first message) no description.
+DO $$
+DECLARE col TEXT;
+BEGIN
+  FOREACH col IN ARRAY ARRAY['raised_by', 'description', 'tenant_id'] LOOP
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'support_tickets' AND column_name = col
+        AND is_nullable = 'NO'
+    ) THEN
+      EXECUTE format('ALTER TABLE support_tickets ALTER COLUMN %I DROP NOT NULL', col);
+    END IF;
+  END LOOP;
+END $$;
+
+-- Every ticket must be attributable to someone.
+ALTER TABLE support_tickets DROP CONSTRAINT IF EXISTS ck_support_tickets_raiser;
+ALTER TABLE support_tickets ADD CONSTRAINT ck_support_tickets_raiser
+  CHECK (owner_id IS NOT NULL OR raised_by IS NOT NULL);
+
+-- ── Priority: settle on database.sql §10.2 / types/support.ts ─────────────
+-- The ORM shipped LOW/NORMAL/HIGH/URGENT while the DB enum and the whole
+-- frontend use LOW/MEDIUM/HIGH/CRITICAL. Existing rows are migrated so no
+-- ticket is left with a value the UI cannot render.
+UPDATE support_tickets SET priority = 'MEDIUM'   WHERE priority = 'NORMAL';
+UPDATE support_tickets SET priority = 'CRITICAL' WHERE priority = 'URGENT';
+ALTER TABLE support_tickets ALTER COLUMN priority SET DEFAULT 'MEDIUM';
+
+ALTER TABLE support_tickets DROP CONSTRAINT IF EXISTS ck_support_tickets_priority;
+ALTER TABLE support_tickets ADD CONSTRAINT ck_support_tickets_priority
+  CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL'));
+
+ALTER TABLE support_tickets DROP CONSTRAINT IF EXISTS ck_support_tickets_status;
+ALTER TABLE support_tickets ADD CONSTRAINT ck_support_tickets_status
+  CHECK (status IN ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'));
+
+-- ── Reply thread ──────────────────────────────────────────────────────────
+-- `support_ticket_messages` (update.sql §1) is the thread C-SP-03 renders.
+-- It needs one more column: an internal note is visible to platform staff
+-- only and must never reach the institution. Explicit, so the UI cannot leak
+-- one by accident.
+ALTER TABLE support_ticket_messages
+  ADD COLUMN IF NOT EXISTS is_internal BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Support agents are platform staff, so a reply can come from SUPPORT too.
+ALTER TABLE support_ticket_messages DROP CONSTRAINT IF EXISTS ck_ticket_messages_author;
+ALTER TABLE support_ticket_messages ADD CONSTRAINT ck_ticket_messages_author
+  CHECK (author_role IN ('OWNER', 'STAFF', 'SUPPORT', 'INSTITUTION'));
+
+-- ── Indexes for the Support queue ─────────────────────────────────────────
+-- C-SP-01 counts by status and by assignee; C-SP-02 filters by status,
+-- priority and institution; C-SP-04 lists one tenant's open tickets.
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status      ON support_tickets (status);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_priority    ON support_tickets (priority);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_assigned_to ON support_tickets (assigned_to);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_created_at  ON support_tickets (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_tenant_status
+  ON support_tickets (tenant_id, status);

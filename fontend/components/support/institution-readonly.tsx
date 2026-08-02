@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 
 import { cn, formatDate } from "@/lib/utils";
-import { moduleLabel } from "@/lib/platform-shared";
+import { moduleLabel, tenantHost } from "@/lib/platform-shared";
 import { Card, Chip, EmptyState, ProgressBar } from "@/components/dashboard/primitives";
 import { TicketListItem } from "./ticket-bits";
 import type { InstitutionSnapshot } from "@/types/support";
@@ -51,7 +51,7 @@ export function InstitutionReadonly({ snapshot }: { snapshot: InstitutionSnapsho
         <Chip tone="muted">Read-only · audit mode</Chip>
       </div>
       <p className="mb-4 flex min-w-0 flex-wrap items-center gap-x-2 text-[13px] text-muted-foreground">
-        <span className="font-mono">{s.tenantSlug}.xyz.com</span>
+        <span className="font-mono">{tenantHost(s.tenantSlug)}</span>
         <span className="capitalize">· {s.type.toLowerCase()}</span>
         <span>· {s.planName}</span>
         <span>· since {formatDate(s.createdAt)}</span>
