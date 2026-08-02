@@ -260,6 +260,7 @@ class SignupService:
             city=payload.institution.city,
             address=payload.institution.address,
             url_slug=slug,
+            owner_id=payload.owner_id,
             password_hash=hash_password(payload.password),
         )
         db.add(order)

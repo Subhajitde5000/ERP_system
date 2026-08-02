@@ -293,6 +293,11 @@ class Order(Base):
     city: Mapped[str | None] = mapped_column(String(100), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     url_slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    # The owner who initiated this checkout, when it was started from inside
+    # the platform dashboard (the anonymous public checkout leaves it NULL).
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     # PENDING | PAID | TRIAL_STARTED | FAILED | CANCELLED
     status: Mapped[str] = mapped_column(

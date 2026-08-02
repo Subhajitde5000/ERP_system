@@ -114,6 +114,10 @@ class OrderCreateRequest(BaseModel):
     institution: InstitutionDraft
     url_slug: str = Field(..., min_length=2, max_length=100)
     password: str = Field(..., min_length=6, max_length=128)
+    # Set when the checkout is started from inside an owner's platform
+    # dashboard; provisioning then stamps tenants.owner_id so the institution
+    # appears under "My Institutions". Anonymous public checkout leaves it NULL.
+    owner_id: uuid.UUID | None = None
 
 
 class OrderResponse(BaseModel):

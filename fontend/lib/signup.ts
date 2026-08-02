@@ -156,8 +156,10 @@ export const SETUP_STEPS = [
 
 export type SetupStepName = (typeof SETUP_STEPS)[number];
 
-async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+async function getJson<T>(url: string, authToken?: string): Promise<T> {
+  const res = await fetch(url, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body?.detail ?? body?.message ?? `Request failed (${res.status})`);
@@ -167,10 +169,13 @@ async function getJson<T>(url: string): Promise<T> {
   return envelope.data;
 }
 
-async function postJson<T>(url: string, body: unknown): Promise<T> {
+async function postJson<T>(url: string, body: unknown, authToken?: string): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -225,8 +230,11 @@ export async function createOrder(payload: {
   institution: InstitutionDraft;
   urlSlug: string;
   password: string;
-}): Promise<Order> {
-  return postJson<Order>(`${API_BASE_URL}/api/v1/public/orders`, payload);
+}, authToken?: string): Promise<Order> {
+  const url = authToken
+    ? `${API_BASE_URL}/api/v1/owner/orders`
+    : `${API_BASE_URL}/api/v1/public/orders`;
+  return postJson<Order>(url, payload, authToken);
 }
 
 /** POST /api/v1/public/orders/{id}/pay — pay + auto-provision. */
@@ -234,18 +242,20 @@ export async function payOrder(
   orderId: string,
   method: string,
   gatewayRef?: string,
+  authToken?: string,
 ): Promise<ProvisionResult> {
-  return postJson<ProvisionResult>(
-    `${API_BASE_URL}/api/v1/public/orders/${orderId}/pay`,
-    { method, gateway_ref: gatewayRef },
-  );
+  const url = authToken
+    ? `${API_BASE_URL}/api/v1/owner/orders/${orderId}/pay`
+    : `${API_BASE_URL}/api/v1/public/orders/${orderId}/pay`;
+  return postJson<ProvisionResult>(url, { method, gateway_ref: gatewayRef }, authToken);
 }
 
 /** GET /api/v1/public/orders/{id} — success-page payload (idempotent). */
-export async function fetchOrderResult(orderId: string): Promise<ProvisionResult> {
-  return getJson<ProvisionResult>(
-    `${API_BASE_URL}/api/v1/public/orders/${encodeURIComponent(orderId)}`,
-  );
+export async function fetchOrderResult(orderId: string, authToken?: string): Promise<ProvisionResult> {
+  const url = authToken
+    ? `${API_BASE_URL}/api/v1/owner/orders/${encodeURIComponent(orderId)}`
+    : `${API_BASE_URL}/api/v1/public/orders/${encodeURIComponent(orderId)}`;
+  return getJson<ProvisionResult>(url, authToken);
 }
 
 /** Fetch once, then serve from memory — the catalogue is static-ish. */
