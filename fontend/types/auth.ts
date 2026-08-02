@@ -11,7 +11,8 @@ export type PlatformRole =
   | "SUPER_ADMIN"
   | "SUPPORT_STAFF"
   | "SALES_EXECUTIVE"
-  | "FINANCE_MANAGER";
+  | "FINANCE_MANAGER"
+  | "OWNER";
 
 /**
  * The 18 institution roles — served from <tenant>.xyz.com.

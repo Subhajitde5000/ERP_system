@@ -1,29 +1,38 @@
 import type { Metadata } from "next";
 
-import { CheckoutFlow } from "@/components/checkout/checkout-flow";
+import { BrandingPanel } from "@/components/auth/branding-panel";
+import { MobileBanner } from "@/components/auth/mobile-banner";
+import { OwnerSignupForm } from "@/components/auth/owner-signup-form";
 
 export const metadata: Metadata = {
-  title: "Start Free Trial / Buy Now",
+  title: "Create your platform account",
   description:
-    "Register your institution, choose a subdomain, pick a plan and pay — your institution is provisioned automatically.",
+    "Sign up once and manage every institution you own — billing, subscriptions, invoices and support.",
 };
 
 /**
- * Public signup — Steps 1–8 of the institution-admin journey.
- * `?plan=professional` pre-selects a plan; `?mode=trial` starts the free
- * trial; `?order=<id>&done=1` re-shows the success page after a refresh.
+ * Owner account sign-up — the AWS / Shopify / Zoho "create account" step.
+ *
+ * Previously this route was the anonymous institution checkout. Under the
+ * account-holder model the account comes first: Sign Up → Verify Email →
+ * Platform Dashboard → Create New Institution. The institution checkout now
+ * lives at /account/institutions/new and reuses the same CheckoutFlow.
  */
-export default async function SignupPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ plan?: string; mode?: string; order?: string; done?: string }>;
-}) {
-  const params = await searchParams;
+export default function SignupPage() {
   return (
-    <CheckoutFlow
-      initialPlan={params.plan ?? null}
-      initialMode={params.mode === "trial" ? "TRIAL" : null}
-      orderId={params.order ?? null}
-    />
+    <div className="flex min-h-screen flex-col bg-[#F8FAFC] lg:flex-row">
+      <BrandingPanel />
+      <MobileBanner />
+
+      <main className="flex flex-1 items-start justify-center bg-white p-6 lg:items-center lg:bg-[#F8FAFC] lg:p-10">
+        <div className="w-full max-w-[400px] animate-fade-up py-4 lg:py-0">
+          <OwnerSignupForm />
+          <p className="mt-6 text-center text-[11px] leading-relaxed text-[#475569]">
+            One account · many institutions ·{" "}
+            <span className="font-medium text-[#0F172A]">v0.2.0</span>
+          </p>
+        </div>
+      </main>
+    </div>
   );
 }

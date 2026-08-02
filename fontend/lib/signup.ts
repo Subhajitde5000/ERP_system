@@ -65,6 +65,11 @@ export interface Quote {
   coupon: CouponResult | null;
 }
 
+export interface OwnerDraft {
+  name: string;
+  email: string;
+}
+
 export interface InstitutionDraft {
   name: string;
   type: "SCHOOL" | "COLLEGE";
@@ -132,6 +137,8 @@ export interface ProvisionResult {
   tenant: ProvisionedTenant;
   subscription: ProvisionedSubscription;
   invoice: ProvisionedInvoice | null;
+  ownerEmail: string;
+  platformDashboardUrl: string;
   adminEmail: string;
   enabledModules: string[];
   welcomeEmail: WelcomeEmail;
@@ -156,6 +163,22 @@ export const SETUP_STEPS = [
 
 export type SetupStepName = (typeof SETUP_STEPS)[number];
 
+async function getJson<T>(url: string, authToken?: string): Promise<T> {
+  const res = await fetch(url, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+  });
+
+function toCamel(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toCamel);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, val]) => [
+      key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()),
+      toCamel(val),
+    ]),
+  );
+}
+
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) {
@@ -164,13 +187,16 @@ async function getJson<T>(url: string): Promise<T> {
   }
   const envelope = (await res.json()) as { success: boolean; data: T; message: string };
   if (!envelope.success) throw new Error(envelope.message);
-  return envelope.data;
+  return toCamel(envelope.data) as T;
 }
 
-async function postJson<T>(url: string, body: unknown): Promise<T> {
+async function postJson<T>(url: string, body: unknown, authToken?: string): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -179,7 +205,7 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   }
   const envelope = (await res.json()) as { success: boolean; data: T; message: string };
   if (!envelope.success) throw new Error(envelope.message);
-  return envelope.data;
+  return toCamel(envelope.data) as T;
 }
 
 /** GET /api/v1/public/catalog — plans + modules for the pricing page. */
@@ -187,7 +213,7 @@ export async function fetchCatalog(): Promise<Catalog> {
   const res = await fetch(`${API_BASE_URL}/api/v1/public/catalog`);
   if (!res.ok) throw new Error("Catalogue unavailable");
   const envelope = (await res.json()) as { data: Catalog };
-  return envelope.data;
+  return toCamel(envelope.data) as Catalog;
 }
 
 /** GET /api/v1/public/subdomains/check?slug=green */
@@ -222,11 +248,15 @@ export async function createOrder(payload: {
   moduleKeys: string[];
   billingCycle: "MONTHLY" | "YEARLY";
   couponCode: string | null;
+  owner: OwnerDraft;
   institution: InstitutionDraft;
   urlSlug: string;
   password: string;
-}): Promise<Order> {
-  return postJson<Order>(`${API_BASE_URL}/api/v1/public/orders`, payload);
+}, authToken?: string): Promise<Order> {
+  const url = authToken
+    ? `${API_BASE_URL}/api/v1/owner/orders`
+    : `${API_BASE_URL}/api/v1/public/orders`;
+  return postJson<Order>(url, payload, authToken);
 }
 
 /** POST /api/v1/public/orders/{id}/pay — pay + auto-provision. */
@@ -234,18 +264,20 @@ export async function payOrder(
   orderId: string,
   method: string,
   gatewayRef?: string,
+  authToken?: string,
 ): Promise<ProvisionResult> {
-  return postJson<ProvisionResult>(
-    `${API_BASE_URL}/api/v1/public/orders/${orderId}/pay`,
-    { method, gateway_ref: gatewayRef },
-  );
+  const url = authToken
+    ? `${API_BASE_URL}/api/v1/owner/orders/${orderId}/pay`
+    : `${API_BASE_URL}/api/v1/public/orders/${orderId}/pay`;
+  return postJson<ProvisionResult>(url, { method, gateway_ref: gatewayRef }, authToken);
 }
 
 /** GET /api/v1/public/orders/{id} — success-page payload (idempotent). */
-export async function fetchOrderResult(orderId: string): Promise<ProvisionResult> {
-  return getJson<ProvisionResult>(
-    `${API_BASE_URL}/api/v1/public/orders/${encodeURIComponent(orderId)}`,
-  );
+export async function fetchOrderResult(orderId: string, authToken?: string): Promise<ProvisionResult> {
+  const url = authToken
+    ? `${API_BASE_URL}/api/v1/owner/orders/${encodeURIComponent(orderId)}`
+    : `${API_BASE_URL}/api/v1/public/orders/${encodeURIComponent(orderId)}`;
+  return getJson<ProvisionResult>(url, authToken);
 }
 
 /** Fetch once, then serve from memory — the catalogue is static-ish. */

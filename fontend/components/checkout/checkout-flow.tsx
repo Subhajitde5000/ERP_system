@@ -28,6 +28,7 @@ import { checkSubdomain, createOrder, fetchQuote, formatINR, getCatalog, payOrde
 import type {
   Catalog,
   InstitutionDraft,
+  OwnerDraft,
   ModuleInfo,
   PlanInfo,
   ProvisionResult,
@@ -38,7 +39,7 @@ import type {
 /**
  * Public checkout — the full Step 1 → Step 8 journey:
  *
- *   Registration → Institution URL → Plan → Modules (fixed or BYO) →
+ *   Platform account → Institution URL → Plan → Modules (fixed or BYO) →
  *   Review (+coupon) → Payment → Automatic provisioning → Success
  *
  * The backend is the price source of truth (`fetchQuote`), but a local
@@ -49,6 +50,7 @@ import type {
 type Mode = "PURCHASE" | "TRIAL";
 
 interface Draft {
+  owner: OwnerDraft;
   institution: InstitutionDraft;
   urlSlug: string;
   password: string;
@@ -62,6 +64,10 @@ interface Draft {
 const DRAFT_KEY = "erp_signup_draft";
 
 const EMPTY_DRAFT: Draft = {
+  owner: {
+    name: "",
+    email: "",
+  },
   institution: {
     name: "",
     type: "COLLEGE",
@@ -150,6 +156,7 @@ export function CheckoutFlow({
   initialPlan,
   initialMode,
   orderId,
+  ownerToken,
 }: {
   /** Pre-selected plan from ?plan= on the pricing page. */
   initialPlan?: string | null;
@@ -157,6 +164,12 @@ export function CheckoutFlow({
   initialMode?: "TRIAL" | null;
   /** Recover the success page after a refresh (?order=<id>&done=1). */
   orderId?: string | null;
+  /**
+   * When set, the checkout runs against the owner-scoped endpoints
+   * (/owner/orders) so the provisioned institution is linked to the signed-in
+   * owner's account. Anonymous public checkout leaves it unset.
+   */
+  ownerToken?: string | null;
 }) {
   const router = useRouter();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -195,7 +208,7 @@ export function CheckoutFlow({
     if (!orderId || provision) return;
     let cancelled = false;
     import("@/lib/signup").then(({ fetchOrderResult }) =>
-      fetchOrderResult(orderId)
+      fetchOrderResult(orderId, ownerToken ?? undefined)
         .then((result) => {
           if (!cancelled) setProvision(result);
         })
@@ -206,7 +219,7 @@ export function CheckoutFlow({
     return () => {
       cancelled = true;
     };
-  }, [orderId, provision]);
+  }, [orderId, provision, ownerToken]);
 
   // Persist the draft as it changes.
   useEffect(() => {
@@ -268,7 +281,7 @@ export function CheckoutFlow({
     );
   }
 
-  /* ── Step 1 — Institution Registration ─────────────────────────────────── */
+  /* ── Step 1 — Platform owner account + institution draft ───────────────── */
   if (step === 0) {
     return (
       <CheckoutShell step={step} onBack={undefined}>
@@ -347,9 +360,13 @@ export function CheckoutFlow({
           quote={effectiveQuote}
           busy={busy}
           setBusy={setBusy}
+          ownerToken={ownerToken ?? undefined}
           onPaid={(result) => {
             setProvision(result);
-            router.replace(`/signup?order=${result.orderId}&done=1`);
+            const doneUrl = ownerToken
+              ? `/account/institutions/new?order=${result.orderId}&done=1`
+              : `/signup?order=${result.orderId}&done=1`;
+            router.replace(doneUrl);
           }}
         />
     </CheckoutShell>
@@ -397,6 +414,8 @@ function RegistrationStep({
   function validate(): boolean {
     const e: Record<string, string> = {};
     const inst = draft.institution;
+    if (draft.owner.name.trim().length < 2) e.ownerName = "Enter the owner name";
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(draft.owner.email)) e.ownerEmail = "Enter a valid owner email";
     if (inst.name.trim().length < 2) e.name = "Enter the institution name";
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(inst.email)) e.email = "Enter a valid official email";
     if (!inst.phone) e.phone = "Enter a phone number";
@@ -435,8 +454,8 @@ function RegistrationStep({
     <div className="animate-fade-up">
       <StepTitle
         icon={<Building2 className="h-5 w-5" aria-hidden="true" />}
-        title="Institution Registration"
-        subtitle="Tell us about your institution — you'll manage everything from your own subdomain."
+        title="Create your platform account"
+        subtitle="Sign up once at xyz.com. This owner account can create and manage multiple institutions, billing, invoices and support."
       />
       <form
         onSubmit={(e) => {
@@ -445,6 +464,35 @@ function RegistrationStep({
         }}
         className="mt-8 space-y-5 rounded-card border border-border bg-white p-6 shadow-card sm:p-8"
       >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field label="Owner Name" required error={errors.ownerName}>
+            <input
+              className={inputClass}
+              value={draft.owner.name}
+              onChange={(e) => onChange({ owner: { ...draft.owner, name: e.target.value } })}
+              placeholder="Rahul Sharma"
+              autoComplete="name"
+            />
+          </Field>
+          <Field label="Owner Email / Platform Login" required error={errors.ownerEmail}>
+            <input
+              className={inputClass}
+              type="email"
+              value={draft.owner.email}
+              onChange={(e) => onChange({ owner: { ...draft.owner, email: e.target.value } })}
+              placeholder="rahul@gmail.com"
+              autoComplete="email"
+            />
+          </Field>
+        </div>
+
+        <div className="rounded-field border border-accent-border bg-accent-light px-4 py-3 text-sm text-[#3730A3]">
+          Your platform account is the owner account. After email verification, sign in at
+          xyz.com/login to open My Institutions, Billing, Subscriptions, Invoices,
+          Support Tickets and Profile. Daily ERP users still sign in at the
+          institution subdomain.
+        </div>
+
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="Institution Name" required error={errors.name}>
             <input
@@ -905,12 +953,14 @@ function PaymentStep({
   busy,
   setBusy,
   onPaid,
+  ownerToken,
 }: {
   draft: Draft;
   quote: Quote | null;
   busy: boolean;
   setBusy: (v: boolean) => void;
   onPaid: (result: ProvisionResult) => void;
+  ownerToken?: string;
 }) {
   const [method, setMethod] = useState<(typeof PAYMENT_METHODS)[number]["id"]>("UPI");
   const [error, setError] = useState<string | null>(null);
@@ -925,6 +975,10 @@ function PaymentStep({
         moduleKeys: draft.moduleKeys,
         billingCycle: draft.billingCycle,
         couponCode: draft.couponCode.trim() || null,
+        owner: {
+          name: draft.owner.name,
+          email: draft.owner.email,
+        },
         institution: {
           name: draft.institution.name,
           type: draft.institution.type,
@@ -937,8 +991,13 @@ function PaymentStep({
         },
         urlSlug: draft.urlSlug,
         password: draft.password,
-      });
-      const result = await payOrder(order.id, draft.mode === "TRIAL" ? "TRIAL" : method);
+      }, ownerToken);
+      const result = await payOrder(
+        order.id,
+        draft.mode === "TRIAL" ? "TRIAL" : method,
+        undefined,
+        ownerToken,
+      );
       onPaid(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Payment failed — please try again.");

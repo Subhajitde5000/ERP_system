@@ -13,7 +13,7 @@ Endpoints (all anonymous, rate-limited):
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,18 +22,62 @@ from app.database import get_db
 from app.schemas.common import APIResponse
 from app.schemas.signup import (
     APIResponseCatalog,
+    APIResponsePlatformAccount,
     APIResponseOrder,
     APIResponseProvision,
     APIResponseQuote,
     APIResponseSubdomain,
+    APIResponseVerifyEmail,
     OrderCreateRequest,
+    PlatformAccountCreateRequest,
     OrderPayRequest,
     ProvisionResult,
+    VerifyEmailRequest,
 )
 from app.services.signup_service import SignupService
 
 router = APIRouter(prefix="/public", tags=["Public Signup"])
 limiter = Limiter(key_func=get_remote_address)
+
+
+@router.post(
+    "/platform/accounts",
+    response_model=APIResponsePlatformAccount,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit("10/hour")
+async def create_platform_account(
+    request: Request,
+    payload: PlatformAccountCreateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Create the owner's xyz.com platform account and send verification.
+
+    This is the AWS/Shopify-style account: the owner signs in once at
+    xyz.com, then creates and manages one or many institutions from the
+    platform dashboard.
+    """
+    data = await SignupService.create_platform_account(db, payload)
+    return APIResponse(
+        success=True,
+        data=data,
+        message="Platform account created — verify your email",
+    )
+
+
+@router.post(
+    "/platform/accounts/verify-email",
+    response_model=APIResponseVerifyEmail,
+)
+@limiter.limit("20/hour")
+async def verify_platform_account(
+    request: Request,
+    payload: VerifyEmailRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Verify an owner email before dashboard access."""
+    data = await SignupService.verify_platform_account(db, payload.token)
+    return APIResponse(success=True, data=data, message="Email verified")
 
 
 @router.get("/tenants/by-slug/{slug}", response_model=APIResponse)

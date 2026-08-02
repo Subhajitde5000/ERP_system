@@ -13,9 +13,10 @@ import { PlatformPage } from "@/components/platform/platform-page";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { DashboardPanel } from "@/components/dashboard/panel";
 import { Card } from "@/components/dashboard/primitives";
+import { OwnerDashboard } from "@/components/platform/owner-console";
 import { TenantStateChip } from "@/components/platform/tenant-bits";
 import { compactINR } from "@/lib/platform";
-import { getPlatformStats } from "@/lib/platform-data";
+import { getPlatformStats, getTenants } from "@/lib/platform-data";
 import type { Stat } from "@/types/dashboard";
 
 export const metadata: Metadata = { title: "Platform Dashboard" };
@@ -36,8 +37,9 @@ export default async function PlatformDashboardPage({
   const search = await searchParams;
 
   return (
-    <PlatformPage search={search}>
-      {() => {
+    <PlatformPage search={search} allow={["SUPER_ADMIN", "OWNER"]}>
+      {({ role }) => {
+        if (role === "OWNER") return <OwnerDashboard tenants={getTenants()} />;
         const s = getPlatformStats();
 
         const stats: Stat[] = [

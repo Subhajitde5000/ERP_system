@@ -202,8 +202,8 @@ class PlatformPayment(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True
     )
     invoice_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
@@ -287,12 +287,22 @@ class Order(Base):
     institution_name: Mapped[str] = mapped_column(String(255), nullable=False)
     institution_type: Mapped[str] = mapped_column(String(20), nullable=False)
     contact_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    owner_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    owner_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    owner_platform_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     country: Mapped[str] = mapped_column(String(100), nullable=False, default="India")
     state: Mapped[str | None] = mapped_column(String(100), nullable=True)
     city: Mapped[str | None] = mapped_column(String(100), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     url_slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    # The owner who initiated this checkout, when it was started from inside
+    # the platform dashboard (the anonymous public checkout leaves it NULL).
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     # PENDING | PAID | TRIAL_STARTED | FAILED | CANCELLED
     status: Mapped[str] = mapped_column(
@@ -313,6 +323,7 @@ class Order(Base):
     __table_args__ = (
         Index("idx_orders_status_created_at", "status", "created_at"),
         Index("idx_orders_contact_email", "contact_email"),
+        Index("idx_orders_owner_platform_user_id", "owner_platform_user_id"),
     )
 
 

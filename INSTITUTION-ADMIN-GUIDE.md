@@ -1,0 +1,182 @@
+# Institution Admin — Simple User Guide
+
+This guide is for the person who runs the institution on xyz.com — the principal,
+the office administrator, or whoever was given the **Institution Admin** role.
+You do not need to be technical. Read this once and you will know how to run
+your school or college on the platform.
+
+---
+
+## What is the "Admin Console"?
+
+It is your control room. After you sign in, everything about your institution —
+classes, staff, students, modules, settings — is managed from one place, at:
+
+```
+https://<your-institution>.xyz.com/admin/dashboard
+```
+
+For example, Green College's admin works at `green.xyz.com/admin/dashboard`.
+
+Only people with the **Institution Admin** role can open it. Everyone else is
+sent to the normal login screen.
+
+---
+
+## Step 0 — How to sign in
+
+1. Open your institution's login page, e.g. `https://green.xyz.com/login`.
+2. Enter your **email** and **password** (given to you by the platform team or
+   set from your invite email).
+3. You will land on the **Dashboard**.
+
+If you forgot your password, use the **Forgot password?** link on the login page.
+
+---
+
+## The menu (left side)
+
+| Menu item | What you do there |
+|---|---|
+| **Dashboard** | See numbers: how many students, staff, departments, classes, etc. |
+| **Academic Years** | Add the years your institution runs (e.g. 2026–27). |
+| **Departments** | Add departments (e.g. Computer Science, Commerce). |
+| **Staff** | Add teachers and other staff; give them roles. |
+| **Modules** | Turn extra features on or off. |
+| **Settings** | Change timezone and currency. |
+| **Profile** | Update your institution's name, address, logo, contact. |
+
+On a phone, open the menu with the ☰ button at the top left.
+
+---
+
+## Step 1 — Set your Academic Year
+
+Before you add classes or students, you need **one current academic year**.
+
+1. Go to **Academic Years**.
+2. Fill in: a name (e.g. `2026-27`), a start date and an end date.
+3. Tick **Set as current year** for the year that is happening right now.
+4. Click **Add year**.
+
+> Only **one** year can be "current" at a time. If you mark a new one as current,
+> the old one automatically stops being current. You cannot delete the current
+> year — switch current to another year first.
+
+---
+
+## Step 2 — Create Departments
+
+A department is a section of your institution (Computer Science, Commerce,
+Arts, Primary School…).
+
+1. Go to **Departments**.
+2. Type a **Name** (e.g. `Computer Science & Engineering`) and a short **Code**
+   (e.g. `CSE`).
+3. Click **Add department**.
+
+Each department card shows how many classes and staff belong to it. You can
+delete a department only when it has no classes left in it.
+
+---
+
+## Step 3 — Add Staff (teachers and team)
+
+1. Go to **Staff** and click **Invite**.
+2. Enter the person's **name, email, phone** and pick a **role**
+   (Teacher, Principal, HOD, Accountant, …).
+3. Click **Send invite**.
+
+What happens next:
+- The person gets an **email with a "set your password" link**.
+- They set their own password and can sign in.
+- **You never see their password** — that is by design, for safety.
+
+To give someone an **extra role** later (for example, make a Teacher also a
+Mentor), find them in the list and click the small role buttons under their name
+(`+ teacher`, `+ hod`, …).
+
+---
+
+## Step 4 — Add Students
+
+Students are added by the institution. (A student-friendly page is coming; for
+now your platform team can add them, or use the steps below.)
+
+1. Make sure you have an **Academic Year** and a **Class** ready first.
+2. A student is created with a **roll number** (unique for your institution) and,
+   if you like, an email.
+3. When you add a student you can also **enrol** them straight into a class for
+   the current year.
+
+> Two students cannot share the same roll number in your institution.
+
+---
+
+## Step 5 — Turn features on or off (Modules)
+
+Go to **Modules**. You will see all available features.
+
+- **Core modules** (Attendance, Examinations, Assignments, Notices, Discussions,
+  Content, Results, Timetable) are **always on** — you cannot switch them off.
+- **Optional modules** (Library, Hostel, Transport, HR, …) have a toggle.
+  - Switch one **on** if your plan includes it.
+  - If a toggle does not turn on and you see a message about your **plan**, it
+    means that module is not in your subscription. Ask the account owner to
+    upgrade the plan.
+
+> The person who owns the xyz.com **account** (the one who pays the bill) manages
+> plans and billing from their own dashboard at `xyz.com` — that is a separate
+> login from this admin console.
+
+---
+
+## Step 6 — Update your institution details
+
+- **Profile**: change your institution's name, address, city, phone, website and
+  logo. These show to your staff and students.
+- **Settings**: set your **timezone** (so dates and times are correct) and
+  **currency** (for fees and reports). In India this is usually `Asia/Kolkata`
+  and `INR`.
+
+Click **Save** after editing.
+
+---
+
+## Day-to-day, in one line
+
+> **Dashboard** to check numbers → **Academic Years / Departments / Staff /
+> Students** to keep records correct → **Modules** to switch features on or off →
+> **Settings / Profile** to keep details up to date.
+
+---
+
+## Frequently asked questions
+
+**I see "Institution admin privileges are required."**
+You signed in with an account that is not an admin. Sign out and sign in with
+the admin account, or ask the current admin to give you the role.
+
+**A staff member did not get the invite email.**
+Ask them to check spam. If still missing, the platform team can resend it from
+the database, or you can invite them again with the same email.
+
+**Can two institutions share one login?**
+No. Each institution has its own secure login at its own address
+(`green.xyz.com`, `abc-school.xyz.com`). But the **owner account** at `xyz.com`
+can manage and pay for several institutions from one place.
+
+**I made a mistake — can I delete things?**
+Yes for academic years (not the current one), departments (only if empty), and
+you can deactivate staff. Students and classes can be removed by your platform
+team if needed.
+
+**Something is broken. Who do I call?**
+Use **Support Tickets** from the owner dashboard (`xyz.com`), or contact your
+platform team. Describe what you did and what you saw.
+
+---
+
+_This guide covers the live admin features. As more module pages (attendance,
+exams, fees, library, …) are connected, they will appear in the same menu with
+the same simple pattern._

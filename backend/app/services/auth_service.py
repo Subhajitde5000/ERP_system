@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models.platform_session import PlatformSession
-from app.models.platform_user import PlatformUser
+from app.models.platform_user import PlatformRole, PlatformUser
 from app.models.role import Permission, Role, RoleAssignment
 from app.models.session import UserSession
 from app.models.tenant import Tenant
@@ -124,6 +124,12 @@ class AuthService:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Platform account is inactive",
+            )
+
+        if user.platform_role == PlatformRole.OWNER and user.email_verified_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Verify your email before opening the platform dashboard",
             )
 
         user.last_login_at = datetime.now(timezone.utc)
