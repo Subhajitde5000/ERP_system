@@ -1,9 +1,9 @@
 -- ============================================================================
--- update2.sql — Super Admin console (C-SA-01 … C-SA-08)
+-- update2.sql — Platform consoles + academic leadership governance (C-SA, C-PR, C-HD)
 -- ============================================================================
 -- Applies AFTER database.sql and update.sql. Every block is idempotent, so
--- re-running is safe, and each is mirrored by an Alembic migration in
--- backend/app/alembic/versions/a4c8e1d2f930_super_admin_console.py.
+-- re-running is safe, and each section is mirrored by the corresponding
+-- Alembic migration under backend/app/alembic/versions/.
 --
 -- Apply order on a fresh DB:
 --   1. psql -f database/database.sql        (base schema + seeds)
@@ -13,10 +13,11 @@
 --
 -- Teams on Alembic get all of this from `alembic upgrade head` instead.
 --
--- Scope note: almost everything the Super Admin console needs already exists
--- (plans §4.1, tenants §4.2, subscriptions §4.4, platform_users §4.5,
--- support_tickets §4.6, audit_logs §10.3). This file adds only what was
--- genuinely missing, rather than restating tables that are already there.
+-- Scope note: almost everything the platform and academic leadership consoles
+-- need already exists (plans §4.1, tenants §4.2, subscriptions §4.4,
+-- platform_users §4.5, core academic tables §6–7, support_tickets §4.6,
+-- audit_logs §10.3). This file adds only genuinely missing integrity/index and
+-- governance changes, rather than restating the base tables that own the data.
 -- ============================================================================
 
 
@@ -463,3 +464,152 @@ CREATE INDEX IF NOT EXISTS idx_support_tickets_assigned_to ON support_tickets (a
 CREATE INDEX IF NOT EXISTS idx_support_tickets_created_at  ON support_tickets (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_tenant_status
   ON support_tickets (tenant_id, status);
+
+
+-- --------------------------------------------------------------------------
+-- 9. Principal academic-governance workflow (C-PR-01 … C-PR-10).
+--
+-- The base schema already owns attendance, exams, results, notices, people
+-- and timetables.  What it did *not* represent was the two-person control
+-- required by role_based_system_design.md §4.3 / §6:
+--
+--   Exam Controller prepares a schedule     → Principal approves or rejects
+--   Exam Controller compiles results        → Principal approves or rejects
+--   Exam Controller publishes an approved result
+--
+-- A boolean is not enough: rejected is materially different from pending and
+-- the decision needs an actor, timestamp and an auditable rationale.  These
+-- columns are additive, default legacy rows deterministically, and every
+-- constraint/index is idempotent for safe production re-runs.
+-- --------------------------------------------------------------------------
+
+-- ── Exam schedule approval ─────────────────────────────────────────────────
+ALTER TABLE exams
+  ADD COLUMN IF NOT EXISTS schedule_approval_status VARCHAR(20);
+ALTER TABLE exams
+  ADD COLUMN IF NOT EXISTS schedule_approved_by UUID REFERENCES users(id);
+ALTER TABLE exams
+  ADD COLUMN IF NOT EXISTS schedule_approved_at TIMESTAMPTZ;
+ALTER TABLE exams
+  ADD COLUMN IF NOT EXISTS schedule_approval_note TEXT;
+
+-- Existing future schedules have never been reviewed; do not silently grant
+-- approval during rollout. Historical completed rows are marked approved;
+-- cancelled rows are terminally rejected rather than left in the queue.
+UPDATE exams
+   SET schedule_approval_status = CASE
+     WHEN status IN ('ONGOING', 'COMPLETED', 'RESULTS_RELEASED') THEN 'APPROVED'
+     WHEN status = 'CANCELLED' THEN 'REJECTED'
+     ELSE 'PENDING'
+   END
+ WHERE schedule_approval_status IS NULL;
+
+ALTER TABLE exams
+  ALTER COLUMN schedule_approval_status SET DEFAULT 'PENDING';
+ALTER TABLE exams
+  ALTER COLUMN schedule_approval_status SET NOT NULL;
+
+ALTER TABLE exams DROP CONSTRAINT IF EXISTS ck_exams_schedule_approval_status;
+ALTER TABLE exams ADD CONSTRAINT ck_exams_schedule_approval_status
+  CHECK (schedule_approval_status IN ('PENDING', 'APPROVED', 'REJECTED'));
+
+CREATE INDEX IF NOT EXISTS idx_exams_tenant_schedule_approval
+  ON exams (tenant_id, schedule_approval_status, scheduled_at);
+
+-- ── Result-publication approval ────────────────────────────────────────────
+ALTER TABLE result_publications
+  ADD COLUMN IF NOT EXISTS approval_status VARCHAR(20);
+ALTER TABLE result_publications
+  ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES users(id);
+ALTER TABLE result_publications
+  ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE result_publications
+  ADD COLUMN IF NOT EXISTS approval_note TEXT;
+
+-- A publication already visible to students must have passed governance before
+-- this feature existed; unpublished legacy rows enter the explicit queue.
+UPDATE result_publications
+   SET approval_status = CASE
+     WHEN is_visible_to_students THEN 'APPROVED'
+     ELSE 'PENDING'
+   END
+ WHERE approval_status IS NULL;
+
+ALTER TABLE result_publications
+  ALTER COLUMN approval_status SET DEFAULT 'PENDING';
+ALTER TABLE result_publications
+  ALTER COLUMN approval_status SET NOT NULL;
+
+ALTER TABLE result_publications DROP CONSTRAINT IF EXISTS ck_result_publications_approval_status;
+ALTER TABLE result_publications ADD CONSTRAINT ck_result_publications_approval_status
+  CHECK (approval_status IN ('PENDING', 'APPROVED', 'REJECTED'));
+
+CREATE INDEX IF NOT EXISTS idx_result_publications_tenant_approval
+  ON result_publications (tenant_id, approval_status, published_at DESC);
+
+
+-- --------------------------------------------------------------------------
+-- 10. HOD mentor integrity (C-HD-08).
+--
+-- `mentor_assignments` already belongs to the base schema, but its original
+-- unique key is (mentor_id, student_id, academic_year_id). That permits the
+-- same student to have two *active* mentors in one year, which contradicts the
+-- HOD workflow and makes a reassignment race-prone. Keep history by allowing
+-- inactive rows, while the partial unique index guarantees one active mentor.
+-- --------------------------------------------------------------------------
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM mentor_assignments
+    WHERE is_active = TRUE
+    GROUP BY tenant_id, student_id, academic_year_id
+    HAVING COUNT(*) > 1
+  ) THEN
+    RAISE EXCEPTION
+      'Cannot enforce one active mentor per student/year: resolve duplicate active mentor_assignments first';
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mentor_assignments__tenant_student_year_active
+  ON mentor_assignments (tenant_id, student_id, academic_year_id)
+  WHERE is_active = TRUE;
+
+
+-- --------------------------------------------------------------------------
+-- 11. HOD scope bootstrap (C-HD-01 … C-HD-12).
+--
+-- Older department setup writes `departments.hod_id` but may predate the
+-- matching department-scoped HOD role assignment. The production HOD API is
+-- fail-closed, so reconcile the two canonical links once during rollout.
+-- Future department updates perform the same operation in the application.
+-- --------------------------------------------------------------------------
+
+UPDATE role_assignments ra
+   SET is_active = TRUE,
+       scope_type = 'DEPARTMENT',
+       expires_at = NULL
+  FROM roles r, departments d
+ WHERE d.hod_id = ra.user_id
+   AND r.id = ra.role_id
+   AND r.name = 'HOD'
+   AND ra.tenant_id = d.tenant_id
+   AND ra.scope_id = d.id
+   AND d.hod_id IS NOT NULL;
+
+INSERT INTO role_assignments (
+  id, user_id, role_id, tenant_id, scope_id, scope_type, assigned_at, is_active
+)
+SELECT gen_random_uuid(), d.hod_id, r.id, d.tenant_id, d.id, 'DEPARTMENT', NOW(), TRUE
+  FROM departments d
+  JOIN roles r ON r.name = 'HOD'
+ WHERE d.hod_id IS NOT NULL
+   AND NOT EXISTS (
+     SELECT 1
+       FROM role_assignments ra
+      WHERE ra.user_id = d.hod_id
+        AND ra.role_id = r.id
+        AND ra.tenant_id = d.tenant_id
+        AND ra.scope_id = d.id
+   );

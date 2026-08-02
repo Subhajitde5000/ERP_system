@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Check, Loader2, Rocket, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Loader2, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { formatINR, getCatalog } from "@/lib/signup";

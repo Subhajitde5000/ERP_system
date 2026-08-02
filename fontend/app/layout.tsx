@@ -1,21 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
-/* Typography — design §4 */
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["700", "800"],
-  variable: "--font-jakarta",
-  display: "swap",
-});
+/*
+ * Typography is defined as local/system stacks in globals.css.  Keeping fonts
+ * local means a production build and first render do not depend on Google
+ * Fonts being reachable from the build environment or a school network.
+ */
 
 export const metadata: Metadata = {
   title: {
@@ -37,7 +27,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${jakarta.variable}`}>
+    <html lang="en">
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         {children}
       </body>

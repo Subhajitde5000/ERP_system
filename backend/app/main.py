@@ -22,6 +22,9 @@ from app.routers import (
     setup_router,
     tenant_auth_router,
     email_router,
+    principal_router,
+    vice_principal_router,
+    hod_router,
 )
 from app.schemas.common import ErrorDetail
 
@@ -89,3 +92,6 @@ app.include_router(owner_router, prefix=api_prefix)
 app.include_router(institution_router, prefix=api_prefix)
 app.include_router(setup_router, prefix=api_prefix)
 app.include_router(email_router, prefix=api_prefix)
+app.include_router(principal_router, prefix=api_prefix)
+app.include_router(vice_principal_router, prefix=api_prefix)
+app.include_router(hod_router, prefix=api_prefix)
