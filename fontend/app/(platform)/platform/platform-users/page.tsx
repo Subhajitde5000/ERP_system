@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 
 import { PlatformPage } from "@/components/platform/platform-page";
-import { PlatformUsers } from "@/components/platform/platform-users";
-import { getPlatformUsers } from "@/lib/platform-data";
+import { LivePlatformUsers } from "@/components/platform/consoles";
 
 export const metadata: Metadata = { title: "Platform Users" };
 
@@ -12,6 +11,7 @@ export const metadata: Metadata = { title: "Platform Users" };
  *
  * §4.1: the Super Admin "manages platform-level Support, Sales, Finance
  * staff". These are `platform_users` (§4.5) — not tied to any tenant.
+ * Data: GET/POST/PATCH /api/v1/platform/users.
  */
 export default async function PlatformUsersPage({
   searchParams,
@@ -22,9 +22,7 @@ export default async function PlatformUsersPage({
 
   return (
     <PlatformPage search={search}>
-      {({ role }) => (
-        <PlatformUsers users={getPlatformUsers()} actingRole={role} />
-      )}
+      {({ role }) => <LivePlatformUsers actingRole={role} />}
     </PlatformPage>
   );
 }

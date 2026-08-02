@@ -1,20 +1,27 @@
 import type { Metadata } from "next";
 
 import { PlatformPage } from "@/components/platform/platform-page";
-import { OwnerSectionPage } from "@/components/platform/owner-section-page";
-import { getTenants } from "@/lib/platform-data";
+import { LiveOwnerInvoices } from "@/components/platform/owner-consoles";
 
-export const metadata: Metadata = { title: "Owner invoices" };
+export const metadata: Metadata = { title: "Invoices" };
 
-export default async function OwnerinvoicesPage({
+/**
+ * Owner console — Invoices.
+ *
+ * GST invoices for every institution (GET /api/v1/owner/invoices).
+ * Scoped to the signed-in owner by the API, which resolves the account from
+ * the JWT; one owner can never read another's data.
+ */
+export default async function OwnerInvoicesPage({
   searchParams,
 }: {
   searchParams: Promise<{ role?: string }>;
 }) {
   const search = await searchParams;
+
   return (
     <PlatformPage search={search} allow={["OWNER"]}>
-      {() => <OwnerSectionPage section="invoices" tenants={getTenants()} />}
+      {() => <LiveOwnerInvoices />}
     </PlatformPage>
   );
 }

@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 
 import {
   byTriage,
-  CURRENT_AGENT,
   isBreaching,
   isOpenTicket,
   TICKET_PRIORITY_LABELS,
@@ -31,10 +30,13 @@ import type { TicketPriority, TicketRow, TicketStatus } from "@/types/support";
 export function TicketList({
   tickets,
   initialAssignee,
+  agentId = null,
 }: {
   tickets: TicketRow[];
   /** `?assignee=me` from the dashboard KPI deep-link */
   initialAssignee?: string;
+  /** The signed-in agent, for the "assigned to me" filter. */
+  agentId?: string | null;
 }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<string>("OPEN_ALL");
@@ -62,7 +64,7 @@ export function TicketList({
         }
         if (priority !== "ALL" && t.priority !== priority) return false;
         if (tenant !== "ALL" && t.tenantName !== tenant) return false;
-        if (assignee === "ME" && t.assignedToId !== CURRENT_AGENT.id) return false;
+        if (assignee === "ME" && t.assignedToId !== agentId) return false;
         if (assignee === "NONE" && t.assignedToId !== null) return false;
         if (!q) return true;
         return (
@@ -73,7 +75,7 @@ export function TicketList({
         );
       })
       .sort(byTriage);
-  }, [tickets, query, status, priority, tenant, assignee]);
+  }, [tickets, query, status, priority, tenant, assignee, agentId]);
 
   const counts = {
     openAll: tickets.filter(isOpenTicket).length,

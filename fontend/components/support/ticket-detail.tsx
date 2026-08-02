@@ -6,7 +6,6 @@ import { ArrowLeft, EyeOff, Lock, Send, ShieldAlert } from "lucide-react";
 
 import { cn, formatDate } from "@/lib/utils";
 import {
-  CURRENT_AGENT,
   isBreaching,
   SLA_HOURS,
   STATUS_TRANSITIONS,
@@ -28,15 +27,31 @@ import type { TicketDetail as Detail } from "@/types/support";
  * institution (§4.1), which is why the only link into the tenant is the
  * read-only diagnostic view.
  */
-export function TicketDetail({ detail }: { detail: Detail }) {
+export function TicketDetail({
+  detail,
+  agentName,
+  onReplySubmit,
+  onStatusChange,
+}: {
+  detail: Detail;
+  /** The signed-in agent, shown on the reply box. */
+  agentName?: string;
+  /** Wired by the page to POST /platform/tickets/:id/reply. */
+  onReplySubmit?: (body: string, isInternal: boolean) => Promise<void>;
+  /** Wired by the page to PATCH /platform/tickets/:id. */
+  onStatusChange?: (next: Detail["ticket"]["status"]) => Promise<void>;
+}) {
   const { ticket, replies } = detail;
-  const [status, setStatus] = useState(ticket.status);
   const [body, setBody] = useState("");
   const [internal, setInternal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // The server owns ticket state; after a mutation the page reloads the
+  // detail, so rendering `ticket.status` directly keeps the two in step
+  // instead of a local copy that can drift.
+  const status = ticket.status;
   const transitions = STATUS_TRANSITIONS[status];
   const closed = status === "CLOSED";
 
@@ -50,13 +65,25 @@ export function TicketDetail({ detail }: { detail: Detail }) {
     }
     setError(null);
     setBusy(true);
-    // TODO(Dev-A): POST /api/v1/platform/tickets/:id/reply
-    await new Promise((r) => setTimeout(r, 600));
-    setBusy(false);
-    setBody("");
-    setNotice(
-      `POST /platform/tickets/${ticket.id}/reply { internal: ${internal} } — API not connected yet (Dev-A, C-SP-03).`,
-    );
+    try {
+      if (onReplySubmit) {
+        await onReplySubmit(body.trim(), internal);
+        setBody("");
+        setInternal(false);
+        setNotice(internal ? "Internal note added." : "Reply sent.");
+      } else {
+        // Unwired preview (`?role=`): report what would have been sent.
+        await new Promise((r) => setTimeout(r, 600));
+        setBody("");
+        setNotice(
+          `POST /platform/tickets/${ticket.id}/reply { internal: ${internal} } — API not connected (preview).`,
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send the reply.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -75,7 +102,7 @@ export function TicketDetail({ detail }: { detail: Detail }) {
         </h1>
         <div className="flex shrink-0 items-center gap-1.5 pt-1.5">
           <PriorityChip ticket={ticket} />
-          <StatusChip ticket={{ ...ticket, status }} />
+          <StatusChip ticket={ticket} />
         </div>
       </div>
 
@@ -186,7 +213,7 @@ export function TicketDetail({ detail }: { detail: Detail }) {
                 htmlFor="reply-body"
                 className="text-[13px] font-medium text-[#334155]"
               >
-                Reply as {CURRENT_AGENT.name}
+                Reply as {agentName ?? "support"}
               </label>
               <textarea
                 id="reply-body"
@@ -244,12 +271,28 @@ export function TicketDetail({ detail }: { detail: Detail }) {
                   <select
                     id="ticket-status"
                     value={status}
-                    onChange={(e) => {
+                    disabled={busy}
+                    onChange={async (e) => {
                       const next = e.target.value as typeof status;
-                      setStatus(next);
-                      setNotice(
-                        `PATCH /platform/tickets/${ticket.id} { status: "${next}" } — API not connected yet (Dev-A, C-SP-03).`,
-                      );
+                      if (next === status) return;
+                      setError(null);
+                      if (!onStatusChange) {
+                        setNotice(
+                          `PATCH /platform/tickets/${ticket.id} { status: "${next}" } — API not connected (preview).`,
+                        );
+                        return;
+                      }
+                      setBusy(true);
+                      try {
+                        await onStatusChange(next);
+                        setNotice(`Status changed to ${TICKET_STATUS_LABELS[next]}.`);
+                      } catch (err) {
+                        setError(
+                          err instanceof Error ? err.message : "Could not change the status.",
+                        );
+                      } finally {
+                        setBusy(false);
+                      }
                     }}
                     className="h-9 rounded-field border border-border bg-white px-3 text-[13px] transition focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15"
                   >
