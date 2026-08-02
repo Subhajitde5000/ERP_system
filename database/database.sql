@@ -61,7 +61,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;    -- trigram search on names/titles
 
 CREATE TYPE tenant_type AS ENUM ('SCHOOL', 'COLLEGE');
 CREATE TYPE subscription_status AS ENUM ('TRIAL', 'ACTIVE', 'PAST_DUE', 'CANCELLED');
-CREATE TYPE platform_role AS ENUM ('SUPER_ADMIN', 'SUPPORT', 'SALES', 'FINANCE');
+CREATE TYPE platform_role AS ENUM ('SUPER_ADMIN', 'SUPPORT', 'SALES', 'FINANCE', 'OWNER');
 CREATE TYPE scope_level AS ENUM ('PLATFORM', 'INSTITUTION', 'DEPARTMENT', 'CLASS', 'SUBJECT', 'SELF', 'CHILD');
 CREATE TYPE permission_action AS ENUM ('CREATE', 'READ', 'UPDATE', 'DELETE');
 CREATE TYPE permission_scope AS ENUM ('ALL', 'DEPARTMENT', 'CLASS', 'SUBJECT', 'OWN', 'CHILD');
@@ -169,6 +169,8 @@ CREATE TABLE platform_users (
   password_hash                TEXT NOT NULL,
   platform_role                platform_role NOT NULL,
   is_active                    BOOLEAN NOT NULL DEFAULT TRUE,
+  email_verified_at            TIMESTAMPTZ,
+  email_verification_token_hash TEXT,
   last_login_at                TIMESTAMPTZ,
   created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -181,6 +183,7 @@ CREATE TABLE tenants (
   slug                         VARCHAR(100) NOT NULL UNIQUE,
   type                         tenant_type NOT NULL,
   plan_id                      UUID REFERENCES plans(id),
+  owner_platform_user_id       UUID REFERENCES platform_users(id),
   logo_url                     TEXT,
   address                      TEXT,
   city                         VARCHAR(100),
@@ -1989,6 +1992,7 @@ CREATE INDEX IF NOT EXISTS idx_tenant_modules_disabled_by ON tenant_modules (dis
 CREATE INDEX IF NOT EXISTS idx_tenant_modules_enabled_by ON tenant_modules (enabled_by);
 CREATE INDEX IF NOT EXISTS idx_tenant_modules_module_key ON tenant_modules (module_key);
 CREATE INDEX IF NOT EXISTS idx_tenants_plan_id ON tenants (plan_id);
+CREATE INDEX IF NOT EXISTS idx_tenants_owner_platform_user_id ON tenants (owner_platform_user_id);
 CREATE INDEX IF NOT EXISTS idx_timetable_slots_academic_year_id ON timetable_slots (academic_year_id);
 CREATE INDEX IF NOT EXISTS idx_timetable_slots_subject_id ON timetable_slots (subject_id);
 CREATE INDEX IF NOT EXISTS idx_timetable_slots_tenant_id ON timetable_slots (tenant_id);
