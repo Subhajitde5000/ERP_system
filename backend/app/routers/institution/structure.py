@@ -104,7 +104,7 @@ async def create_department(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_tenant_user_admin)],
 ):
-    return APIResponse(success=True, data=await InstitutionService.create_department(db, admin.tenant_id, payload), message="Department created")
+    return APIResponse(success=True, data=await InstitutionService.create_department(db, admin.tenant_id, payload, actor=admin), message="Department created")
 
 
 @router.put("/departments/{department_id}", response_model=APIResponseDepartment)
@@ -114,7 +114,7 @@ async def update_department(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_tenant_user_admin)],
 ):
-    return APIResponse(success=True, data=await InstitutionService.update_department(db, admin.tenant_id, department_id, payload), message="Department updated")
+    return APIResponse(success=True, data=await InstitutionService.update_department(db, admin.tenant_id, department_id, payload, actor=admin), message="Department updated")
 
 
 @router.delete("/departments/{department_id}", response_model=APIResponse[None])

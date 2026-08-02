@@ -1,5 +1,5 @@
 -- ============================================================================
--- update2.sql — Platform consoles + Principal governance (C-SA-01 … C-SA-08, C-PR-01 … C-PR-10)
+-- update2.sql — Platform consoles + academic leadership governance (C-SA, C-PR, C-HD)
 -- ============================================================================
 -- Applies AFTER database.sql and update.sql. Every block is idempotent, so
 -- re-running is safe, and each section is mirrored by the corresponding
@@ -13,11 +13,11 @@
 --
 -- Teams on Alembic get all of this from `alembic upgrade head` instead.
 --
--- Scope note: almost everything the platform and Principal consoles need
--- already exists (plans §4.1, tenants §4.2, subscriptions §4.4,
+-- Scope note: almost everything the platform and academic leadership consoles
+-- need already exists (plans §4.1, tenants §4.2, subscriptions §4.4,
 -- platform_users §4.5, core academic tables §6–7, support_tickets §4.6,
--- audit_logs §10.3). This file adds only genuinely missing columns/indexes,
--- rather than restating the base tables that already own the data.
+-- audit_logs §10.3). This file adds only genuinely missing integrity/index and
+-- governance changes, rather than restating the base tables that own the data.
 -- ============================================================================
 
 
@@ -567,3 +567,70 @@ ALTER TABLE result_publications ADD CONSTRAINT ck_result_publications_approval_s
 
 CREATE INDEX IF NOT EXISTS idx_result_publications_tenant_approval
   ON result_publications (tenant_id, approval_status, published_at DESC);
+
+
+-- --------------------------------------------------------------------------
+-- 10. HOD mentor integrity (C-HD-08).
+--
+-- `mentor_assignments` already belongs to the base schema, but its original
+-- unique key is (mentor_id, student_id, academic_year_id). That permits the
+-- same student to have two *active* mentors in one year, which contradicts the
+-- HOD workflow and makes a reassignment race-prone. Keep history by allowing
+-- inactive rows, while the partial unique index guarantees one active mentor.
+-- --------------------------------------------------------------------------
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM mentor_assignments
+    WHERE is_active = TRUE
+    GROUP BY tenant_id, student_id, academic_year_id
+    HAVING COUNT(*) > 1
+  ) THEN
+    RAISE EXCEPTION
+      'Cannot enforce one active mentor per student/year: resolve duplicate active mentor_assignments first';
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mentor_assignments__tenant_student_year_active
+  ON mentor_assignments (tenant_id, student_id, academic_year_id)
+  WHERE is_active = TRUE;
+
+
+-- --------------------------------------------------------------------------
+-- 11. HOD scope bootstrap (C-HD-01 … C-HD-12).
+--
+-- Older department setup writes `departments.hod_id` but may predate the
+-- matching department-scoped HOD role assignment. The production HOD API is
+-- fail-closed, so reconcile the two canonical links once during rollout.
+-- Future department updates perform the same operation in the application.
+-- --------------------------------------------------------------------------
+
+UPDATE role_assignments ra
+   SET is_active = TRUE,
+       scope_type = 'DEPARTMENT',
+       expires_at = NULL
+  FROM roles r, departments d
+ WHERE d.hod_id = ra.user_id
+   AND r.id = ra.role_id
+   AND r.name = 'HOD'
+   AND ra.tenant_id = d.tenant_id
+   AND ra.scope_id = d.id
+   AND d.hod_id IS NOT NULL;
+
+INSERT INTO role_assignments (
+  id, user_id, role_id, tenant_id, scope_id, scope_type, assigned_at, is_active
+)
+SELECT gen_random_uuid(), d.hod_id, r.id, d.tenant_id, d.id, 'DEPARTMENT', NOW(), TRUE
+  FROM departments d
+  JOIN roles r ON r.name = 'HOD'
+ WHERE d.hod_id IS NOT NULL
+   AND NOT EXISTS (
+     SELECT 1
+       FROM role_assignments ra
+      WHERE ra.user_id = d.hod_id
+        AND ra.role_id = r.id
+        AND ra.tenant_id = d.tenant_id
+        AND ra.scope_id = d.id
+   );

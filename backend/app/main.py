@@ -24,6 +24,7 @@ from app.routers import (
     email_router,
     principal_router,
     vice_principal_router,
+    hod_router,
 )
 from app.schemas.common import ErrorDetail
 
@@ -93,3 +94,4 @@ app.include_router(setup_router, prefix=api_prefix)
 app.include_router(email_router, prefix=api_prefix)
 app.include_router(principal_router, prefix=api_prefix)
 app.include_router(vice_principal_router, prefix=api_prefix)
+app.include_router(hod_router, prefix=api_prefix)

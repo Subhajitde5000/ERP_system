@@ -1147,62 +1147,37 @@ legitimately carries none.
 
 ---
 
-## HOD department management
+## HOD department console — live API
 
-C-HD-07 and C-HD-08 — §4.4's "Teachers: view, **assign subjects**" and
-"Mentors: **assign students to mentors**", both scoped to one department.
+C-HD-01…C-HD-12 are served from the authenticated `/hod/*` console and
+`/api/v1/hod/*`; none of these pages reads fixture data. Every request first
+resolves the HOD's active departments from `role_assignments.scope_id` / the
+canonical `departments.hod_id` link, then applies that fence before grouping,
+pagination or mutation.
 
-| Task | Page | Route |
+| Task | Route | Capability |
 |---|---|---|
-| C-HD-07 | Teacher List | `/hod/teachers` |
-| C-HD-08 | Mentor Assignments | `/hod/mentors` |
+| C-HD-01 | `/hod/dashboard` | Department attendance, results, assignments, notices and upcoming-exam KPIs |
+| C-HD-02/03 | `/hod/attendance`, `/hod/attendance/report` | Class heatmap plus per-student/subject detail and CSV export |
+| C-HD-04 | `/hod/examinations` | Department schedules and scoped CSV export, read-only |
+| C-HD-05 | `/hod/assignments` | Department assignment/submission/review queue |
+| C-HD-06 | `/hod/results` | Department class results and CSV export, read-only |
+| C-HD-07 | `/hod/teachers` | View teaching load; assign or remove scoped teacher-subject links |
+| C-HD-08 | `/hod/mentors` | Assign, reassign and remove mentor allocations |
+| C-HD-09/10 | `/hod/notices`, `/hod/notices/new` | Institution feed plus department/class-only posting |
+| C-HD-11 | `/hod/discussion` | Pin, unpin, lock, unlock and soft-delete department threads |
+| C-HD-12 | `/hod/timetable` | Read-only timetables for department classes |
 
-**The department fence is applied in the data layer.** §4.4 scopes the HOD to
-"Own department only", so `getTeacherListBoard()` and `getMentorBoard()` take
-a department code and never emit a row outside it — ECE staff, ECE subjects
-and other departments' students are absent from the payload, not hidden by
-CSS. The code is resolved server-side by `HodPage`, so an HOD cannot reach
-another department by editing the URL.
+**Mentor integrity is in the database, not merely the UI.** `update2.sql`
+section 10 / Alembic revision `e7f2a6c3b904` adds a partial unique index so one
+student can have only one **active** mentor in an academic year. Reassignment
+is transactional and preserves inactive history. The attendance threshold is
+read from tenant settings when configured; the page does not invent one.
 
-**Both pages lead with the number the decision turns on.** A teacher list
-without teaching load can't answer "who takes CS309?", so every row shows
-subjects / as-lead / classes / mentees, and the staffing dialog sorts
-lightest-load first. A mentor board without attendance can't answer "which
-group should this student join?", so every mentee carries their percentage
-and at-risk students are counted per group.
-
-**`teacher_subjects` (§6.5) is edited from both sides.** The teacher's dialog
-answers "what else does Arun teach?"; clicking an unstaffed subject in the
-banner answers "who takes CS309?". Same endpoint, same unique key
-`(teacher_id, subject_id, role_in_subject)` — so one person can be Teacher
-*and* Co-teacher on one subject, which the dialog allows and a duplicate of
-which it refuses.
-
-**Read-only for the Principal and Vice Principal**, who get the data and a
-"View only" chip with no assign, staff or remove control — asserted against
-raw HTML with the HOD's own copy as a positive control.
-
-**Deviations, flagged.**
-1. **`mentor_assignments` does not exist in the schema.** The DB doc defines
-   the MENTOR role (§4.5), gives the HOD "assign students to mentors" (§4.4),
-   scopes a permission tier to "Mentee Group" (§6) and C-HD-08 asks for the
-   page — but searching the whole document for "mentor" or "mentee" returns
-   **nothing**. `MentorAssignment` in `types/mentor.ts` is the shape those
-   four requirements imply, with `UNIQUE (student_id)` because one mentor per
-   student is what makes "my mentees" a group. Marked `TODO(Dev-A)`, exactly
-   as `ticket_replies` (C-SP-03) and `trial_notes` (C-SL-02) were.
-2. **"If Mentor role enabled" is a role gate, not a module gate.** MENTOR is
-   an optional *role* (§4.5), not one of the 16 module keys, so the condition
-   is whether anyone in the department holds the grant. When nobody does the
-   page says so and lists who could take it.
-3. **A second mentor was added to the fixture.** Only Priya Sharma held the
-   grant, and a one-group board can show a list but not the decision the page
-   exists for. Meena Thomas now holds it too, so the two at-risk students sit
-   in different groups.
-4. **The Mentor dashboard was corrected**, not just linked: it claimed "12
-   mentees · 2 below 75%" against no data at all, and three of its links went
-   to `/users` — a page the Mentor role is explicitly denied. Now 3 mentees,
-   1 at risk, pointing at Attendance and Results.
+**HOD setup is reconciled automatically.** Selecting a department HOD creates
+the matching scoped HOD role assignment. The migration backfills existing
+`departments.hod_id` records, so legacy department heads do not lose access on
+deployment.
 
 ---
 

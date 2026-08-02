@@ -8,6 +8,7 @@ from app.dependencies.auth import (
     get_current_tenant_user_admin,
     get_current_tenant_user_principal,
     get_current_tenant_user_vice_principal,
+    get_current_tenant_user_hod,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "get_current_tenant_user_admin",
     "get_current_tenant_user_principal",
     "get_current_tenant_user_vice_principal",
+    "get_current_tenant_user_hod",
 ]

@@ -10,15 +10,11 @@ a second implementation of attendance, results, notices or directory queries.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 from datetime import date
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.academic import Department
-from app.models.role import Role, RoleAssignment
 from app.models.user import User
 from app.schemas.principal import (
     LeadershipNoticeRow,
@@ -36,61 +32,23 @@ from app.schemas.vice_principal import (
     VicePrincipalNoticeDetail,
     VicePrincipalNoticePage,
 )
+from app.services.department_scope_service import DepartmentScope, DepartmentScopeService
 from app.services.principal_service import PrincipalService
-
-
-@dataclass(frozen=True)
-class VicePrincipalScope:
-    """Validated, immutable department delegation for one request."""
-
-    department_ids: frozenset[uuid.UUID]
-    departments: tuple[PrincipalTargetOption, ...]
 
 
 class VicePrincipalService:
     @staticmethod
-    async def scope_for_user(db: AsyncSession, vice_principal: User) -> VicePrincipalScope:
-        """Load active department delegations and fail closed when none exist.
-
-        An unscoped institution-role assignment is intentionally not treated as
-        institution-wide.  That would turn an incomplete delegation into a
-        cross-department disclosure, contrary to §4.3's delegated-scope rule.
-        """
-        rows = await db.execute(
-            select(Department.id, Department.name)
-            .select_from(RoleAssignment)
-            .join(Role, Role.id == RoleAssignment.role_id)
-            .join(
-                Department,
-                and_(
-                    Department.id == RoleAssignment.scope_id,
-                    Department.tenant_id == vice_principal.tenant_id,
-                    Department.is_active.is_(True),
-                ),
-            )
-            .where(
-                RoleAssignment.user_id == vice_principal.id,
-                RoleAssignment.tenant_id == vice_principal.tenant_id,
-                Role.name == "VICE_PRINCIPAL",
-                func.upper(RoleAssignment.scope_type) == "DEPARTMENT",
-                PrincipalService._active_role_clause(),
-            )
-            .order_by(Department.name)
+    async def scope_for_user(db: AsyncSession, vice_principal: User) -> DepartmentScope:
+        """Resolve explicit VP department delegations and fail closed."""
+        return await DepartmentScopeService.resolve(
+            db,
+            vice_principal,
+            role_name="VICE_PRINCIPAL",
+            missing_message=(
+                "No active department delegation is assigned to this Vice Principal. "
+                "Ask an Institution Admin to assign the VICE_PRINCIPAL role with a department scope."
+            ),
         )
-        by_id = {department_id: name for department_id, name in rows.all()}
-        if not by_id:
-            raise HTTPException(
-                status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "No active department delegation is assigned to this Vice Principal. "
-                    "Ask an Institution Admin to assign the VICE_PRINCIPAL role with a department scope."
-                ),
-            )
-        departments = tuple(
-            PrincipalTargetOption(id=department_id, name=name)
-            for department_id, name in sorted(by_id.items(), key=lambda item: item[1].casefold())
-        )
-        return VicePrincipalScope(frozenset(by_id), departments)
 
     @staticmethod
     async def dashboard(db: AsyncSession, vice_principal: User) -> VicePrincipalDashboard:
@@ -100,7 +58,10 @@ class VicePrincipalService:
         )
         return VicePrincipalDashboard(
             **dashboard.model_dump(),
-            delegated_departments=list(scope.departments),
+            delegated_departments=[
+                PrincipalTargetOption(id=department.id, name=department.name)
+                for department in scope.departments
+            ],
         )
 
     @staticmethod
@@ -213,6 +174,8 @@ class VicePrincipalService:
         vice_principal: User,
         payload: PrincipalNoticeCreate,
     ) -> VicePrincipalNoticeDetail:
+        if payload.is_pinned:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the Principal can pin notices")
         scope = await VicePrincipalService.scope_for_user(db, vice_principal)
         detail = await PrincipalService.create_notice(
             db,

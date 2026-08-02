@@ -251,7 +251,13 @@ class InstitutionService:
         ]
 
     @staticmethod
-    async def create_department(db: AsyncSession, tenant_id: uuid.UUID, payload: DepartmentCreate) -> DepartmentOut:
+    async def create_department(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        payload: DepartmentCreate,
+        *,
+        actor: User | None = None,
+    ) -> DepartmentOut:
         if payload.hod_id is not None:
             await InstitutionService._assert_user_in_tenant(db, tenant_id, payload.hod_id)
         dept = Department(
@@ -260,22 +266,43 @@ class InstitutionService:
         )
         db.add(dept)
         await InstitutionService._flush_unique(db, "A department with this code already exists")
+        if dept.hod_id is not None:
+            await InstitutionService._ensure_hod_department_scope(
+                db, tenant_id, dept.hod_id, dept.id, actor=actor
+            )
         return (await InstitutionService.list_departments(db, tenant_id))[0]
 
     @staticmethod
-    async def update_department(db: AsyncSession, tenant_id: uuid.UUID, dept_id: uuid.UUID, payload: DepartmentUpdate) -> DepartmentOut:
+    async def update_department(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        dept_id: uuid.UUID,
+        payload: DepartmentUpdate,
+        *,
+        actor: User | None = None,
+    ) -> DepartmentOut:
         res = await db.execute(select(Department).where(Department.id == dept_id, Department.tenant_id == tenant_id))
         dept = res.scalar_one_or_none()
         if dept is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Department not found")
-        if payload.hod_id is not None:
-            await InstitutionService._assert_user_in_tenant(db, tenant_id, payload.hod_id)
+        previous_hod_id = dept.hod_id
+        if "hod_id" in payload.model_fields_set:
+            if payload.hod_id is not None:
+                await InstitutionService._assert_user_in_tenant(db, tenant_id, payload.hod_id)
             dept.hod_id = payload.hod_id
         for f in ("name", "description", "is_active"):
             v = getattr(payload, f)
             if v is not None:
                 setattr(dept, f, v)
         await db.flush()
+        if previous_hod_id is not None and previous_hod_id != dept.hod_id:
+            await InstitutionService._deactivate_hod_department_scope(
+                db, tenant_id, previous_hod_id, dept.id, actor=actor
+            )
+        if dept.hod_id is not None:
+            await InstitutionService._ensure_hod_department_scope(
+                db, tenant_id, dept.hod_id, dept.id, actor=actor
+            )
         rows = await InstitutionService.list_departments(db, tenant_id)
         return next((r for r in rows if r.id == dept_id), rows[0])
 
@@ -920,6 +947,95 @@ class InstitutionService:
         for enr, cls in res.all():
             out[enr.student_id] = {"id": str(enr.id), "class_id": str(cls.id), "class_name": cls.name, "roll_number": enr.roll_number}
         return out
+
+    @staticmethod
+    async def _deactivate_hod_department_scope(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        hod_id: uuid.UUID,
+        department_id: uuid.UUID,
+        *,
+        actor: User | None = None,
+    ) -> None:
+        role = await InstitutionService._role_by_name(db, "HOD")
+        if role is None:
+            return
+        assignments = (
+            await db.execute(
+                select(RoleAssignment).where(
+                    RoleAssignment.user_id == hod_id,
+                    RoleAssignment.role_id == role.id,
+                    RoleAssignment.tenant_id == tenant_id,
+                    RoleAssignment.scope_id == department_id,
+                    RoleAssignment.is_active.is_(True),
+                )
+            )
+        ).scalars().all()
+        for assignment in assignments:
+            assignment.is_active = False
+            if actor is not None:
+                AuditService.record(
+                    db,
+                    actor=actor,
+                    actor_role="INSTITUTION_ADMIN",
+                    action="REVOKE_HOD_SCOPE",
+                    entity="RoleAssignment",
+                    entity_id=assignment.id,
+                    tenant_id=tenant_id,
+                    old_value={"hod_id": str(hod_id), "department_id": str(department_id)},
+                )
+        if assignments:
+            await db.flush()
+
+    @staticmethod
+    async def _ensure_hod_department_scope(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        hod_id: uuid.UUID,
+        department_id: uuid.UUID,
+        *,
+        actor: User | None = None,
+    ) -> None:
+        """Keep department.hod_id and the HOD role scope consistent."""
+        role = await InstitutionService._role_by_name(db, "HOD")
+        if role is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="HOD role is not configured")
+        existing = (
+            await db.execute(
+                select(RoleAssignment.id).where(
+                    RoleAssignment.user_id == hod_id,
+                    RoleAssignment.role_id == role.id,
+                    RoleAssignment.tenant_id == tenant_id,
+                    RoleAssignment.scope_id == department_id,
+                    RoleAssignment.is_active.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            assignment = RoleAssignment(
+                id=uuid.uuid4(),
+                user_id=hod_id,
+                role_id=role.id,
+                tenant_id=tenant_id,
+                scope_id=department_id,
+                scope_type="DEPARTMENT",
+                assigned_by=actor.id if actor else None,
+                assigned_at=datetime.now(timezone.utc),
+                is_active=True,
+            )
+            db.add(assignment)
+            await db.flush()
+            if actor is not None:
+                AuditService.record(
+                    db,
+                    actor=actor,
+                    actor_role="INSTITUTION_ADMIN",
+                    action="ASSIGN_HOD_SCOPE",
+                    entity="RoleAssignment",
+                    entity_id=assignment.id,
+                    tenant_id=tenant_id,
+                    new_value={"hod_id": str(hod_id), "department_id": str(department_id)},
+                )
 
     @staticmethod
     async def _role_by_name(db, name: str) -> Role | None:

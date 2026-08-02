@@ -171,70 +171,14 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
     panels: [],
   },
 
-  /* ── 5.4 HOD ───────────────────────────────────────────────────────────── */
+  /* ── 5.4 HOD ───────────────────────────────────────────────────────── */
+  // `/hod/dashboard` is the authenticated department console. Do not keep a
+  // second fixture dashboard here; the dynamic route redirects before render.
   HOD: {
     roleChip: "HOD",
-    summary: "18 assignments pending review in your department",
-    scope: "Department: CSE",
-    stats: [
-      { label: "My Dept Students", value: "180", icon: GraduationCap, tone: "accent" },
-      {
-        label: "Dept Attendance",
-        value: "81%",
-        icon: ClipboardCheck,
-        tone: "warning",
-        delta: { text: "↓ 2% vs last month", tone: "danger" },
-      },
-      { label: "Teachers in Dept", value: "12", icon: Users, tone: "cyan" },
-      {
-        label: "Pending Review",
-        value: "18",
-        icon: FileText,
-        tone: "danger",
-        pulse: true,
-      },
-    ],
-    panels: [
-      {
-        kind: "bars",
-        title: "Class-wise Attendance",
-        span: 7,
-        items: [
-          { label: "CSE Sem 1", value: 89, tone: "success" },
-          { label: "CSE Sem 3", value: 84, tone: "success" },
-          { label: "CSE Sem 5", value: 76, tone: "warning" },
-          { label: "CSE Sem 7", value: 71, tone: "danger" },
-        ],
-      },
-      {
-        kind: "table",
-        title: "Pending Assignments",
-        span: 5,
-        action: "Review",
-        columns: [
-          { key: "teacher", label: "Teacher" },
-          { key: "subject", label: "Subject" },
-          { key: "count", label: "Count", numeric: true },
-        ],
-        rows: [
-          { teacher: "Priya S.", subject: "CS301", count: "8" },
-          { teacher: "Arun K.", subject: "CS305", count: "6" },
-          { teacher: "Neha R.", subject: "CS307", count: "4" },
-        ],
-      },
-      {
-        kind: "actions",
-        title: "Quick Actions",
-        span: 12,
-        items: [
-          { label: "Post Dept Notice", icon: Megaphone, href: "/notices/new", primary: true },
-          // C-HD-08, not /users — /users lists people, it doesn't assign mentors
-          { label: "Assign Mentor", icon: UserCheck, href: "/hod/mentors" },
-          { label: "View Timetable", icon: CalendarDays, href: "/timetable" },
-          { label: "Moderate Discussion", icon: ShieldAlert, href: "/discussion" },
-        ],
-      },
-    ],
+    summary: "Open the HOD console for live department data.",
+    stats: [],
+    panels: [],
   },
 
   /* ── 5.5 Teacher — most-used role ──────────────────────────────────────── */
@@ -1101,9 +1045,8 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
   /* ── Mentor — teacher-level role scoped to assigned mentees ────────────── */
   MENTOR: {
     roleChip: "Mentor",
-    // Matches `getMentorBoard()`: Priya Sharma carries 3 mentees, 1 of them
-    // below the 75% threshold. The old "12 mentees · 2 below" predated any
-    // mentor data and contradicted every other page once C-HD-08 landed.
+    // Mentor operational data is served by its role-specific API when that
+    // console is activated; this legacy preview dashboard carries no HOD data.
     scope: "3 mentees · CSE",
     summary: "1 mentee below 75% attendance · needs follow-up",
     notice: {

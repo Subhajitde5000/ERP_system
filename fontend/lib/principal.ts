@@ -412,18 +412,15 @@ export const createPrincipalNotice = (payload: {
  * an API envelope, so this shared transport keeps both leadership consoles
  * consistent without duplicating bearer/error/download handling.
  */
-export async function downloadLeadershipReport(
+export async function downloadLeadershipCsv(
   apiPrefix: string,
-  kind: string,
-  filters: { fromDate?: string; toDate?: string } = {},
+  exportPath: string,
+  filenameFallback: string,
+  query: Record<string, string | number | boolean | undefined | null> = {},
 ): Promise<void> {
   const token = getAccessToken();
   const response = await fetch(
-    `${API_BASE_URL}/api/v1/${apiPrefix}/reports/export${queryString({
-      kind,
-      from_date: filters.fromDate,
-      to_date: filters.toDate,
-    })}`,
+    `${API_BASE_URL}/api/v1/${apiPrefix}${exportPath}${queryString(query)}`,
     {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       credentials: "include",
@@ -435,7 +432,7 @@ export async function downloadLeadershipReport(
   }
 
   const disposition = response.headers.get("Content-Disposition") ?? "";
-  const name = /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? `${kind}-report.csv`;
+  const name = /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? filenameFallback;
   const objectUrl = URL.createObjectURL(await response.blob());
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
@@ -444,6 +441,18 @@ export async function downloadLeadershipReport(
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(objectUrl);
+}
+
+export function downloadLeadershipReport(
+  apiPrefix: string,
+  kind: string,
+  filters: { fromDate?: string; toDate?: string } = {},
+): Promise<void> {
+  return downloadLeadershipCsv(apiPrefix, "/reports/export", `${kind}-report.csv`, {
+    kind,
+    from_date: filters.fromDate,
+    to_date: filters.toDate,
+  });
 }
 
 export function downloadPrincipalReport(

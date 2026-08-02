@@ -17,6 +17,7 @@ const CONFIG: LeadershipNoticesConfig = {
   subtitle: "Institution notices plus notices for your delegated departments and classes. You can post only to delegated departments or classes.",
   composeHref: "/vp/notices/new",
   canViewReadReceipts: false,
+  canPin: false,
   allowedPostScopes: ["DEPARTMENT", "CLASS"],
   load: fetchVicePrincipalNotices,
   loadDetail: fetchVicePrincipalNotice,

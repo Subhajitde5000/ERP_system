@@ -16,6 +16,7 @@ from app.routers.setup import router as setup_router
 from app.routers.email import router as email_router
 from app.routers.principal import router as principal_router
 from app.routers.vice_principal import router as vice_principal_router
+from app.routers.hod import router as hod_router
 
 __all__ = [
     "platform_auth_router",
@@ -30,4 +31,5 @@ __all__ = [
     "email_router",
     "principal_router",
     "vice_principal_router",
+    "hod_router",
 ]

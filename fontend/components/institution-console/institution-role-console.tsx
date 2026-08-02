@@ -21,7 +21,8 @@ import {
 type ProtectedInstitutionRole =
   | "INSTITUTION_ADMIN"
   | "PRINCIPAL"
-  | "VICE_PRINCIPAL";
+  | "VICE_PRINCIPAL"
+  | "HOD";
 
 export function InstitutionRoleConsole({
   children,

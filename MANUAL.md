@@ -80,8 +80,8 @@ psql -U erp_user -d erp_db -f database/update2.sql
 > ```bash
 > cd backend && alembic upgrade head
 > ```
-> The migrations end at `c9d3e7f1a602` and include the Principal approval
-> workflow. Apply the raw schema plus both update files for the documented
+> The migrations end at `e7f2a6c3b904` and include the Principal governance
+> and HOD mentor/scope workflow. Apply the raw schema plus both update files for the documented
 > production path, or use your validated Alembic baseline for a
 > migrations-managed environment — never mix a raw-schema bootstrap and
 > Alembic on the same database without stamping/validating its revision.
@@ -143,6 +143,7 @@ npm run dev                     # http://localhost:3000
 - Institution Admins land on the **real** admin console at `/admin/dashboard`.
 - Principals land on the **real** academic-oversight console at `/principal/dashboard`.
 - Vice Principals land on `/vp/dashboard`; an active delegated department scope is required.
+- HODs land on `/hod/dashboard`; a department HOD assignment creates their scoped access automatically.
 
 ### 5.3 Staff (xyz.com employees) — `app.xyz.com/login` → `/platform/login`
 - `POST /api/v1/platform/auth/login`. Created via `create_superadmin.py` or seed.
@@ -200,7 +201,7 @@ final schedule and result approval belong to the Principal.
 
 ### Governance migration
 
-`database/update2.sql` (or Alembic revision `c9d3e7f1a602`) adds explicit
+`database/update2.sql` (or Alembic revision `e7f2a6c3b904`) adds explicit
 `PENDING` / `APPROVED` / `REJECTED` decision state, actor, timestamp and note
 to exam schedules and result publications. Existing visible result publications
 are backfilled as approved; unpublished legacy publications enter the pending
@@ -234,6 +235,31 @@ other delegated departments remain active. No schema migration is needed for
 delegation: `role_assignments.scope_id` / `scope_type` already model
 department-scoped roles.
 
+### Head of Department — live department console (C-HD-01 … C-HD-12)
+
+The `/hod/*` console is wired to `/api/v1/hod/*`. Its scope comes from the
+active HOD department role assignment and the canonical `departments.hod_id`
+link; all reads and writes are fenced before aggregation, pagination and
+mutation. An HOD without a department receives a 403 rather than an
+institution-wide fallback.
+
+| Area | What works |
+|---|---|
+| `/hod/dashboard` | Department KPIs for attendance, assignments, results, notices and exams |
+| `/hod/attendance`, `/hod/attendance/report` | Class heatmap plus per-student/subject records and CSV export |
+| `/hod/examinations`, `/hod/results` | Department-only schedules/results with CSV export; final approval stays with the Principal |
+| `/hod/assignments` | Department assignment and pending-review overview |
+| `/hod/teachers` | Subject staffing and safe removal of a scoped teacher-subject link |
+| `/hod/mentors` | Assign/reassign/remove one active mentor per student/year |
+| `/hod/notices`, `/hod/notices/new` | Institution feed plus department/class-only posting; no read receipt payload |
+| `/hod/discussion` | Pin, lock and soft-delete department/class/subject threads |
+| `/hod/timetable` | Read-only classes in the HOD's departments |
+
+`database/update2.sql` section 10 / Alembic `e7f2a6c3b904` adds the partial
+unique mentor index. Section 11 backfills scoped HOD role assignments for
+legacy `departments.hod_id` records. Apply this update before deploying the
+HOD console.
+
 ---
 
 ## 8. Module workflows — status
@@ -241,9 +267,9 @@ department-scoped roles.
 The legacy preview workflows under `(institution)/*` (attendance marking,
 fees, library, hostel, timetable, etc.) currently read from in-memory **demo
 data** (`lib/*-data.ts`) and the demo `getSession`. They render for preview/QA
-but are **not yet wired to the backend**. The Principal and Vice Principal
-routes in §7 are the exception: they are standalone authenticated production
-routes and do not use those fixtures.
+but are **not yet wired to the backend**. The Principal, Vice Principal and
+HOD routes in §7 are the exception: they are standalone authenticated
+production routes and do not use those fixtures.
 
 The migration pattern is established and identical for each:
 1. Add an ORM model (most tables already exist in `database.sql`).
@@ -260,7 +286,7 @@ The migration pattern is established and identical for each:
 - [ ] **Secrets** — `JWT_SECRET_KEY` a 64-hex random string; rotate periodically.
       `APP_DEBUG=false` (hides `/docs`, `/redoc`, stack traces; also hides the
       raw email-verification token from API responses).
-- [ ] **Database** — `database.sql`, `update.sql` **and** `update2.sql` applied (or the validated Alembic path reaches `c9d3e7f1a602`); backups on.
+- [ ] **Database** — `database.sql`, `update.sql` **and** `update2.sql` applied (or the validated Alembic path reaches `e7f2a6c3b904`); backups on.
 - [ ] **CORS** — `ALLOWED_ORIGINS` lists only your real origins
       (`https://xyz.com,https://app.xyz.com`, approved tenant origins).
 - [ ] **Email** — wire an outbound provider to drain `outbox_emails`
@@ -289,6 +315,7 @@ All under `/api/v1`. Authenticated routes take `Authorization: Bearer <jwt>`.
 | Institution admin | `/institution` | `/dashboard`, `/academic-years`, `/departments`, `/classes`, `/subjects`, `/staff`, `/students`, `/enrollments`, `/modules`, `/settings`, `/profile` |
 | Principal | `/principal` | `/dashboard`, `/attendance`, `/examinations` (+ schedule approval), `/results` (+ publication approval), `/staff`, `/students`, `/notices`, `/timetable`, `/reports`, `/reports/export` |
 | Vice Principal | `/vice-principal` | Delegated `/dashboard`, `/attendance`, `/examinations`, `/results`, `/staff`, `/notices`, `/reports/export`; no final approval endpoints |
+| Head of Department | `/hod` | Department dashboard, attendance detail/export, exams, assignments, results, teachers/subjects, mentors, notices, discussion moderation and timetable |
 | Tenant auth | `/tenant/auth` | `/login`, `/logout`, `/refresh`, `/me`, `/forgot-password`, `/reset-password` |
 | Platform staff auth | `/platform/auth` | `/login`, `/logout`, `/refresh`, `/me` |
 | Setup wizard | `/setup` | `GET`, `PUT`, `POST /complete` |
@@ -320,7 +347,7 @@ institution-admin RBAC guard + plan-gated modules.
 | `402 … not included in your plan` | Optional module toggle blocked by `plans.allowed_modules`. Upgrade the plan. |
 | `next build` fails | Run `npm ci` first, then inspect the reported TypeScript/route error. The app no longer fetches Google Fonts during build. |
 | Email links never arrive | No outbound provider draining `outbox_emails`. In dev (`APP_DEBUG=true`) the owner verification token is returned in the signup response. |
-| Migration conflict | Ensure a single source: raw SQL (`database.sql` + `update.sql` + `update2.sql`) **or** your validated Alembic path, not both. Current head revision is `c9d3e7f1a602`. |
+| Migration conflict | Ensure a single source: raw SQL (`database.sql` + `update.sql` + `update2.sql`) **or** your validated Alembic path, not both. Current head revision is `e7f2a6c3b904`. |
 
 ---
 
@@ -332,5 +359,5 @@ institution-admin RBAC guard + plan-gated modules.
 - `doc/database_design_complete.md`, `doc/role_based_system_design.md`
 - `doc/PAGES-TODO.md` — page coverage matrix
 
-_Manual v1.3 — verified against the 106-table schema, `update2.sql`, Alembic
-head `c9d3e7f1a602`, and the live `/admin`, `/principal` and `/vp` consoles._
+_Manual v1.5 — verified against the 106-table schema, `update2.sql`, Alembic
+head `e7f2a6c3b904`, and the live `/admin`, `/principal`, `/vp` and `/hod` consoles._

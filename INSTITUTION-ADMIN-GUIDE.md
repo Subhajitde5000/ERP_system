@@ -78,6 +78,10 @@ Arts, Primary School…).
 Each department card shows how many classes and staff belong to it. You can
 delete a department only when it has no classes left in it.
 
+When you select a department **HOD**, the platform also creates that person’s
+HOD department scope automatically. That is what lets them open the HOD console
+and see only their own classes, teachers, students and academic work.
+
 ---
 
 ## Step 3 — Add Staff (teachers and team)

@@ -111,6 +111,8 @@ export const deleteAcademicYear = (id: string) =>
 export const fetchDepartments = () => call<Department[]>("/departments");
 export const createDepartment = (payload: { name: string; code: string; description?: string }) =>
   call<Department>("/departments", { method: "POST", body: JSON.stringify(payload) });
+export const updateDepartment = (id: string, payload: { hod_id?: string | null; name?: string; description?: string; is_active?: boolean }) =>
+  call<Department>(`/departments/${id}`, { method: "PUT", body: JSON.stringify(payload) });
 
 export const fetchStaff = () => call<StaffMember[]>("/staff");
 export const inviteStaff = (payload: {

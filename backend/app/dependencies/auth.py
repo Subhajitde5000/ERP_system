@@ -203,3 +203,16 @@ async def get_current_tenant_user_vice_principal(
         {"VICE_PRINCIPAL"},
         "Vice Principal privileges are required",
     )
+
+
+async def get_current_tenant_user_hod(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Require a live HOD role; department reach is resolved fail-closed later."""
+    return await _require_current_tenant_roles(
+        current_user,
+        db,
+        {"HOD"},
+        "HOD privileges are required",
+    )

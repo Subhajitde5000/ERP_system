@@ -31,6 +31,7 @@ export interface LeadershipNoticesConfig {
   subtitle: string;
   composeHref: string;
   canViewReadReceipts: boolean;
+  canPin: boolean;
   allowedPostScopes: PostScope[];
   load: (filters: {
     query?: string;
@@ -57,6 +58,7 @@ const PRINCIPAL_NOTICE_CONFIG: LeadershipNoticesConfig = {
   subtitle: "All institution, department and class notices. Read receipts are available to the Principal.",
   composeHref: "/principal/notices/new",
   canViewReadReceipts: true,
+  canPin: true,
   allowedPostScopes: ["INSTITUTION", "DEPARTMENT", "CLASS"],
   load: fetchPrincipalNotices,
   loadDetail: fetchPrincipalNotice,
@@ -125,7 +127,7 @@ export function LeadershipNoticeComposerPage({ config }: { config: LeadershipNot
         target_scope: form.targetScope,
         target_id: form.targetScope === "INSTITUTION" ? null : form.targetId,
         priority: form.priority,
-        is_pinned: form.pinned,
+        is_pinned: config.canPin ? form.pinned : false,
         expires_at: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
       });
       router.replace(config.composeHref.replace(/\/new$/, ""));
@@ -146,7 +148,7 @@ export function LeadershipNoticeComposerPage({ config }: { config: LeadershipNot
             <div><label htmlFor="notice-body" className={labelClass}>Message</label><textarea id="notice-body" className={`${inputClass} min-h-44 py-3`} maxLength={20000} value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} required /></div>
             <div className="grid gap-4 sm:grid-cols-2"><div><label htmlFor="notice-target-scope" className={labelClass}>Audience</label><select id="notice-target-scope" className={inputClass} value={form.targetScope} onChange={(event) => setForm({ ...form, targetScope: event.target.value as PostScope, targetId: "" })}>{config.allowedPostScopes.map((postScope) => <option key={postScope} value={postScope}>{postScope === "INSTITUTION" ? "Institution-wide" : postScope === "DEPARTMENT" ? "Department" : "Class"}</option>)}</select></div><div><label htmlFor="notice-priority" className={labelClass}>Priority</label><select id="notice-priority" className={inputClass} value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value as typeof form.priority })}><option value="NORMAL">Normal</option><option value="IMPORTANT">Important</option><option value="URGENT">Urgent</option></select></div></div>
             {form.targetScope !== "INSTITUTION" ? <div><label htmlFor="notice-target" className={labelClass}>{form.targetScope === "DEPARTMENT" ? "Department" : "Class"}</label><select id="notice-target" className={inputClass} value={form.targetId} onChange={(event) => setForm({ ...form, targetId: event.target.value })} required><option value="">Select {form.targetScope.toLowerCase()}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.department_name ? `${option.department_name} · ${option.name}` : option.name}</option>)}</select></div> : null}
-            <div className="grid gap-4 sm:grid-cols-2"><div><label htmlFor="notice-expires" className={labelClass}>Expires at (optional)</label><input id="notice-expires" type="datetime-local" className={inputClass} value={form.expiresAt} onChange={(event) => setForm({ ...form, expiresAt: event.target.value })} /></div><label className="flex items-center gap-2 pt-7 text-sm font-medium text-primary"><input type="checkbox" checked={form.pinned} onChange={(event) => setForm({ ...form, pinned: event.target.checked })} className="h-4 w-4 rounded border-border accent-accent" /> Pin this notice</label></div>
+            <div className="grid gap-4 sm:grid-cols-2"><div><label htmlFor="notice-expires" className={labelClass}>Expires at (optional)</label><input id="notice-expires" type="datetime-local" className={inputClass} value={form.expiresAt} onChange={(event) => setForm({ ...form, expiresAt: event.target.value })} /></div>{config.canPin ? <label className="flex items-center gap-2 pt-7 text-sm font-medium text-primary"><input type="checkbox" checked={form.pinned} onChange={(event) => setForm({ ...form, pinned: event.target.checked })} className="h-4 w-4 rounded border-border accent-accent" /> Pin this notice</label> : <p className="pt-7 text-xs text-muted-foreground">Only institution leadership can pin notices.</p>}</div>
             {error ? <p role="alert" className="text-sm text-destructive-text">{error}</p> : null}
             <div className="flex flex-wrap gap-3"><button type="submit" disabled={busy} className="inline-flex h-11 items-center gap-2 rounded-field bg-accent px-5 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover disabled:opacity-60"><Megaphone className="h-4 w-4" /> {busy ? "Publishing…" : "Publish notice"}</button><Link href={config.composeHref.replace(/\/new$/, "")} className="inline-flex h-11 items-center rounded-field border border-border px-5 text-sm font-semibold text-muted-foreground hover:border-accent hover:text-accent">Cancel</Link></div>
           </form>

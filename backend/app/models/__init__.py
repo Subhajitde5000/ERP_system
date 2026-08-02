@@ -41,6 +41,13 @@ from app.models.principal import (
     StudentResult,
     TimetableSlot,
 )
+from app.models.hod import (
+    Assignment,
+    AttendanceRecord,
+    DiscussionThread,
+    MentorAssignment,
+    Submission,
+)
 
 __all__ = [
     "PlatformUser",
@@ -84,4 +91,9 @@ __all__ = [
     "StaffProfile",
     "StudentResult",
     "TimetableSlot",
+    "Assignment",
+    "AttendanceRecord",
+    "DiscussionThread",
+    "MentorAssignment",
+    "Submission",
 ]

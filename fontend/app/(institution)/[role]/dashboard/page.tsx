@@ -99,6 +99,7 @@ export default async function DashboardSegmentPage({
   const role = slugToRole(slug);
   if (!role) notFound();
   if (role === "VICE_PRINCIPAL") redirect("/vp/dashboard");
+  if (role === "HOD") redirect("/hod/dashboard");
 
   // The URL segment is authoritative for which dashboard renders.
   const dashboard = (
