@@ -54,6 +54,7 @@ from app.schemas.owner import (
     TokenResponse,
 )
 from app.services.jwt_service import create_owner_access_token
+from app.services.mailer import queue_email
 from app.utils.security import (
     generate_secure_token,
     hash_password,
@@ -116,25 +117,15 @@ class OwnerService:
             f"https://{settings.PUBLIC_ROOT_DOMAIN or 'xyz.com'}/verify-email"
             f"?token={raw_token}"
         )
-        # The verification email is queued in the outbox; a worker delivers it.
+        # Queued in the outbox inside this transaction, then delivered by the
+        # active provider (Google SMTP or Klaviyo — see mailer/registry.py).
         # In dev/no-mailer mode the raw token is also returned to the caller so
-        # the flow can be completed end-to-end (see SignupService welcome mail
-        # for the same outbox pattern).
-        from app.models.billing import OutboxEmail
-
-        db.add(
-            OutboxEmail(
-                event="owner.verify_email",
-                to_address=email_lc,
-                subject="Verify your xyz.com account",
-                body=(
-                    f"Hi {owner.name},\n\n"
-                    f"Verify your email to activate your platform account:\n"
-                    f"{verify_url}\n\n"
-                    "This link expires in 24 hours."
-                ),
-                status="QUEUED",
-            )
+        # the flow can be completed end-to-end.
+        queue_email(
+            db,
+            "owner.verify_email",
+            to=email_lc,
+            context={"name": owner.name, "verify_url": verify_url},
         )
         await db.flush()
 
@@ -185,6 +176,16 @@ class OwnerService:
         owner.email_verification_token = hash_token(raw_token)
         owner.email_verification_expires = datetime.now(timezone.utc) + timedelta(
             hours=24
+        )
+        verify_url = (
+            f"https://{settings.PUBLIC_ROOT_DOMAIN or 'xyz.com'}/verify-email"
+            f"?token={raw_token}"
+        )
+        queue_email(
+            db,
+            "owner.verify_email",
+            to=owner.email,
+            context={"name": owner.name, "verify_url": verify_url},
         )
         await db.flush()
 
@@ -334,6 +335,20 @@ class OwnerService:
         owner.password_reset_token = hash_token(raw)
         owner.password_reset_expires = datetime.now(timezone.utc) + timedelta(
             minutes=30
+        )
+        reset_url = (
+            f"https://{settings.PUBLIC_ROOT_DOMAIN or 'xyz.com'}/reset-password"
+            f"?token={raw}"
+        )
+        queue_email(
+            db,
+            "owner.password_reset",
+            to=owner.email,
+            context={
+                "name": owner.name,
+                "reset_url": reset_url,
+                "expires_minutes": 30,
+            },
         )
         await db.flush()
 
