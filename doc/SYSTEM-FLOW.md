@@ -33,73 +33,29 @@
 
 ## 1. The two doors: who creates an institution
 
-The public entry point is now owner-first, like AWS, Shopify or Zoho. The
-account at `xyz.com` belongs to the owner, not to one institution. One owner
-can create and manage many tenants from the platform dashboard.
+**There is no public "Register your school" page.** Page 206–211 of the master
+table are Login, Forgot Password, Reset Password, Public Admission Form, 404
+and 403 — no signup. This is deliberate: a multi-tenant ERP that provisions a
+subdomain, a database tenant and an admin account cannot do so from an
+anonymous form without becoming a spam target.
+
+An institution therefore enters the system through one of exactly two doors:
 
 ```
-Visit xyz.com
-  │
-  ▼  Sign Up (Owner name, email, password)
-  │
-  ▼  Verify Email
-  │
-  ▼  Platform Dashboard
-  │
-  ├── My Institutions
-  ├── Billing
-  ├── Subscriptions
-  ├── Invoices
-  ├── Support Tickets
-  └── Profile
-  │
-  ▼  Create New Institution
-  │
-  ▼  Choose Plan
-  │
-  ▼  Choose Subdomain
-  │
-  ▼  Payment
-  │
-  ▼  Institution Created
-  │
-  ▼  Go To green.xyz.com
-```
+   DOOR A — Sales-led (the normal path)
+   ─────────────────────────────────────
+   Prospect enquires  →  Sales Executive creates a TRIAL tenant
+                      →  14-day trial, no card
+                      →  Sales converts to paid  (C-SL-03)
 
-Example ownership model:
-
-```
-Owner: Rahul Sharma
-Platform account: rahul@gmail.com
-
-rahul@gmail.com
-  ├── Green College
-  ├── ABC School
-  └── XYZ Academy
-```
-
-There are still staff-assisted doors for sales-led trials and enterprise
-contracts, but all paths link the tenant back to a platform owner account and
-end at the same place: a row in `tenants`, a row in `subscriptions`, and one
-user holding `INSTITUTION_ADMIN`.
-
-```
-   DOOR A — Self-service owner
-   ───────────────────────────
-   Owner signs up  →  verifies email  →  creates institution
-                   →  pays / starts trial
-                   →  tenant is provisioned automatically
-
-   DOOR B — Sales-led
-   ─────────────────
-   Prospect enquires  →  Sales Executive assists the owner / trial
-                      →  14-day trial or paid conversion
-
-   DOOR C — Super Admin (direct/enterprise)
-   ────────────────────────────────────────
-   Signed contract    →  Super Admin creates or links owner + tenant
+   DOOR B — Super Admin (direct/enterprise)
+   ─────────────────────────────────────────
+   Signed contract    →  Super Admin creates the tenant  (C-SA-04)
                       →  Starts ACTIVE on day one, invoiced offline
 ```
+
+Both doors end at the same place: a row in `tenants`, a row in
+`subscriptions`, and one user holding `INSTITUTION_ADMIN`.
 
 **Who is "buying" at each step matters, because there are two different
 purchases in this system and they are easy to confuse:**
@@ -738,18 +694,17 @@ the redirect just shows a spinner until the webhook lands.
 
 ## Summary of gaps flagged
 
-| # | Gap | Severity | Where | Status |
-|---|---|---|---|---|
-| 1 | **No invoice / payment tables** — C-FM-02 and C-FM-03 have no data source | 🔴 | §9 | ✅ Implemented — `platform_invoices`, `platform_invoice_lines`, `platform_payments`, `coupons`, `orders` (migration `8a1e4b2c5f01`); gapless `INV-YYYY-NNNNNN` numbering, GST 18% |
-| 2 | **`plans.allowed_modules` is never enforced** — Starter can enable every module free | 🔴 | §5.2 | ✅ Enforced in the signup quote engine and the setup-wizard module sync (`_sync_modules` is plan-gated) |
-| 3 | **`max_students` / `max_teachers` never checked** — no seat limit exists | 🔴 | §5.5 | 🟡 Open — surfaced on the pricing cards; enforcement on enrolment is future work |
-| 4 | No self-service signup (by design — confirm it is intentional) | 🟡 | §1 | ✅ Implemented — public `/pricing` → `/signup` checkout (registration → subdomain check → plan/BYO → review/coupon → payment → auto-provisioning) plus the 12-step admin setup wizard |
-| 5 | No payment gateway specified; conversion assumes out-of-band payment | 🟡 | §3.3 | 🟡 Mock gateway with `UNIQUE(gateway, gateway_ref)` replay protection; swap `SignupService.mark_paid` for the real webhook (§9.1) |
-| 6 | Single-admin lockout has no automated recovery | 🟡 | §8.3 | 🟡 Open — reset link flow already exists for tenant users |
+| # | Gap | Severity | Where |
+|---|---|---|---|
+| 1 | **No invoice / payment tables** — C-FM-02 and C-FM-03 have no data source | 🔴 | §9 |
+| 2 | **`plans.allowed_modules` is never enforced** — Starter can enable every module free | 🔴 | §5.2 |
+| 3 | **`max_students` / `max_teachers` never checked** — no seat limit exists | 🔴 | §5.5 |
+| 4 | No self-service signup (by design — confirm it is intentional) | 🟡 | §1 |
+| 5 | No payment gateway specified; conversion assumes out-of-band payment | 🟡 | §3.3 |
+| 6 | Single-admin lockout has no automated recovery | 🟡 | §8.3 |
 
 Gaps 2 and 3 are the ones that cost money on day one: today the plan a
-customer pays for constrains nothing at all. (2 is fixed; 3 is the seat
-check at enrolment time.)
+customer pays for constrains nothing at all.
 
 ---
 

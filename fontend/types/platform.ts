@@ -28,7 +28,6 @@ export const PLATFORM_ROLE_DB: Record<PlatformRole, string> = {
   SUPPORT_STAFF: "SUPPORT",
   SALES_EXECUTIVE: "SALES",
   FINANCE_MANAGER: "FINANCE",
-  OWNER: "OWNER",
 };
 
 /* ── §4.2 tenants ───────────────────────────────────────────────────────── */

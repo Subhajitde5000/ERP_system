@@ -325,8 +325,6 @@ export function normalizePlatformRole(role: string): PlatformRole {
     case "FINANCE":
     case "FINANCE_MANAGER":
       return "FINANCE_MANAGER";
-    case "OWNER":
-      return "OWNER";
     case "SUPER_ADMIN":
     default:
       return "SUPER_ADMIN";

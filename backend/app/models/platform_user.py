@@ -22,7 +22,6 @@ class PlatformRole(str, enum.Enum):
     SUPPORT = "SUPPORT"
     SALES = "SALES"
     FINANCE = "FINANCE"
-    OWNER = "OWNER"
 
 
 class PlatformUser(Base):
@@ -38,12 +37,6 @@ class PlatformUser(Base):
         SAEnum(PlatformRole, name="platform_role"), nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    email_verified_at: Mapped[TIMESTAMP | None] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-    email_verification_token_hash: Mapped[str | None] = mapped_column(
-        Text, nullable=True
-    )
     last_login_at: Mapped[TIMESTAMP | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )

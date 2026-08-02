@@ -45,13 +45,6 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     APP_DEBUG: bool = True
 
-    # ── Signup / provisioning ─────────────────────────────────────────────────
-    # Root domain used to build login URLs and subdomain checks, e.g.
-    # https://green.xyz.com/login — defaults to xyz.com.
-    PUBLIC_ROOT_DOMAIN: str = "xyz.com"
-    TRIAL_DAYS: int = 14
-    TENANT_DEFAULT_TIMEZONE: str = "Asia/Kolkata"
-
 
 @lru_cache
 def get_settings() -> Settings:

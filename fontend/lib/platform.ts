@@ -10,7 +10,6 @@ import {
   TrendingUp,
   Layers,
   UsersRound,
-  UserCircle,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -55,24 +54,11 @@ export interface PlatformNavSection {
 
 /** The eight Super Admin pages, in doc order (C-SA-01…08). */
 const SUPER_ADMIN_ONLY: PlatformRole[] = ["SUPER_ADMIN"];
-const OWNER_ONLY: PlatformRole[] = ["OWNER"];
 
 const NAV: PlatformNavSection[] = [
   {
     items: [
-      { label: "Dashboard", href: "/platform/dashboard", icon: LayoutDashboard, roles: ["SUPER_ADMIN", "OWNER"] },
-    ],
-  },
-  {
-    title: "Owner",
-    items: [
-      { label: "My Institutions", href: "/platform/my-institutions", icon: Building2, roles: OWNER_ONLY },
-      { label: "Create New Institution", href: "/signup", icon: Sprout, roles: OWNER_ONLY },
-      { label: "Billing", href: "/platform/billing", icon: Wallet, roles: OWNER_ONLY },
-      { label: "Subscriptions", href: "/platform/subscriptions", icon: Receipt, roles: OWNER_ONLY },
-      { label: "Invoices", href: "/platform/invoices", icon: ScrollText, roles: OWNER_ONLY },
-      { label: "Support Tickets", href: "/platform/tickets", icon: Ticket, roles: OWNER_ONLY },
-      { label: "Profile", href: "/platform/profile", icon: UserCircle, roles: OWNER_ONLY },
+      { label: "Dashboard", href: "/platform/dashboard", icon: LayoutDashboard, roles: SUPER_ADMIN_ONLY },
     ],
   },
   {
@@ -156,7 +142,6 @@ export const PLATFORM_ROLE_LABELS: Record<PlatformRole, string> = {
   SUPPORT_STAFF: "Support Staff",
   SALES_EXECUTIVE: "Sales Executive",
   FINANCE_MANAGER: "Finance Manager",
-  OWNER: "Owner",
 };
 
 /** Where each non-Super-Admin role's own section will live. */
@@ -165,7 +150,6 @@ export const PLATFORM_ROLE_HOME: Record<PlatformRole, string> = {
   SUPPORT_STAFF: "/platform/support/dashboard",
   SALES_EXECUTIVE: "/platform/sales/dashboard",
   FINANCE_MANAGER: "/platform/finance",
-  OWNER: "/platform/dashboard",
 };
 
 /* ── Presentation ───────────────────────────────────────────────────────── */
