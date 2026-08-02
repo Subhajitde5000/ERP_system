@@ -5,7 +5,7 @@
  *   node scripts/gap-report.mjs --md   # write PAGES-TODO.md
  *
  * Reads the 211-row master table out of
- * `docs/complete_webpage_developer_assignment.md`, matches every documented
+ * `doc/complete_webpage_developer_assignment.md`, matches every documented
  * route against the routes that actually exist in `app/`, and reports what is
  * still missing. Derived from the doc + the filesystem, so it cannot drift the
  * way a hand-written checklist would.
@@ -14,7 +14,7 @@
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const DOC = "../../docs/complete_webpage_developer_assignment.md";
+const DOC = "../doc/complete_webpage_developer_assignment.md";
 const APP = "app";
 
 /* ── 1. Every documented page ───────────────────────────────────────────── */
@@ -251,6 +251,6 @@ if (process.argv.includes("--md")) {
   }
   L.push("");
 
-  writeFileSync("../../PAGES-TODO.md", L.join("\n"));
+  writeFileSync("../doc/PAGES-TODO.md", L.join("\n"));
   console.log("\nWrote PAGES-TODO.md");
 }

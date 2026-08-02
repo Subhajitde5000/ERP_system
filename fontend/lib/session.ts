@@ -47,7 +47,7 @@ export const ALL_MODULES: ModuleKey[] = [...CORE_MODULES, ...OPTIONAL_MODULES];
 const DEMO_NAMES: Record<InstitutionRole, string> = {
   INSTITUTION_ADMIN: "Meera",
   PRINCIPAL: "Dr. Sharma",
-  VICE_PRINCIPAL: "Anil",
+  VICE_PRINCIPAL: "Vice Principal",
   HOD: "Kavita",
   TEACHER: "Priya",
   MENTOR: "Rajiv",

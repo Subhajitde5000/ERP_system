@@ -30,6 +30,24 @@ from app.models.platform_setting import (
 )
 from app.models.academic import AcademicYear, Department, SchoolClass, Subject
 from app.models.enrollment import Enrollment, TeacherSubject
+from app.models.principal import (
+    AttendanceSession,
+    Exam,
+    Notice,
+    NoticeRead,
+    ResultPublication,
+    StaffLeaveRequest,
+    StaffProfile,
+    StudentResult,
+    TimetableSlot,
+)
+from app.models.hod import (
+    Assignment,
+    AttendanceRecord,
+    DiscussionThread,
+    MentorAssignment,
+    Submission,
+)
 
 __all__ = [
     "PlatformUser",
@@ -64,4 +82,18 @@ __all__ = [
     "Department",
     "SchoolClass",
     "Subject",
+    "AttendanceSession",
+    "Exam",
+    "Notice",
+    "NoticeRead",
+    "ResultPublication",
+    "StaffLeaveRequest",
+    "StaffProfile",
+    "StudentResult",
+    "TimetableSlot",
+    "Assignment",
+    "AttendanceRecord",
+    "DiscussionThread",
+    "MentorAssignment",
+    "Submission",
 ]

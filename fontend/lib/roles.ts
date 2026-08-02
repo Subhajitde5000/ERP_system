@@ -25,8 +25,9 @@ const ROLE_MAP: Record<Role, RoleMeta> = {
   // Institution leadership
   INSTITUTION_ADMIN: { label: "Institution Admin", redirect: "/admin/dashboard" },
   PRINCIPAL: { label: "Principal", redirect: "/principal/dashboard" },
-  // Distinct slug: VP gets a delegated, read-only variant of the principal view (§5.3)
-  VICE_PRINCIPAL: { label: "Vice Principal", redirect: "/vice-principal/dashboard" },
+  // Dedicated, delegated production surface. The documented `/vp/*` routes
+  // are distinct from the Principal's final-approval console.
+  VICE_PRINCIPAL: { label: "Vice Principal", redirect: "/vp/dashboard" },
   HOD: { label: "HOD", redirect: "/hod/dashboard" },
 
   // Academic

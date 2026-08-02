@@ -19,7 +19,6 @@ import {
   updateAcademicYear,
   type AcademicYear,
 } from "@/lib/institution";
-import { InstitutionAPIError } from "@/lib/institution";
 
 export default function AcademicYearsPage() {
   const [years, setYears] = useState<AcademicYear[] | null>(null);
