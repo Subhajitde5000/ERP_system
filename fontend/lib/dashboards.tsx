@@ -12,7 +12,6 @@ import {
   ClipboardCheck,
   ClipboardList,
   Coins,
-  Contact,
   DoorOpen,
   FileBadge,
   FileCheck2,
@@ -161,60 +160,15 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
     panels: [],
   },
 
-  /* ── 5.3 Vice Principal — delegated, read-only ─────────────────────────── */
+  /* ── 5.3 Vice Principal ─────────────────────────────────────────────── */
+  // The authenticated delegated console is mounted at /vp/dashboard. Keep an
+  // empty compatibility config for the legacy dynamic preview route only;
+  // it must never contain fixture departments, metrics or access decisions.
   VICE_PRINCIPAL: {
     roleChip: "Vice Principal",
-    summary: "Read-only view of your delegated departments",
-    scope: "Delegated: CSE, ECE",
-    stats: [
-      {
-        label: "Avg Attendance",
-        value: "85%",
-        icon: ClipboardCheck,
-        tone: "success",
-        delta: { text: "CSE 88% · ECE 81%", tone: "muted" },
-      },
-      {
-        label: "Exams",
-        value: "2 ongoing",
-        icon: FileSpreadsheet,
-        tone: "accent",
-        delta: { text: "6 upcoming", tone: "muted" },
-      },
-      { label: "Teachers", value: "28", icon: Users, tone: "cyan" },
-      { label: "Students", value: "320", icon: GraduationCap, tone: "accent" },
-    ],
-    panels: [
-      {
-        kind: "grid",
-        title: "Attendance — Delegated Departments",
-        span: 7,
-        items: [
-          { label: "CSE", value: 88, tone: "success" },
-          { label: "ECE", value: 81, tone: "warning" },
-        ],
-      },
-      {
-        kind: "timeline",
-        title: "Upcoming Exams",
-        span: 5,
-        items: [
-          { time: "Mon 4", title: "Mid-term · CSE", subtitle: "Sem 3", current: true },
-          { time: "Wed 6", title: "Mid-term · ECE", subtitle: "Sem 3" },
-        ],
-      },
-      {
-        kind: "actions",
-        title: "Quick Actions",
-        span: 12,
-        items: [
-          { label: "Post Notice", icon: Megaphone, href: "/notices/new", primary: true },
-          { label: "View Reports", icon: TrendingUp, href: "/reports" },
-          // C-VP-07 — the VP's own staff directory
-          { label: "Staff Directory", icon: Contact, href: "/vp/staff" },
-        ],
-      },
-    ],
+    summary: "Open the Vice Principal console for delegated live data.",
+    stats: [],
+    panels: [],
   },
 
   /* ── 5.4 HOD ───────────────────────────────────────────────────────────── */

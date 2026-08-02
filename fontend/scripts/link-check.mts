@@ -26,7 +26,7 @@ const WRITE_MD = process.argv.includes("--md");
 const ROLES = [
   ["INSTITUTION_ADMIN", "admin", "Institution Admin"],
   ["PRINCIPAL", "principal", "Principal"],
-  ["VICE_PRINCIPAL", "vice-principal", "Vice Principal"],
+  ["VICE_PRINCIPAL", "vp", "Vice Principal"],
   ["HOD", "hod", "HOD"],
   ["TEACHER", "teacher", "Teacher"],
   ["MENTOR", "mentor", "Mentor"],

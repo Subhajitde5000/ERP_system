@@ -24,21 +24,36 @@ type DirectoryKind = "staff" | "students";
 
 /** Shared C-PR-05 / C-PR-06 entry point; the API applies the actual audience. */
 export function PrincipalDirectoryPage({ kind }: { kind: DirectoryKind }) {
-  return kind === "staff" ? <StaffDirectory /> : <StudentDirectory />;
+  return kind === "staff" ? <LeadershipStaffDirectoryPage config={PRINCIPAL_STAFF_CONFIG} /> : <StudentDirectory />;
 }
 
-function StaffDirectory() {
+const PRINCIPAL_STAFF_CONFIG: LeadershipStaffDirectoryConfig = {
+  title: "Staff directory",
+  subtitle: "Academic staff profiles across the institution. This directory is read-only.",
+  load: fetchPrincipalStaff,
+  loadDetail: fetchPrincipalStaffDetail,
+};
+
+export interface LeadershipStaffDirectoryConfig {
+  title: string;
+  subtitle: string;
+  load: (filters: { query?: string; departmentId?: string; limit?: number; offset?: number }) => Promise<PrincipalPage<PrincipalStaffRow>>;
+  loadDetail: (id: string) => Promise<PrincipalStaffDetail>;
+}
+
+/** Shared C-PR-05 / C-VP-07 staff directory renderer. */
+export function LeadershipStaffDirectoryPage({ config }: { config: LeadershipStaffDirectoryConfig }) {
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const resource = useResource(
-    () => fetchPrincipalStaff({ query: query || undefined, limit: PAGE_SIZE, offset }),
+    () => config.load({ query: query || undefined, limit: PAGE_SIZE, offset }),
     [query, offset],
   );
   return (
     <DirectoryLayout
-      title="Staff directory"
-      subtitle="Academic staff profiles across the institution. This directory is read-only."
+      title={config.title}
+      subtitle={config.subtitle}
       query={query}
       onQuery={(value) => { setQuery(value); setOffset(0); }}
       placeholder="Search name, email or employee code"
@@ -48,7 +63,7 @@ function StaffDirectory() {
       onPrevious={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
       onNext={() => setOffset(offset + PAGE_SIZE)}
     >
-      {selectedId ? <StaffDetailDialog id={selectedId} onClose={() => setSelectedId(null)} /> : null}
+      {selectedId ? <StaffDetailDialog id={selectedId} loadDetail={config.loadDetail} onClose={() => setSelectedId(null)} /> : null}
     </DirectoryLayout>
   );
 }
@@ -163,8 +178,8 @@ function StudentTable({ items, onSelect }: { items: PrincipalStudentRow[]; onSel
   );
 }
 
-function StaffDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
-  const resource = useResource(() => fetchPrincipalStaffDetail(id), [id]);
+function StaffDetailDialog({ id, loadDetail, onClose }: { id: string; loadDetail: (id: string) => Promise<PrincipalStaffDetail>; onClose: () => void }) {
+  const resource = useResource(() => loadDetail(id), [id]);
   return <ProfileDialog title="Staff profile" onClose={onClose} resource={resource}>{(detail) => <StaffDetail detail={detail} />}</ProfileDialog>;
 }
 

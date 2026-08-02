@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 
 import { InstitutionShell } from "@/components/dashboard/institution-shell";
@@ -91,8 +91,14 @@ export default async function DashboardSegmentPage({
   }
 
   /* ── Role dashboard ──────────────────────────────────────────────────── */
+  // Compatibility for the pre-production `/vice-principal/dashboard` slug.
+  // The real delegated console is `/vp/dashboard`; never render its old mock
+  // dashboard for an authenticated Vice Principal.
+  if (slug === "vice-principal") redirect("/vp/dashboard");
+
   const role = slugToRole(slug);
   if (!role) notFound();
+  if (role === "VICE_PRINCIPAL") redirect("/vp/dashboard");
 
   // The URL segment is authoritative for which dashboard renders.
   const dashboard = (

@@ -5,20 +5,36 @@ import { Check, X } from "lucide-react";
 
 import { Card, EmptyState, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
-import { decideResultPublication, downloadPrincipalReport, fetchPrincipalResults, type PrincipalPublicationRow } from "@/lib/principal";
+import {
+  decideResultPublication,
+  downloadPrincipalReport,
+  fetchPrincipalResults,
+  type PrincipalPublicationRow,
+  type PrincipalResultsOverview,
+} from "@/lib/principal";
 import { AsyncState, ExportButton, MetricCard, dateTime, percent, statusLabel } from "./principal-ui";
 
-/** C-PR-04 — institution-wide results plus Principal-only publication approval. */
-export function PrincipalResultsPage() {
-  const resource = useResource(fetchPrincipalResults, []);
-  const [decision, setDecision] = useState<{ id: string; kind: "APPROVE" | "REJECT" } | null>(null);
+type Decision = "APPROVE" | "REJECT";
+
+export interface LeadershipResultsConfig {
+  title: string;
+  subtitle: string;
+  load: () => Promise<PrincipalResultsOverview>;
+  download: () => Promise<void>;
+  decide?: (id: string, decision: Decision, note?: string) => Promise<PrincipalPublicationRow>;
+}
+
+/** Shared C-PR-04 / C-VP-04 result overview with optional final approval. */
+export function LeadershipResultsPage({ config }: { config: LeadershipResultsConfig }) {
+  const resource = useResource(config.load, []);
+  const [decision, setDecision] = useState<{ id: string; kind: Decision } | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   async function submitDecision() {
-    if (!decision) return;
+    if (!decision || !config.decide) return;
     if (decision.kind === "REJECT" && !note.trim()) {
       setError("A reason is required to reject a result publication.");
       return;
@@ -26,7 +42,7 @@ export function PrincipalResultsPage() {
     setBusy(true);
     setError(null);
     try {
-      const updated = await decideResultPublication(decision.id, decision.kind, note);
+      const updated = await config.decide(decision.id, decision.kind, note);
       if (resource.data) {
         resource.setData({
           ...resource.data,
@@ -46,7 +62,7 @@ export function PrincipalResultsPage() {
     setExporting(true);
     setError(null);
     try {
-      await downloadPrincipalReport("results");
+      await config.download();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not export results.");
     } finally {
@@ -57,20 +73,35 @@ export function PrincipalResultsPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
-        title="Results overview"
-        subtitle="Class and department summaries are weighted by student count. Approvals preserve two-person control over publication."
+        title={config.title}
+        subtitle={config.subtitle}
         action={<ExportButton onClick={exportCsv} disabled={exporting} label={exporting ? "Preparing…" : "Export CSV"} />}
       />
       {error && !decision ? <p role="alert" className="mb-4 text-sm text-destructive-text">{error}</p> : null}
-      {decision ? <ResultDecisionForm kind={decision.kind} note={note} onNote={setNote} busy={busy} error={error} onCancel={() => { setDecision(null); setNote(""); setError(null); }} onSubmit={submitDecision} /> : null}
+      {decision && config.decide ? <ResultDecisionForm kind={decision.kind} note={note} onNote={setNote} busy={busy} error={error} onCancel={() => { setDecision(null); setNote(""); setError(null); }} onSubmit={submitDecision} /> : null}
       <AsyncState loading={resource.loading} error={resource.error} onRetry={resource.reload} loadingLabel="Loading results overview…">
-        {resource.data ? <ResultsContent data={resource.data} onDecide={(id, kind) => { setDecision({ id, kind }); setError(null); }} /> : null}
+        {resource.data ? <ResultsContent data={resource.data} canDecide={!!config.decide} onDecide={(id, kind) => { setDecision({ id, kind }); setError(null); }} /> : null}
       </AsyncState>
     </div>
   );
 }
 
-function ResultsContent({ data, onDecide }: { data: Awaited<ReturnType<typeof fetchPrincipalResults>>; onDecide: (id: string, kind: "APPROVE" | "REJECT") => void }) {
+/** C-PR-04 — Principal-only result publication approval. */
+export function PrincipalResultsPage() {
+  return (
+    <LeadershipResultsPage
+      config={{
+        title: "Results overview",
+        subtitle: "Class and department summaries are weighted by student count. Approvals preserve two-person control over publication.",
+        load: fetchPrincipalResults,
+        download: () => downloadPrincipalReport("results"),
+        decide: decideResultPublication,
+      }}
+    />
+  );
+}
+
+function ResultsContent({ data, canDecide, onDecide }: { data: PrincipalResultsOverview; canDecide: boolean; onDecide: (id: string, kind: Decision) => void }) {
   const overall = data.overall;
   return (
     <div className="space-y-5">
@@ -82,12 +113,16 @@ function ResultsContent({ data, onDecide }: { data: Awaited<ReturnType<typeof fe
 
       <Card>
         <div className="mb-4">
-          <h2 className="font-display text-base font-bold text-primary">Publication approval queue</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Only the Principal can approve or reject a compiled publication. Publishing to students remains a separate controller action.</p>
+          <h2 className="font-display text-base font-bold text-primary">Publication status</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {canDecide
+              ? "Only the Principal can approve or reject a compiled publication. Publishing to students remains a separate controller action."
+              : "Publication status is read-only. Final approval remains with the Principal."}
+          </p>
         </div>
         {data.publications.length ? (
           <div className="space-y-3">
-            {data.publications.map((publication) => <PublicationCard key={publication.id} publication={publication} onDecide={onDecide} />)}
+            {data.publications.map((publication) => <PublicationCard key={publication.id} publication={publication} canDecide={canDecide} onDecide={onDecide} />)}
           </div>
         ) : <EmptyState text="No result publications have been compiled yet." />}
       </Card>
@@ -98,7 +133,7 @@ function ResultsContent({ data, onDecide }: { data: Awaited<ReturnType<typeof fe
   );
 }
 
-function PublicationCard({ publication, onDecide }: { publication: PrincipalPublicationRow; onDecide: (id: string, kind: "APPROVE" | "REJECT") => void }) {
+function PublicationCard({ publication, canDecide, onDecide }: { publication: PrincipalPublicationRow; canDecide: boolean; onDecide: (id: string, kind: Decision) => void }) {
   const tones = {
     PENDING: "bg-warning-light text-warning-text",
     APPROVED: "bg-success-light text-success-text",
@@ -121,18 +156,18 @@ function PublicationCard({ publication, onDecide }: { publication: PrincipalPubl
           </p>
           {publication.approval_note ? <p className="mt-2 text-xs text-muted-foreground">Decision note: {publication.approval_note}</p> : null}
         </div>
-        {publication.approval_status === "PENDING" ? (
+        {canDecide && publication.approval_status === "PENDING" ? (
           <div className="flex shrink-0 gap-2">
             <button type="button" onClick={() => onDecide(publication.id, "REJECT")} className="inline-flex h-9 items-center gap-1 rounded-field border border-destructive-border px-3 text-xs font-semibold text-destructive-text transition hover:bg-destructive-light"><X className="h-3.5 w-3.5" /> Reject</button>
             <button type="button" onClick={() => onDecide(publication.id, "APPROVE")} className="inline-flex h-9 items-center gap-1 rounded-field bg-accent px-3 text-xs font-semibold text-white transition hover:bg-accent-hover"><Check className="h-3.5 w-3.5" /> Approve</button>
           </div>
-        ) : <span className="shrink-0 text-xs text-muted-foreground">Decision final</span>}
+        ) : <span className="shrink-0 text-xs text-muted-foreground">View only</span>}
       </div>
     </article>
   );
 }
 
-function ResultTable({ title, label, rows }: { title: string; label: string; rows: Awaited<ReturnType<typeof fetchPrincipalResults>>["departments"] }) {
+function ResultTable({ title, label, rows }: { title: string; label: string; rows: PrincipalResultsOverview["departments"] }) {
   return (
     <Card>
       <h2 className="mb-4 font-display text-base font-bold text-primary">{title}</h2>
@@ -150,7 +185,7 @@ function ResultTable({ title, label, rows }: { title: string; label: string; row
   );
 }
 
-function ResultDecisionForm({ kind, note, onNote, busy, error, onCancel, onSubmit }: { kind: "APPROVE" | "REJECT"; note: string; onNote: (value: string) => void; busy: boolean; error: string | null; onCancel: () => void; onSubmit: () => void }) {
+function ResultDecisionForm({ kind, note, onNote, busy, error, onCancel, onSubmit }: { kind: Decision; note: string; onNote: (value: string) => void; busy: boolean; error: string | null; onCancel: () => void; onSubmit: () => void }) {
   const rejecting = kind === "REJECT";
   return (
     <Card className="mb-5 border-accent-border !p-4">

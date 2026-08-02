@@ -10,24 +10,39 @@ import {
   downloadPrincipalReport,
   fetchPrincipalExaminations,
   type PrincipalExamRow,
+  type PrincipalPage,
 } from "@/lib/principal";
 import { AsyncState, ExportButton, dateTime, statusLabel } from "./principal-ui";
 
 const PAGE_SIZE = 25;
+type Decision = "APPROVE" | "REJECT";
 
-/** C-PR-03 — all institution exam schedules with an auditable approval decision. */
-export function PrincipalExaminationsPage() {
+export interface LeadershipExaminationsConfig {
+  title: string;
+  subtitle: string;
+  load: (filters: {
+    status?: string;
+    approvalStatus?: string;
+    limit?: number;
+    offset?: number;
+  }) => Promise<PrincipalPage<PrincipalExamRow>>;
+  download: () => Promise<void>;
+  decide?: (id: string, decision: Decision, note?: string) => Promise<PrincipalExamRow>;
+}
+
+/** Shared C-PR-03 / C-VP-03 schedule view; decision controls are opt-in. */
+export function LeadershipExaminationsPage({ config }: { config: LeadershipExaminationsConfig }) {
   const [status, setStatus] = useState("");
   const [approvalStatus, setApprovalStatus] = useState("");
   const [offset, setOffset] = useState(0);
-  const [decision, setDecision] = useState<{ id: string; kind: "APPROVE" | "REJECT" } | null>(null);
+  const [decision, setDecision] = useState<{ id: string; kind: Decision } | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const resource = useResource(
-    () => fetchPrincipalExaminations({ status: status || undefined, approvalStatus: approvalStatus || undefined, limit: PAGE_SIZE, offset }),
+    () => config.load({ status: status || undefined, approvalStatus: approvalStatus || undefined, limit: PAGE_SIZE, offset }),
     [status, approvalStatus, offset],
   );
 
@@ -41,7 +56,7 @@ export function PrincipalExaminationsPage() {
   }
 
   async function submitDecision() {
-    if (!decision) return;
+    if (!decision || !config.decide) return;
     if (decision.kind === "REJECT" && !note.trim()) {
       setActionError("A reason is required to reject an exam schedule.");
       return;
@@ -49,7 +64,7 @@ export function PrincipalExaminationsPage() {
     setBusy(true);
     setActionError(null);
     try {
-      const updated = await decideExamSchedule(decision.id, decision.kind, note);
+      const updated = await config.decide(decision.id, decision.kind, note);
       if (resource.data) {
         resource.setData({
           ...resource.data,
@@ -69,7 +84,7 @@ export function PrincipalExaminationsPage() {
     setExporting(true);
     setExportError(null);
     try {
-      await downloadPrincipalReport("examinations");
+      await config.download();
     } catch (error) {
       setExportError(error instanceof Error ? error.message : "Could not export exam schedules.");
     } finally {
@@ -80,8 +95,8 @@ export function PrincipalExaminationsPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
-        title="Exam schedules"
-        subtitle="Review every institution exam schedule. A decision is final and is recorded in the academic audit trail."
+        title={config.title}
+        subtitle={config.subtitle}
         action={<ExportButton onClick={exportCsv} disabled={exporting} label={exporting ? "Preparing…" : "Export CSV"} />}
       />
 
@@ -91,9 +106,7 @@ export function PrincipalExaminationsPage() {
             <label htmlFor="exam-status" className={labelClass}>Exam status</label>
             <select id="exam-status" className={inputClass} value={status} onChange={(event) => changeStatus(event.target.value)}>
               <option value="">All statuses</option>
-              {[
-                "DRAFT", "PUBLISHED", "ONGOING", "COMPLETED", "RESULTS_RELEASED", "CANCELLED",
-              ].map((value) => <option key={value} value={value}>{statusLabel(value)}</option>)}
+              {["DRAFT", "PUBLISHED", "ONGOING", "COMPLETED", "RESULTS_RELEASED", "CANCELLED"].map((value) => <option key={value} value={value}>{statusLabel(value)}</option>)}
             </select>
           </div>
           <div>
@@ -107,7 +120,7 @@ export function PrincipalExaminationsPage() {
         {exportError ? <p role="alert" className="mt-3 text-sm text-destructive-text">{exportError}</p> : null}
       </Card>
 
-      {decision ? (
+      {decision && config.decide ? (
         <DecisionForm
           kind={decision.kind}
           note={note}
@@ -137,7 +150,12 @@ export function PrincipalExaminationsPage() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {resource.data.items.map((exam) => (
-                      <ExamRow key={exam.id} exam={exam} onDecide={(kind) => { setDecision({ id: exam.id, kind }); setActionError(null); }} />
+                      <ExamRow
+                        key={exam.id}
+                        exam={exam}
+                        canDecide={!!config.decide}
+                        onDecide={(kind) => { setDecision({ id: exam.id, kind }); setActionError(null); }}
+                      />
                     ))}
                   </tbody>
                 </table>
@@ -151,7 +169,22 @@ export function PrincipalExaminationsPage() {
   );
 }
 
-function ExamRow({ exam, onDecide }: { exam: PrincipalExamRow; onDecide: (kind: "APPROVE" | "REJECT") => void }) {
+/** C-PR-03 — Principal sees the same table plus final schedule controls. */
+export function PrincipalExaminationsPage() {
+  return (
+    <LeadershipExaminationsPage
+      config={{
+        title: "Exam schedules",
+        subtitle: "Review every institution exam schedule. A decision is final and is recorded in the academic audit trail.",
+        load: fetchPrincipalExaminations,
+        download: () => downloadPrincipalReport("examinations"),
+        decide: decideExamSchedule,
+      }}
+    />
+  );
+}
+
+function ExamRow({ exam, canDecide, onDecide }: { exam: PrincipalExamRow; canDecide: boolean; onDecide: (kind: Decision) => void }) {
   const approvalClass = {
     PENDING: "bg-warning-light text-warning-text",
     APPROVED: "bg-success-light text-success-text",
@@ -174,18 +207,18 @@ function ExamRow({ exam, onDecide }: { exam: PrincipalExamRow; onDecide: (kind: 
         {exam.schedule_approval_note ? <p className="mt-1 max-w-44 text-xs text-muted-foreground">{exam.schedule_approval_note}</p> : null}
       </td>
       <td className="px-4 py-3 text-right">
-        {exam.schedule_approval_status === "PENDING" ? (
+        {canDecide && exam.schedule_approval_status === "PENDING" ? (
           <span className="inline-flex gap-2">
             <button type="button" onClick={() => onDecide("REJECT")} className="inline-flex h-8 items-center gap-1 rounded-field border border-destructive-border px-2.5 text-xs font-semibold text-destructive-text transition hover:bg-destructive-light"><X className="h-3.5 w-3.5" /> Reject</button>
             <button type="button" onClick={() => onDecide("APPROVE")} className="inline-flex h-8 items-center gap-1 rounded-field bg-accent px-2.5 text-xs font-semibold text-white transition hover:bg-accent-hover"><Check className="h-3.5 w-3.5" /> Approve</button>
           </span>
-        ) : <span className="text-xs text-muted-foreground">Final decision</span>}
+        ) : canDecide ? <span className="text-xs text-muted-foreground">Final decision</span> : <span className="text-xs text-muted-foreground">View only</span>}
       </td>
     </tr>
   );
 }
 
-function DecisionForm({ kind, note, onNote, busy, error, onCancel, onSubmit }: { kind: "APPROVE" | "REJECT"; note: string; onNote: (value: string) => void; busy: boolean; error: string | null; onCancel: () => void; onSubmit: () => void }) {
+function DecisionForm({ kind, note, onNote, busy, error, onCancel, onSubmit }: { kind: Decision; note: string; onNote: (value: string) => void; busy: boolean; error: string | null; onCancel: () => void; onSubmit: () => void }) {
   const rejecting = kind === "REJECT";
   return (
     <Card className="mb-5 border-accent-border !p-4">

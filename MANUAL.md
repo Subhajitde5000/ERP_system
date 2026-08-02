@@ -142,6 +142,7 @@ npm run dev                     # http://localhost:3000
   (`tenant_id`) and the origin — replaying it against another institution fails.
 - Institution Admins land on the **real** admin console at `/admin/dashboard`.
 - Principals land on the **real** academic-oversight console at `/principal/dashboard`.
+- Vice Principals land on `/vp/dashboard`; an active delegated department scope is required.
 
 ### 5.3 Staff (xyz.com employees) — `app.xyz.com/login` → `/platform/login`
 - `POST /api/v1/platform/auth/login`. Created via `create_superadmin.py` or seed.
@@ -206,6 +207,33 @@ are backfilled as approved; unpublished legacy publications enter the pending
 queue. Every Principal decision is written to the append-only `audit_logs`
 table in the same transaction.
 
+### Vice Principal — delegated live console (C-VP-01 … C-VP-07)
+
+The `/vp/*` console is wired to `/api/v1/vice-principal/*`. It uses the same
+live academic rows as the Principal console, but **every query is restricted
+before aggregation** to active department delegations on the user's
+`VICE_PRINCIPAL` role assignments. An unscoped VP is denied rather than being
+silently widened to the full institution.
+
+| Page | What works |
+|---|---|
+| `/vp/dashboard` | Delegated attendance, exams, results, staff and notice metrics, with the resolved department scope shown |
+| `/vp/attendance` | Delegated department/class attendance and scoped CSV export |
+| `/vp/examinations` | Delegated exam schedules and CSV export — view-only, no final schedule decision |
+| `/vp/results` | Delegated result/publication summaries and scoped CSV export — view-only, no final result approval |
+| `/vp/notices` | Institution notices plus delegated department/class notices; no read receipt payload |
+| `/vp/notices/new` | Post only to delegated departments or their classes; institution-wide posting is server-blocked |
+| `/vp/staff` | Read-only staff profiles in delegated departments |
+
+To provision a VP through the Admin **Staff** form, choose `Vice Principal` and
+select a delegated department. The same VP may receive more department scopes
+through `PUT /api/v1/institution/staff/:id/roles` with
+`{"role_name":"VICE_PRINCIPAL","department_id":"…"}`. To remove one
+scope, use `DELETE /api/v1/institution/staff/:id/roles/VICE_PRINCIPAL?department_id=…`;
+other delegated departments remain active. No schema migration is needed for
+delegation: `role_assignments.scope_id` / `scope_type` already model
+department-scoped roles.
+
 ---
 
 ## 8. Module workflows — status
@@ -213,9 +241,9 @@ table in the same transaction.
 The legacy preview workflows under `(institution)/*` (attendance marking,
 fees, library, hostel, timetable, etc.) currently read from in-memory **demo
 data** (`lib/*-data.ts`) and the demo `getSession`. They render for preview/QA
-but are **not yet wired to the backend**. The Principal routes in §7 are the
-exception: they are standalone authenticated production routes and do not use
-those fixtures.
+but are **not yet wired to the backend**. The Principal and Vice Principal
+routes in §7 are the exception: they are standalone authenticated production
+routes and do not use those fixtures.
 
 The migration pattern is established and identical for each:
 1. Add an ORM model (most tables already exist in `database.sql`).
@@ -260,6 +288,7 @@ All under `/api/v1`. Authenticated routes take `Authorization: Bearer <jwt>`.
 | Public signup | `/public` | `/catalog`, `/subdomains/check`, `/quote`, `/orders` (+ `/pay`), `/service-requests` |
 | Institution admin | `/institution` | `/dashboard`, `/academic-years`, `/departments`, `/classes`, `/subjects`, `/staff`, `/students`, `/enrollments`, `/modules`, `/settings`, `/profile` |
 | Principal | `/principal` | `/dashboard`, `/attendance`, `/examinations` (+ schedule approval), `/results` (+ publication approval), `/staff`, `/students`, `/notices`, `/timetable`, `/reports`, `/reports/export` |
+| Vice Principal | `/vice-principal` | Delegated `/dashboard`, `/attendance`, `/examinations`, `/results`, `/staff`, `/notices`, `/reports/export`; no final approval endpoints |
 | Tenant auth | `/tenant/auth` | `/login`, `/logout`, `/refresh`, `/me`, `/forgot-password`, `/reset-password` |
 | Platform staff auth | `/platform/auth` | `/login`, `/logout`, `/refresh`, `/me` |
 | Setup wizard | `/setup` | `GET`, `PUT`, `POST /complete` |
@@ -303,5 +332,5 @@ institution-admin RBAC guard + plan-gated modules.
 - `doc/database_design_complete.md`, `doc/role_based_system_design.md`
 - `doc/PAGES-TODO.md` — page coverage matrix
 
-_Manual v1.1 — verified against the 106-table schema, `update2.sql`, Alembic
-head `c9d3e7f1a602`, and the live `/admin` and `/principal` consoles._
+_Manual v1.3 — verified against the 106-table schema, `update2.sql`, Alembic
+head `c9d3e7f1a602`, and the live `/admin`, `/principal` and `/vp` consoles._

@@ -117,7 +117,7 @@ Panel `kind`s available (add a new one in `components/dashboard/panel.tsx`):
 | `/placement-officer/dashboard` | Placement — pipeline kanban |
 | `/admission-officer/dashboard` | Admissions — funnel |
 
-Slugs (18): `admin · principal · vice-principal · hod · teacher · mentor ·
+Slugs (18): `admin · principal · vp · hod · teacher · mentor ·
 exam-controller · coordinator · accountant · student · parent · librarian ·
 hostel-warden · transport-manager · placement-officer · hr-manager ·
 admission-officer · store-manager`
@@ -1711,7 +1711,7 @@ Checked in a real browser, not by eye:
 5. **Vice Principal has its own slug** — the login doc pointed both `PRINCIPAL`
    and `VICE_PRINCIPAL` at `/principal/dashboard`, which made the VP's
    delegated read-only view (§5.3) unreachable. VP is now
-   `/vice-principal/dashboard`.
+   `/vp/dashboard`.
 6. **Role set is the canonical 18** — `InstitutionRole` matches
    `role_based_system_design.md` §2.2 and `packages/shared-types/roles.ts`
    exactly, including `MENTOR`. `DASHBOARDS` is typed

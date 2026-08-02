@@ -185,3 +185,21 @@ async def get_current_tenant_user_principal(
         {"PRINCIPAL"},
         "Principal privileges are required",
     )
+
+
+async def get_current_tenant_user_vice_principal(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Require a live Vice Principal role before resolving delegated scope.
+
+    The route service then resolves department assignments separately and fails
+    closed when the role has no active delegation. Keeping those checks apart
+    makes the role check reusable while preserving the strict scope boundary.
+    """
+    return await _require_current_tenant_roles(
+        current_user,
+        db,
+        {"VICE_PRINCIPAL"},
+        "Vice Principal privileges are required",
+    )

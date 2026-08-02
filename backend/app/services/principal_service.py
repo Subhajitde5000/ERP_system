@@ -1,9 +1,9 @@
-"""Business logic for the Principal academic-oversight console.
+"""Shared leadership read-models for Principal and Vice Principal consoles.
 
-This service is deliberately the only place that assembles Principal-facing
-aggregates.  It reads the operational tables directly, scopes every query to
-the authenticated user's tenant and records the two approval decisions in the
-same transaction as the state change.
+This service owns the academic aggregates once. It reads operational tables
+straight from the tenant, accepts an optional department fence for delegated
+leaders, and records Principal-only approval decisions in the same transaction
+as the state change.
 
 It does *not* duplicate attendance, examination or result data in a reporting
 table.  That keeps the dashboard, exports and operational screens consistent.
@@ -80,6 +80,11 @@ from app.services.audit_service import AuditService
 
 
 _APPROVAL_STATES = {"PENDING", "APPROVED", "REJECTED"}
+# ``None`` means institution-wide (Principal); an empty set deliberately means
+# no access. Vice Principal callers always receive a non-empty, database-checked
+# department set from VicePrincipalService.
+DepartmentScope = frozenset[uuid.UUID] | None
+
 _EXAM_FINAL_STATUSES = {
     ExamStatus.ONGOING,
     ExamStatus.COMPLETED,
@@ -164,11 +169,50 @@ class PrincipalService:
         )
 
     @staticmethod
+    def _scoped_class_ids(tenant_id: uuid.UUID, department_ids: DepartmentScope):
+        """A tenant-bound class subquery for a delegated department scope.
+
+        Keeping this at the data boundary prevents every leadership view from
+        reimplementing a fragile class→department join. ``None`` is the
+        Principal's institution-wide scope; an empty set intentionally yields
+        no class ids.
+        """
+        stmt = select(SchoolClass.id).where(SchoolClass.tenant_id == tenant_id)
+        if department_ids is not None:
+            stmt = stmt.where(SchoolClass.department_id.in_(department_ids))
+        return stmt
+
+    @staticmethod
+    def _scoped_staff_user_ids(tenant_id: uuid.UUID, department_ids: DepartmentScope):
+        """Users with a live department-scoped role in the requested scope."""
+        stmt = (
+            select(RoleAssignment.user_id)
+            .where(
+                RoleAssignment.tenant_id == tenant_id,
+                func.upper(RoleAssignment.scope_type) == "DEPARTMENT",
+                PrincipalService._active_role_clause(),
+            )
+            .distinct()
+        )
+        if department_ids is not None:
+            stmt = stmt.where(RoleAssignment.scope_id.in_(department_ids))
+        return stmt
+
+    @staticmethod
+    def _apply_department_scope(statement, department_ids: DepartmentScope):
+        """Append the department fence when a delegated scope is present."""
+        if department_ids is None:
+            return statement
+        return statement.where(Department.id.in_(department_ids))
+
+    @staticmethod
     async def _attendance_overview(
         db: AsyncSession,
         tenant_id: uuid.UUID,
         from_date: date | None = None,
         to_date: date | None = None,
+        *,
+        department_ids: DepartmentScope = None,
     ) -> PrincipalAttendanceOverview:
         """One grouped query for every department/class, then safe percentages.
 
@@ -181,6 +225,12 @@ class PrincipalService:
             to_date,
             default_end=await PrincipalService._tenant_today(db, tenant_id),
         )
+        department_filters = [
+            Department.tenant_id == tenant_id,
+            Department.is_active.is_(True),
+        ]
+        if department_ids is not None:
+            department_filters.append(Department.id.in_(department_ids))
         rows = await db.execute(
             select(
                 Department.id.label("department_id"),
@@ -208,7 +258,7 @@ class PrincipalService:
                     AttendanceSession.date <= end,
                 ),
             )
-            .where(Department.tenant_id == tenant_id, Department.is_active.is_(True))
+            .where(*department_filters)
             .group_by(Department.id, Department.name, SchoolClass.id, SchoolClass.name)
             .order_by(Department.name, SchoolClass.name)
         )
@@ -279,6 +329,8 @@ class PrincipalService:
     async def _result_groups(
         db: AsyncSession,
         tenant_id: uuid.UUID,
+        *,
+        department_ids: DepartmentScope = None,
     ) -> tuple[list[PrincipalResultGroup], list[PrincipalResultGroup]]:
         """Return weighted department and class result roll-ups.
 
@@ -321,6 +373,7 @@ class PrincipalService:
             )
             .where(StudentResult.tenant_id == tenant_id)
         )
+        common = PrincipalService._apply_department_scope(common, department_ids)
 
         class_rows = await db.execute(
             common.group_by(
@@ -355,8 +408,42 @@ class PrincipalService:
 
     @staticmethod
     async def _publication_rows(
-        db: AsyncSession, tenant_id: uuid.UUID
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        department_ids: DepartmentScope = None,
     ) -> list[PrincipalPublicationRow]:
+        """Publication summaries, optionally reduced to delegated departments.
+
+        Institution-wide publications may contain results for many classes. A
+        delegated leader sees only the result rows and publication metadata
+        reachable through their department classes; a class name outside that
+        scope is never serialised.
+        """
+        publication_filters = [ResultPublication.tenant_id == tenant_id]
+        publication_class_join = [
+            SchoolClass.id == ResultPublication.class_id,
+            SchoolClass.tenant_id == tenant_id,
+        ]
+        student_result_join = [
+            StudentResult.publication_id == ResultPublication.id,
+            StudentResult.tenant_id == tenant_id,
+        ]
+        if department_ids is not None:
+            scoped_class_ids = PrincipalService._scoped_class_ids(tenant_id, department_ids)
+            publication_class_join.append(SchoolClass.department_id.in_(department_ids))
+            student_result_join.append(StudentResult.class_id.in_(scoped_class_ids))
+            scoped_publication_ids = select(StudentResult.publication_id).where(
+                StudentResult.tenant_id == tenant_id,
+                StudentResult.class_id.in_(scoped_class_ids),
+            )
+            publication_filters.append(
+                or_(
+                    ResultPublication.class_id.in_(scoped_class_ids),
+                    ResultPublication.id.in_(scoped_publication_ids),
+                )
+            )
+
         rows = await db.execute(
             select(
                 ResultPublication,
@@ -376,22 +463,13 @@ class PrincipalService:
                     AcademicYear.tenant_id == tenant_id,
                 ),
             )
-            .outerjoin(
-                SchoolClass,
-                and_(SchoolClass.id == ResultPublication.class_id, SchoolClass.tenant_id == tenant_id),
-            )
+            .outerjoin(SchoolClass, and_(*publication_class_join))
             .outerjoin(
                 User,
                 and_(User.id == ResultPublication.published_by, User.tenant_id == tenant_id),
             )
-            .outerjoin(
-                StudentResult,
-                and_(
-                    StudentResult.publication_id == ResultPublication.id,
-                    StudentResult.tenant_id == tenant_id,
-                ),
-            )
-            .where(ResultPublication.tenant_id == tenant_id)
+            .outerjoin(StudentResult, and_(*student_result_join))
+            .where(*publication_filters)
             .group_by(ResultPublication.id, AcademicYear.name, SchoolClass.name, User.name)
             .order_by(ResultPublication.published_at.desc())
         )
@@ -421,12 +499,25 @@ class PrincipalService:
     # ── C-PR-01 dashboard ───────────────────────────────────────────────────
 
     @staticmethod
-    async def dashboard(db: AsyncSession, tenant_id: uuid.UUID) -> PrincipalDashboard:
-        attendance = await PrincipalService._attendance_overview(db, tenant_id)
-        departments, _classes = await PrincipalService._result_groups(db, tenant_id)
+    async def dashboard(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        department_ids: DepartmentScope = None,
+    ) -> PrincipalDashboard:
+        attendance = await PrincipalService._attendance_overview(
+            db, tenant_id, department_ids=department_ids
+        )
+        departments, _classes = await PrincipalService._result_groups(
+            db, tenant_id, department_ids=department_ids
+        )
         now = datetime.now(timezone.utc)
         today = await PrincipalService._tenant_today(db, tenant_id)
+        scoped_class_ids = PrincipalService._scoped_class_ids(tenant_id, department_ids)
 
+        exam_join = [Exam.tenant_id == Tenant.id]
+        if department_ids is not None:
+            exam_join.append(Exam.class_id.in_(scoped_class_ids))
         counts = await db.execute(
             select(
                 func.count(Exam.id).filter(Exam.status == ExamStatus.ONGOING).label("ongoing_exams"),
@@ -440,54 +531,88 @@ class PrincipalService:
                 .label("upcoming_exams"),
             )
             .select_from(Tenant)
-            .outerjoin(Exam, Exam.tenant_id == Tenant.id)
+            .outerjoin(Exam, and_(*exam_join))
             .where(Tenant.id == tenant_id)
         )
-        # Result/publication and notice metrics are fetched independently: a
-        # single join across these one-to-many tables would multiply counts.
         count_row = counts.one()
-        pending_results = (
-            await db.execute(
-                select(func.count(ResultPublication.id)).where(
-                    ResultPublication.tenant_id == tenant_id,
-                    ResultPublication.approval_status == "PENDING",
-                )
+
+        # The publication projection already applies any delegated class fence;
+        # using it here prevents a dashboard count from disclosing another
+        # department's pending result publication.
+        publications = await PrincipalService._publication_rows(
+            db, tenant_id, department_ids=department_ids
+        )
+        pending_results = sum(
+            publication.approval_status == "PENDING" for publication in publications
+        )
+
+        notice_filters = [Notice.tenant_id == tenant_id, Notice.deleted_at.is_(None)]
+        if department_ids is not None:
+            notice_filters.append(
+                PrincipalService._notice_visibility_clause(tenant_id, department_ids)
             )
-        ).scalar() or 0
         total_notices = (
-            await db.execute(
-                select(func.count(Notice.id)).where(
-                    Notice.tenant_id == tenant_id, Notice.deleted_at.is_(None)
-                )
-            )
-        ).scalar() or 0
-        staff_count = (
-            await db.execute(
-                select(func.count(func.distinct(User.id)))
-                .select_from(User)
-                .join(RoleAssignment, RoleAssignment.user_id == User.id)
-                .join(Role, Role.id == RoleAssignment.role_id)
-                .where(
-                    User.tenant_id == tenant_id,
-                    User.deleted_at.is_(None),
-                    User.is_active.is_(True),
-                    RoleAssignment.tenant_id == tenant_id,
-                    PrincipalService._active_role_clause(),
-                    Role.name.not_in(["STUDENT", "PARENT"]),
-                )
-            )
-        ).scalar() or 0
-        staff_on_leave = (
-            await db.execute(
-                select(func.count(func.distinct(StaffLeaveRequest.staff_id))).where(
-                    StaffLeaveRequest.tenant_id == tenant_id,
-                    StaffLeaveRequest.status == "APPROVED",
-                    StaffLeaveRequest.from_date <= today,
-                    StaffLeaveRequest.to_date >= today,
-                )
-            )
+            await db.execute(select(func.count(Notice.id)).where(*notice_filters))
         ).scalar() or 0
 
+        staff_stmt = (
+            select(func.count(func.distinct(User.id)))
+            .select_from(User)
+            .join(RoleAssignment, RoleAssignment.user_id == User.id)
+            .join(Role, Role.id == RoleAssignment.role_id)
+            .where(
+                User.tenant_id == tenant_id,
+                User.deleted_at.is_(None),
+                User.is_active.is_(True),
+                RoleAssignment.tenant_id == tenant_id,
+                PrincipalService._active_role_clause(),
+                Role.name.not_in(["STUDENT", "PARENT"]),
+            )
+        )
+        if department_ids is not None:
+            staff_stmt = staff_stmt.outerjoin(
+                StaffProfile,
+                and_(StaffProfile.user_id == User.id, StaffProfile.tenant_id == tenant_id),
+            ).where(
+                or_(
+                    StaffProfile.department_id.in_(department_ids),
+                    User.id.in_(PrincipalService._scoped_staff_user_ids(tenant_id, department_ids)),
+                )
+            )
+        staff_count = (await db.execute(staff_stmt)).scalar() or 0
+
+        leave_stmt = select(func.count(func.distinct(StaffLeaveRequest.staff_id))).where(
+            StaffLeaveRequest.tenant_id == tenant_id,
+            StaffLeaveRequest.status == "APPROVED",
+            StaffLeaveRequest.from_date <= today,
+            StaffLeaveRequest.to_date >= today,
+        )
+        if department_ids is not None:
+            leave_stmt = leave_stmt.outerjoin(
+                StaffProfile,
+                and_(
+                    StaffProfile.user_id == StaffLeaveRequest.staff_id,
+                    StaffProfile.tenant_id == tenant_id,
+                ),
+            ).where(
+                or_(
+                    StaffProfile.department_id.in_(department_ids),
+                    StaffLeaveRequest.staff_id.in_(
+                        PrincipalService._scoped_staff_user_ids(tenant_id, department_ids)
+                    ),
+                )
+            )
+        staff_on_leave = (await db.execute(leave_stmt)).scalar() or 0
+
+        upcoming_filters = [
+            Exam.tenant_id == tenant_id,
+            Exam.scheduled_at >= now,
+            Exam.status.not_in(
+                [ExamStatus.CANCELLED, ExamStatus.COMPLETED, ExamStatus.RESULTS_RELEASED]
+            ),
+        ]
+        if department_ids is not None:
+            upcoming_filters.append(Department.id.in_(department_ids))
         upcoming = await db.execute(
             select(Exam, SchoolClass.name, Subject.name, Department.name)
             .join(
@@ -499,13 +624,7 @@ class PrincipalService:
                 Department,
                 and_(Department.id == SchoolClass.department_id, Department.tenant_id == tenant_id),
             )
-            .where(
-                Exam.tenant_id == tenant_id,
-                Exam.scheduled_at >= now,
-                Exam.status.not_in(
-                    [ExamStatus.CANCELLED, ExamStatus.COMPLETED, ExamStatus.RESULTS_RELEASED]
-                ),
-            )
+            .where(*upcoming_filters)
             .order_by(Exam.scheduled_at)
             .limit(5)
         )
@@ -549,8 +668,16 @@ class PrincipalService:
         tenant_id: uuid.UUID,
         from_date: date | None = None,
         to_date: date | None = None,
+        *,
+        department_ids: DepartmentScope = None,
     ) -> PrincipalAttendanceOverview:
-        return await PrincipalService._attendance_overview(db, tenant_id, from_date, to_date)
+        return await PrincipalService._attendance_overview(
+            db,
+            tenant_id,
+            from_date,
+            to_date,
+            department_ids=department_ids,
+        )
 
     # ── C-PR-03 examination schedule and approval ───────────────────────────
 
@@ -565,6 +692,7 @@ class PrincipalService:
         to_date: date | None = None,
         limit: int = 50,
         offset: int = 0,
+        department_ids: DepartmentScope = None,
     ) -> PrincipalExamPage:
         limit, offset = _page_bounds(limit, offset)
         if status_filter and status_filter not in {s.value for s in ExamStatus}:
@@ -575,6 +703,10 @@ class PrincipalService:
             _date_window(from_date, to_date)
 
         clauses = [Exam.tenant_id == tenant_id]
+        if department_ids is not None:
+            clauses.append(
+                Exam.class_id.in_(PrincipalService._scoped_class_ids(tenant_id, department_ids))
+            )
         if status_filter:
             clauses.append(Exam.status == ExamStatus(status_filter))
         if approval_status:
@@ -703,8 +835,15 @@ class PrincipalService:
     # ── C-PR-04 results and two-person approval ─────────────────────────────
 
     @staticmethod
-    async def results(db: AsyncSession, tenant_id: uuid.UUID) -> PrincipalResultsOverview:
-        departments, classes = await PrincipalService._result_groups(db, tenant_id)
+    async def results(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        department_ids: DepartmentScope = None,
+    ) -> PrincipalResultsOverview:
+        departments, classes = await PrincipalService._result_groups(
+            db, tenant_id, department_ids=department_ids
+        )
         total_students = sum(item.student_count for item in departments)
         if total_students:
             overall = PrincipalResultGroup(
@@ -730,7 +869,9 @@ class PrincipalService:
             overall=overall,
             departments=departments,
             classes=classes,
-            publications=await PrincipalService._publication_rows(db, tenant_id),
+            publications=await PrincipalService._publication_rows(
+                db, tenant_id, department_ids=department_ids
+            ),
         )
 
     @staticmethod
@@ -795,10 +936,13 @@ class PrincipalService:
         department_id: uuid.UUID | None = None,
         limit: int = 50,
         offset: int = 0,
+        department_ids: DepartmentScope = None,
     ) -> PrincipalStaffPage:
         limit, offset = _page_bounds(limit, offset)
         if department_id is not None:
             await PrincipalService._ensure_department(db, tenant_id, department_id)
+            if department_ids is not None and department_id not in department_ids:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Department not found")
 
         staff_ids = (
             select(RoleAssignment.user_id)
@@ -815,8 +959,24 @@ class PrincipalService:
             User.deleted_at.is_(None),
             User.id.in_(staff_ids),
         ]
+        if department_ids is not None:
+            clauses.append(
+                or_(
+                    StaffProfile.department_id.in_(department_ids),
+                    User.id.in_(PrincipalService._scoped_staff_user_ids(tenant_id, department_ids)),
+                )
+            )
         if department_id is not None:
-            clauses.append(StaffProfile.department_id == department_id)
+            clauses.append(
+                or_(
+                    StaffProfile.department_id == department_id,
+                    User.id.in_(
+                        PrincipalService._scoped_staff_user_ids(
+                            tenant_id, frozenset({department_id})
+                        )
+                    ),
+                )
+            )
         if query and query.strip():
             needle = f"%{query.strip().lower()}%"
             clauses.append(
@@ -855,22 +1015,34 @@ class PrincipalService:
             .offset(offset)
         )
         loaded = rows.all()
-        role_map = await PrincipalService._roles_for_users(
-            db, tenant_id, [user.id for user, _profile, _department in loaded]
+        user_ids = [user.id for user, _profile, _department in loaded]
+        role_map = await PrincipalService._roles_for_users(db, tenant_id, user_ids)
+        scoped_departments = await PrincipalService._staff_department_scopes(
+            db, tenant_id, user_ids, department_ids=department_ids
         )
         return PrincipalStaffPage(
             total=int(total),
             limit=limit,
             offset=offset,
             items=[
-                PrincipalService._staff_row(user, profile, department_name, role_map.get(user.id, []))
+                PrincipalService._staff_row(
+                    user,
+                    profile,
+                    department_name,
+                    role_map.get(user.id, []),
+                    scoped_departments.get(user.id),
+                )
                 for user, profile, department_name in loaded
             ],
         )
 
     @staticmethod
     async def staff_detail(
-        db: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        department_ids: DepartmentScope = None,
     ) -> PrincipalStaffDetail:
         # This precise query has the same role fence as the list and returns a
         # 404 outside that audience, so identifiers cannot be used to probe
@@ -885,6 +1057,19 @@ class PrincipalService:
             )
             .distinct()
         )
+        detail_filters = [
+            User.id == user_id,
+            User.tenant_id == tenant_id,
+            User.deleted_at.is_(None),
+            User.id.in_(staff_ids),
+        ]
+        if department_ids is not None:
+            detail_filters.append(
+                or_(
+                    StaffProfile.department_id.in_(department_ids),
+                    User.id.in_(PrincipalService._scoped_staff_user_ids(tenant_id, department_ids)),
+                )
+            )
         row = await db.execute(
             select(User, StaffProfile, Department.name.label("department_name"))
             .outerjoin(
@@ -895,19 +1080,23 @@ class PrincipalService:
                 Department,
                 and_(Department.id == StaffProfile.department_id, Department.tenant_id == tenant_id),
             )
-            .where(
-                User.id == user_id,
-                User.tenant_id == tenant_id,
-                User.deleted_at.is_(None),
-                User.id.in_(staff_ids),
-            )
+            .where(*detail_filters)
         )
         loaded = row.one_or_none()
         if loaded is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Staff member not found")
         user, profile, department_name = loaded
         roles = await PrincipalService._roles_for_users(db, tenant_id, [user.id])
-        base = PrincipalService._staff_row(user, profile, department_name, roles.get(user.id, []))
+        scoped_departments = await PrincipalService._staff_department_scopes(
+            db, tenant_id, [user.id], department_ids=department_ids
+        )
+        base = PrincipalService._staff_row(
+            user,
+            profile,
+            department_name,
+            roles.get(user.id, []),
+            scoped_departments.get(user.id),
+        )
         return PrincipalStaffDetail(
             **base.model_dump(),
             qualification=profile.qualification if profile else None,
@@ -920,7 +1109,14 @@ class PrincipalService:
         profile: StaffProfile | None,
         department_name: str | None,
         roles: list[str],
+        scoped_department: tuple[uuid.UUID, str] | None = None,
     ) -> PrincipalStaffRow:
+        department_id = profile.department_id if profile else (
+            scoped_department[0] if scoped_department else None
+        )
+        resolved_department_name = department_name if profile else (
+            scoped_department[1] if scoped_department else None
+        )
         return PrincipalStaffRow(
             id=user.id,
             name=user.name,
@@ -929,8 +1125,8 @@ class PrincipalService:
             avatar_url=user.avatar_url,
             employee_code=(profile.employee_code if profile else user.employee_code),
             designation=profile.designation if profile else None,
-            department_id=profile.department_id if profile else None,
-            department_name=department_name,
+            department_id=department_id,
+            department_name=resolved_department_name,
             employment_type=profile.employment_type if profile else None,
             date_of_joining=profile.date_of_joining if profile else None,
             roles=roles,
@@ -1045,6 +1241,43 @@ class PrincipalService:
         )
 
     @staticmethod
+    async def _staff_department_scopes(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_ids: Iterable[uuid.UUID],
+        *,
+        department_ids: DepartmentScope = None,
+    ) -> dict[uuid.UUID, tuple[uuid.UUID, str]]:
+        """One safe department label per staff user from live role scopes.
+
+        HR profiles are optional, while staff invitations already carry a
+        department-scoped role assignment. This fallback keeps leadership
+        directories useful without treating missing HR data as no department.
+        """
+        ids = list(user_ids)
+        if not ids:
+            return {}
+        filters = [
+            RoleAssignment.tenant_id == tenant_id,
+            RoleAssignment.user_id.in_(ids),
+            func.upper(RoleAssignment.scope_type) == "DEPARTMENT",
+            PrincipalService._active_role_clause(),
+            Department.tenant_id == tenant_id,
+        ]
+        if department_ids is not None:
+            filters.append(Department.id.in_(department_ids))
+        rows = await db.execute(
+            select(RoleAssignment.user_id, Department.id, Department.name)
+            .join(Department, Department.id == RoleAssignment.scope_id)
+            .where(*filters)
+            .order_by(Department.name)
+        )
+        output: dict[uuid.UUID, tuple[uuid.UUID, str]] = {}
+        for user_id, department_id, department_name in rows.all():
+            output.setdefault(user_id, (department_id, department_name))
+        return output
+
+    @staticmethod
     async def _roles_for_users(
         db: AsyncSession, tenant_id: uuid.UUID, user_ids: Iterable[uuid.UUID]
     ) -> dict[uuid.UUID, list[str]]:
@@ -1113,6 +1346,24 @@ class PrincipalService:
     # ── C-PR-07 / C-PR-08 notice board ──────────────────────────────────────
 
     @staticmethod
+    def _notice_visibility_clause(
+        tenant_id: uuid.UUID, department_ids: frozenset[uuid.UUID]
+    ):
+        """Institution notices plus the delegated department/class audience."""
+        scoped_class_ids = PrincipalService._scoped_class_ids(tenant_id, department_ids)
+        return or_(
+            Notice.target_scope == NoticeScope.INSTITUTION,
+            and_(
+                Notice.target_scope == NoticeScope.DEPARTMENT,
+                Notice.target_id.in_(department_ids),
+            ),
+            and_(
+                Notice.target_scope == NoticeScope.CLASS,
+                Notice.target_id.in_(scoped_class_ids),
+            ),
+        )
+
+    @staticmethod
     async def notices(
         db: AsyncSession,
         tenant_id: uuid.UUID,
@@ -1122,12 +1373,15 @@ class PrincipalService:
         include_expired: bool = False,
         limit: int = 50,
         offset: int = 0,
+        department_ids: DepartmentScope = None,
     ) -> PrincipalNoticePage:
         limit, offset = _page_bounds(limit, offset)
         if scope and scope not in {"INSTITUTION", "DEPARTMENT", "CLASS"}:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown notice scope")
         now = datetime.now(timezone.utc)
         clauses = [Notice.tenant_id == tenant_id, Notice.deleted_at.is_(None)]
+        if department_ids is not None:
+            clauses.append(PrincipalService._notice_visibility_clause(tenant_id, department_ids))
         if scope:
             clauses.append(Notice.target_scope == NoticeScope(scope))
         if not include_expired:
@@ -1177,16 +1431,24 @@ class PrincipalService:
 
     @staticmethod
     async def notice_detail(
-        db: AsyncSession, tenant_id: uuid.UUID, notice_id: uuid.UUID
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        notice_id: uuid.UUID,
+        *,
+        department_ids: DepartmentScope = None,
+        include_readers: bool = True,
     ) -> PrincipalNoticeDetail:
-        notice = (
-            await db.execute(
-                select(Notice).where(
-                    Notice.id == notice_id,
-                    Notice.tenant_id == tenant_id,
-                    Notice.deleted_at.is_(None),
-                )
+        notice_filters = [
+            Notice.id == notice_id,
+            Notice.tenant_id == tenant_id,
+            Notice.deleted_at.is_(None),
+        ]
+        if department_ids is not None:
+            notice_filters.append(
+                PrincipalService._notice_visibility_clause(tenant_id, department_ids)
             )
+        notice = (
+            await db.execute(select(Notice).where(*notice_filters))
         ).scalar_one_or_none()
         if notice is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Notice not found")
@@ -1195,16 +1457,18 @@ class PrincipalService:
                 select(User.name).where(User.id == notice.author_id, User.tenant_id == tenant_id)
             )
         ).scalar_one_or_none()
-        read_rows = await db.execute(
-            select(NoticeRead, User.name)
-            .join(User, and_(User.id == NoticeRead.user_id, User.tenant_id == tenant_id))
-            .where(NoticeRead.notice_id == notice.id)
-            .order_by(NoticeRead.read_at.desc())
-        )
-        readers = [
-            NoticeReader(id=read.user_id, name=name, read_at=read.read_at)
-            for read, name in read_rows.all()
-        ]
+        readers: list[NoticeReader] = []
+        if include_readers:
+            read_rows = await db.execute(
+                select(NoticeRead, User.name)
+                .join(User, and_(User.id == NoticeRead.user_id, User.tenant_id == tenant_id))
+                .where(NoticeRead.notice_id == notice.id)
+                .order_by(NoticeRead.read_at.desc())
+            )
+            readers = [
+                NoticeReader(id=read.user_id, name=name, read_at=read.read_at)
+                for read, name in read_rows.all()
+            ]
         target_names = await PrincipalService._notice_target_names(db, tenant_id, [notice])
         base = PrincipalService._notice_row(
             notice,
@@ -1220,6 +1484,10 @@ class PrincipalService:
         tenant_id: uuid.UUID,
         principal: User,
         payload: PrincipalNoticeCreate,
+        *,
+        department_ids: DepartmentScope = None,
+        allow_institution: bool = True,
+        actor_role: str = "PRINCIPAL",
     ) -> PrincipalNoticeDetail:
         title = payload.title.strip()
         body = payload.body.strip()
@@ -1227,10 +1495,19 @@ class PrincipalService:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Notice title and body cannot be blank")
         if payload.expires_at and payload.expires_at <= datetime.now(timezone.utc):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="expires_at must be in the future")
+        if payload.target_scope == "INSTITUTION" and not allow_institution:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail="Vice Principals cannot publish institution-wide notices",
+            )
         if payload.target_scope == "DEPARTMENT":
-            await PrincipalService._ensure_department(db, tenant_id, payload.target_id)
+            department = await PrincipalService._ensure_department(db, tenant_id, payload.target_id)
+            if department_ids is not None and department.id not in department_ids:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Department not found")
         elif payload.target_scope == "CLASS":
-            await PrincipalService._ensure_class(db, tenant_id, payload.target_id)
+            school_class = await PrincipalService._ensure_class(db, tenant_id, payload.target_id)
+            if department_ids is not None and school_class.department_id not in department_ids:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Class not found")
 
         notice = Notice(
             id=uuid.uuid4(),
@@ -1250,7 +1527,7 @@ class PrincipalService:
         AuditService.record(
             db,
             actor=principal,
-            actor_role="PRINCIPAL",
+            actor_role=actor_role,
             action="CREATE_NOTICE",
             entity="Notice",
             entity_id=notice.id,
@@ -1297,13 +1574,25 @@ class PrincipalService:
         )
 
     @staticmethod
-    async def notice_targets(db: AsyncSession, tenant_id: uuid.UUID) -> PrincipalNoticeTargets:
+    async def notice_targets(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        department_ids: DepartmentScope = None,
+    ) -> PrincipalNoticeTargets:
+        department_filters = [
+            Department.tenant_id == tenant_id,
+            Department.is_active.is_(True),
+        ]
+        class_filters = [
+            SchoolClass.tenant_id == tenant_id,
+            SchoolClass.is_active.is_(True),
+        ]
+        if department_ids is not None:
+            department_filters.append(Department.id.in_(department_ids))
+            class_filters.append(Department.id.in_(department_ids))
         departments = (
-            await db.execute(
-                select(Department).where(
-                    Department.tenant_id == tenant_id, Department.is_active.is_(True)
-                ).order_by(Department.name)
-            )
+            await db.execute(select(Department).where(*department_filters).order_by(Department.name))
         ).scalars().all()
         classes = await db.execute(
             select(SchoolClass, Department.name)
@@ -1311,7 +1600,7 @@ class PrincipalService:
                 Department,
                 and_(Department.id == SchoolClass.department_id, Department.tenant_id == tenant_id),
             )
-            .where(SchoolClass.tenant_id == tenant_id, SchoolClass.is_active.is_(True))
+            .where(*class_filters)
             .order_by(Department.name, SchoolClass.name)
         )
         return PrincipalNoticeTargets(
@@ -1365,10 +1654,16 @@ class PrincipalService:
 
     @staticmethod
     async def timetable(
-        db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID | None = None
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID | None = None,
+        *,
+        department_ids: DepartmentScope = None,
     ) -> PrincipalTimetable:
         if class_id is not None:
-            await PrincipalService._ensure_class(db, tenant_id, class_id)
+            school_class = await PrincipalService._ensure_class(db, tenant_id, class_id)
+            if department_ids is not None and school_class.department_id not in department_ids:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Class not found")
         today = await PrincipalService._tenant_today(db, tenant_id)
         class_rows = await db.execute(
             select(SchoolClass, Department.name)
@@ -1376,7 +1671,15 @@ class PrincipalService:
                 Department,
                 and_(Department.id == SchoolClass.department_id, Department.tenant_id == tenant_id),
             )
-            .where(SchoolClass.tenant_id == tenant_id, SchoolClass.is_active.is_(True))
+            .where(
+                SchoolClass.tenant_id == tenant_id,
+                SchoolClass.is_active.is_(True),
+                *(
+                    [SchoolClass.department_id.in_(department_ids)]
+                    if department_ids is not None
+                    else []
+                ),
+            )
             .order_by(Department.name, SchoolClass.name)
         )
         classes = [
@@ -1393,6 +1696,10 @@ class PrincipalService:
             TimetableSlot.effective_from <= today,
             or_(TimetableSlot.effective_to.is_(None), TimetableSlot.effective_to >= today),
         ]
+        if department_ids is not None:
+            clauses.append(
+                TimetableSlot.class_id.in_(PrincipalService._scoped_class_ids(tenant_id, department_ids))
+            )
         if class_id:
             clauses.append(TimetableSlot.class_id == class_id)
         rows = await db.execute(
@@ -1451,9 +1758,14 @@ class PrincipalService:
         *,
         from_date: date | None = None,
         to_date: date | None = None,
+        department_ids: DepartmentScope = None,
     ) -> PrincipalReports:
-        attendance = await PrincipalService._attendance_overview(db, tenant_id, from_date, to_date)
-        results = await PrincipalService.results(db, tenant_id)
+        attendance = await PrincipalService._attendance_overview(
+            db, tenant_id, from_date, to_date, department_ids=department_ids
+        )
+        results = await PrincipalService.results(
+            db, tenant_id, department_ids=department_ids
+        )
         # Department code is unique but name is not constrained by the schema;
         # merge by immutable id so two similarly named departments cannot erase
         # one another in a leadership report.
@@ -1492,12 +1804,15 @@ class PrincipalService:
         *,
         from_date: date | None = None,
         to_date: date | None = None,
+        department_ids: DepartmentScope = None,
     ) -> tuple[str, list[str], list[list[object | None]]]:
         """Produce aggregate rows for a synchronous, bounded CSV export."""
         if kind not in {"attendance", "results", "performance", "timetable", "examinations"}:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown report type")
         if kind == "attendance":
-            overview = await PrincipalService._attendance_overview(db, tenant_id, from_date, to_date)
+            overview = await PrincipalService._attendance_overview(
+                db, tenant_id, from_date, to_date, department_ids=department_ids
+            )
             return (
                 "attendance-report",
                 ["Department", "Attendance %", "Present marks", "Absent marks", "Total marks"],
@@ -1513,7 +1828,9 @@ class PrincipalService:
                 ],
             )
         if kind == "results":
-            overview = await PrincipalService.results(db, tenant_id)
+            overview = await PrincipalService.results(
+                db, tenant_id, department_ids=department_ids
+            )
             return (
                 "results-report",
                 ["Department", "Students", "Pass", "Fail", "Withheld", "Absent", "Pass %", "Average %"],
@@ -1532,7 +1849,13 @@ class PrincipalService:
                 ],
             )
         if kind == "performance":
-            overview = await PrincipalService.reports(db, tenant_id, from_date=from_date, to_date=to_date)
+            overview = await PrincipalService.reports(
+                db,
+                tenant_id,
+                from_date=from_date,
+                to_date=to_date,
+                department_ids=department_ids,
+            )
             return (
                 "academic-performance-report",
                 ["Department", "Students", "Attendance %", "Pass %", "Average %"],
@@ -1559,7 +1882,14 @@ class PrincipalService:
                     Department,
                     and_(Department.id == SchoolClass.department_id, Department.tenant_id == tenant_id),
                 )
-                .where(Exam.tenant_id == tenant_id)
+                .where(
+                    Exam.tenant_id == tenant_id,
+                    *(
+                        [Exam.class_id.in_(PrincipalService._scoped_class_ids(tenant_id, department_ids))]
+                        if department_ids is not None
+                        else []
+                    ),
+                )
                 .order_by(Exam.scheduled_at.desc())
             )
             return (
@@ -1592,7 +1922,9 @@ class PrincipalService:
                     for exam, class_name, subject_name, subject_code, department_name in rows.all()
                 ],
             )
-        timetable = await PrincipalService.timetable(db, tenant_id)
+        timetable = await PrincipalService.timetable(
+            db, tenant_id, department_ids=department_ids
+        )
         return (
             "timetable-report",
             ["Class", "Department", "Day", "Period", "Start", "End", "Subject", "Teacher", "Room", "Type"],

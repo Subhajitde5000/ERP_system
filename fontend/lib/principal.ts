@@ -9,14 +9,29 @@
 import { API_BASE_URL, getAccessToken } from "./auth";
 import { APIError, errorMessage, requestJson } from "./api-client";
 
-const BASE = `${API_BASE_URL}/api/v1/principal`;
+const API_PREFIX = "principal";
 
 export { APIError as PrincipalAPIError };
 
-const call = <T>(path: string, init: RequestInit = {}): Promise<T> =>
-  requestJson<T>(`${BASE}${path}`, init, getAccessToken(), "PrincipalAPIError");
+/** Shared tenant-console transport used by Principal and Vice Principal APIs. */
+export function leadershipCall<T>(
+  apiPrefix: string,
+  path: string,
+  init: RequestInit = {},
+  errorName = "LeadershipAPIError",
+): Promise<T> {
+  return requestJson<T>(
+    `${API_BASE_URL}/api/v1/${apiPrefix}${path}`,
+    init,
+    getAccessToken(),
+    errorName,
+  );
+}
 
-function queryString(values: Record<string, string | number | boolean | undefined | null>): string {
+const call = <T>(path: string, init: RequestInit = {}): Promise<T> =>
+  leadershipCall<T>(API_PREFIX, path, init, "PrincipalAPIError");
+
+export function queryString(values: Record<string, string | number | boolean | undefined | null>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) {
     if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
@@ -393,17 +408,18 @@ export const createPrincipalNotice = (payload: {
 // ── CSV export ──────────────────────────────────────────────────────────────
 
 /**
- * Download one aggregate report.  The backend sends CSV rather than an API
- * envelope, so it has a separate transport path but uses the same bearer
- * token and error parsing as every JSON request.
+ * Download a leadership aggregate report. The backend sends CSV rather than
+ * an API envelope, so this shared transport keeps both leadership consoles
+ * consistent without duplicating bearer/error/download handling.
  */
-export async function downloadPrincipalReport(
-  kind: "attendance" | "results" | "performance" | "timetable" | "examinations",
+export async function downloadLeadershipReport(
+  apiPrefix: string,
+  kind: string,
   filters: { fromDate?: string; toDate?: string } = {},
 ): Promise<void> {
   const token = getAccessToken();
   const response = await fetch(
-    `${BASE}/reports/export${queryString({
+    `${API_BASE_URL}/api/v1/${apiPrefix}/reports/export${queryString({
       kind,
       from_date: filters.fromDate,
       to_date: filters.toDate,
@@ -415,7 +431,7 @@ export async function downloadPrincipalReport(
   );
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new APIError(errorMessage(body, response.status), response.status, "PrincipalAPIError");
+    throw new APIError(errorMessage(body, response.status), response.status, "LeadershipAPIError");
   }
 
   const disposition = response.headers.get("Content-Disposition") ?? "";
@@ -428,4 +444,11 @@ export async function downloadPrincipalReport(
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(objectUrl);
+}
+
+export function downloadPrincipalReport(
+  kind: "attendance" | "results" | "performance" | "timetable" | "examinations",
+  filters: { fromDate?: string; toDate?: string } = {},
+): Promise<void> {
+  return downloadLeadershipReport(API_PREFIX, kind, filters);
 }

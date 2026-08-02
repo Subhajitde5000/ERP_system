@@ -55,6 +55,7 @@ from app.schemas.institution import (
     SubjectOut,
     SubjectUpdate,
 )
+from app.services.audit_service import AuditService
 from app.services.mailer import queue_email
 from app.utils.security import generate_secure_token, hash_password, hash_token
 
@@ -426,7 +427,13 @@ class InstitutionService:
         return [await InstitutionService._staff_out(db, tenant_id, u) for u in users]
 
     @staticmethod
-    async def invite_staff(db: AsyncSession, tenant: Tenant, payload: StaffInvite) -> StaffOut:
+    async def invite_staff(
+        db: AsyncSession,
+        tenant: Tenant,
+        payload: StaffInvite,
+        *,
+        actor: User | None = None,
+    ) -> StaffOut:
         email = str(payload.email).lower()
         existing = await db.execute(select(User).where(User.tenant_id == tenant.id, User.email == email))
         if existing.scalar_one_or_none() is not None:
@@ -434,6 +441,13 @@ class InstitutionService:
         role = await InstitutionService._role_by_name(db, payload.role)
         if role is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unknown role '{payload.role}'")
+        if payload.department_id is not None:
+            await InstitutionService._assert_dept(db, tenant.id, payload.department_id)
+        if role.name == "VICE_PRINCIPAL" and payload.department_id is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="A Vice Principal must be assigned at least one delegated department",
+            )
 
         raw_token = generate_secure_token(32)
         user = User(
@@ -444,34 +458,162 @@ class InstitutionService:
         )
         db.add(user)
         await db.flush()
-        db.add(RoleAssignment(
+        assignment = RoleAssignment(
             id=uuid.uuid4(), user_id=user.id, role_id=role.id, tenant_id=tenant.id,
             scope_id=payload.department_id, scope_type="DEPARTMENT" if payload.department_id else None,
+            assigned_by=actor.id if actor else None,
             assigned_at=datetime.now(timezone.utc), is_active=True,
-        ))
+        )
+        db.add(assignment)
         await InstitutionService._queue_invite_email(db, tenant, user, raw_token)
         await db.flush()
+        if actor is not None:
+            AuditService.record(
+                db,
+                actor=actor,
+                actor_role="INSTITUTION_ADMIN",
+                action="INVITE_STAFF",
+                entity="User",
+                entity_id=user.id,
+                tenant_id=tenant.id,
+                new_value={
+                    "name": user.name,
+                    "email": user.email,
+                    "role_name": role.name,
+                    "department_id": str(payload.department_id) if payload.department_id else None,
+                },
+            )
         return await InstitutionService._staff_out(db, tenant.id, user)
 
     @staticmethod
-    async def assign_role(db: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID, role_name: str, by: uuid.UUID) -> StaffOut:
+    async def assign_role(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        role_name: str,
+        by: User,
+        *,
+        department_id: uuid.UUID | None = None,
+    ) -> StaffOut:
         user = await InstitutionService._load_user(db, tenant_id, user_id)
         role = await InstitutionService._role_by_name(db, role_name)
         if role is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unknown role '{role_name}'")
+        if department_id is not None:
+            await InstitutionService._assert_dept(db, tenant_id, department_id)
+        if role.name == "VICE_PRINCIPAL" and department_id is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="A Vice Principal must be assigned at least one delegated department",
+            )
+
+        scope_filter = (
+            RoleAssignment.scope_id == department_id
+            if department_id is not None
+            else RoleAssignment.scope_id.is_(None)
+        )
         exists = await db.execute(
             select(RoleAssignment.id).where(
-                RoleAssignment.user_id == user_id, RoleAssignment.role_id == role.id,
-                RoleAssignment.tenant_id == tenant_id, RoleAssignment.is_active == True,  # noqa: E712
+                RoleAssignment.user_id == user_id,
+                RoleAssignment.role_id == role.id,
+                RoleAssignment.tenant_id == tenant_id,
+                RoleAssignment.is_active == True,  # noqa: E712
+                scope_filter,
             )
         )
         if exists.scalar_one_or_none() is None:
-            db.add(RoleAssignment(
-                id=uuid.uuid4(), user_id=user_id, role_id=role.id, tenant_id=tenant_id,
-                assigned_by=by, assigned_at=datetime.now(timezone.utc), is_active=True,
-            ))
+            assignment = RoleAssignment(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                role_id=role.id,
+                tenant_id=tenant_id,
+                scope_id=department_id,
+                scope_type="DEPARTMENT" if department_id is not None else None,
+                assigned_by=by.id,
+                assigned_at=datetime.now(timezone.utc),
+                is_active=True,
+            )
+            db.add(assignment)
             await db.flush()
+            AuditService.record(
+                db,
+                actor=by,
+                actor_role="INSTITUTION_ADMIN",
+                action="ASSIGN_ROLE",
+                entity="RoleAssignment",
+                entity_id=assignment.id,
+                tenant_id=tenant_id,
+                new_value={
+                    "user_id": str(user_id),
+                    "role_name": role.name,
+                    "department_id": str(department_id) if department_id else None,
+                },
+            )
         return await InstitutionService._staff_out(db, tenant_id, user)
+
+    @staticmethod
+    async def revoke_role(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        role_name: str,
+        actor: User,
+        *,
+        department_id: uuid.UUID | None = None,
+    ) -> StaffOut:
+        """Deactivate one role grant without deleting its audit history.
+
+        Vice Principal grants are department-scoped; revoking one department
+        must not accidentally remove a separate delegated department.
+        """
+        user = await InstitutionService._load_user(db, tenant_id, user_id)
+        role = await InstitutionService._role_by_name(db, role_name)
+        if role is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Role not found")
+        if role.name == "VICE_PRINCIPAL" and department_id is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="A delegated department is required to revoke a Vice Principal scope",
+            )
+        if department_id is not None:
+            await InstitutionService._assert_dept(db, tenant_id, department_id)
+        scope_filter = (
+            RoleAssignment.scope_id == department_id
+            if department_id is not None
+            else RoleAssignment.scope_id.is_(None)
+        )
+        assignment = (
+            await db.execute(
+                select(RoleAssignment).where(
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.role_id == role.id,
+                    RoleAssignment.tenant_id == tenant_id,
+                    RoleAssignment.is_active.is_(True),
+                    scope_filter,
+                )
+            )
+        ).scalar_one_or_none()
+        if assignment is None:
+            # 404 keeps other scope identifiers indistinguishable from absent.
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Active role assignment not found")
+        assignment.is_active = False
+        await db.flush()
+        AuditService.record(
+            db,
+            actor=actor,
+            actor_role="INSTITUTION_ADMIN",
+            action="REVOKE_ROLE",
+            entity="RoleAssignment",
+            entity_id=assignment.id,
+            tenant_id=tenant_id,
+            old_value={
+                "user_id": str(user_id),
+                "role_name": role.name,
+                "department_id": str(department_id) if department_id else None,
+            },
+        )
+        return await InstitutionService._staff_out(db, tenant_id, user)
+
 
     @staticmethod
     async def set_user_active(db: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID, active: bool) -> StaffOut:

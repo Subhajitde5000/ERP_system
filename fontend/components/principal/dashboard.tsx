@@ -1,27 +1,54 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays, ClipboardCheck, FileCheck2, FileSpreadsheet, Megaphone, Users } from "lucide-react";
+import {
+  CalendarDays,
+  ClipboardCheck,
+  FileCheck2,
+  FileSpreadsheet,
+  Megaphone,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Card, EmptyState, PageHeader } from "@/components/admin/ui";
 import { useInstitutionAuth } from "@/hooks/use-institution-auth";
 import { useResource } from "@/hooks/use-resource";
-import { fetchPrincipalDashboard } from "@/lib/principal";
+import { fetchPrincipalDashboard, type PrincipalDashboard } from "@/lib/principal";
 import { AsyncState, MetricCard, dateTime, percent } from "./principal-ui";
 
-/** C-PR-01 — live institution-wide Principal dashboard. */
-export function PrincipalDashboardPage() {
+export interface LeadershipDashboardConfig<T extends PrincipalDashboard = PrincipalDashboard> {
+  roleLabel: string;
+  load: () => Promise<T>;
+  overviewHref: string;
+  examinationsHref: string;
+  actions: Array<{ label: string; href: string; icon: LucideIcon }>;
+  scopeLabel?: (data: T) => string | null;
+  resultMetricLabel?: string;
+  resultMetricHint?: (data: T) => string;
+}
+
+/**
+ * Shared leadership dashboard renderer. Principal and Vice Principal differ in
+ * scope and actions, not dashboard chrome or metric calculations.
+ */
+export function LeadershipDashboardPage<T extends PrincipalDashboard>({
+  config,
+}: {
+  config: LeadershipDashboardConfig<T>;
+}) {
   const { user } = useInstitutionAuth();
-  const resource = useResource(fetchPrincipalDashboard, []);
+  const resource = useResource(config.load, []);
+  const scope = resource.data ? config.scopeLabel?.(resource.data) : null;
 
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
-        title={`Welcome, ${user?.name?.split(" ")[0] ?? "Principal"}`}
+        title={`Welcome, ${user?.name?.split(" ")[0] ?? config.roleLabel}`}
         subtitle={
           resource.data?.academic_year
-            ? `Academic year ${resource.data.academic_year} · institution-wide academic overview`
-            : "Institution-wide academic overview"
+            ? `Academic year ${resource.data.academic_year} · ${scope ?? "academic overview"}`
+            : scope ?? "Academic overview"
         }
       />
 
@@ -29,21 +56,49 @@ export function PrincipalDashboardPage() {
         loading={resource.loading}
         error={resource.error}
         onRetry={resource.reload}
-        loadingLabel="Loading institutional overview…"
+        loadingLabel="Loading academic overview…"
       >
-        {resource.data ? <DashboardContent data={resource.data} /> : null}
+        {resource.data ? <DashboardContent data={resource.data} config={config} /> : null}
       </AsyncState>
     </div>
   );
 }
 
-function DashboardContent({ data }: { data: Awaited<ReturnType<typeof fetchPrincipalDashboard>> }) {
-  const quickActions = [
-    { label: "Post a notice", href: "/principal/notices/new", icon: Megaphone },
-    { label: "Review results", href: "/principal/results", icon: FileCheck2 },
-    { label: "View attendance", href: "/principal/attendance", icon: ClipboardCheck },
-    { label: "View timetable", href: "/principal/timetable", icon: CalendarDays },
-  ];
+/** C-PR-01 — institution-wide live Principal dashboard. */
+export function PrincipalDashboardPage() {
+  return (
+    <LeadershipDashboardPage
+      config={{
+        roleLabel: "Principal",
+        load: fetchPrincipalDashboard,
+        overviewHref: "/principal/attendance",
+        examinationsHref: "/principal/examinations",
+        actions: [
+          { label: "Post a notice", href: "/principal/notices/new", icon: Megaphone },
+          { label: "Review results", href: "/principal/results", icon: FileCheck2 },
+          { label: "View attendance", href: "/principal/attendance", icon: ClipboardCheck },
+          { label: "View timetable", href: "/principal/timetable", icon: CalendarDays },
+        ],
+        scopeLabel: () => "institution-wide academic overview",
+        resultMetricLabel: "Results awaiting approval",
+      }}
+    />
+  );
+}
+
+function DashboardContent<T extends PrincipalDashboard>({
+  data,
+  config,
+}: {
+  data: T;
+  config: LeadershipDashboardConfig<T>;
+}) {
+  const resultMetricLabel = config.resultMetricLabel ?? "Results awaiting approval";
+  const resultMetricHint = config.resultMetricHint?.(data) ?? (
+    data.result_pass_percentage === null
+      ? "No result summary available"
+      : `${percent(data.result_pass_percentage)} pass rate`
+  );
 
   return (
     <div className="space-y-6">
@@ -61,9 +116,9 @@ function DashboardContent({ data }: { data: Awaited<ReturnType<typeof fetchPrinc
           tone={data.ongoing_exams ? "warning" : "default"}
         />
         <MetricCard
-          label="Results awaiting approval"
+          label={resultMetricLabel}
           value={data.pending_result_approvals}
-          hint={data.result_pass_percentage === null ? "No result summary available" : `${percent(data.result_pass_percentage)} institution pass rate`}
+          hint={resultMetricHint}
           tone={data.pending_result_approvals ? "warning" : "success"}
         />
         <MetricCard
@@ -81,7 +136,7 @@ function DashboardContent({ data }: { data: Awaited<ReturnType<typeof fetchPrinc
               <h2 className="font-display text-base font-bold text-primary">Attendance by department</h2>
               <p className="mt-1 text-xs text-muted-foreground">Weighted from recorded attendance marks.</p>
             </div>
-            <Link href="/principal/attendance" className="text-sm font-semibold text-accent hover:underline">
+            <Link href={config.overviewHref} className="text-sm font-semibold text-accent hover:underline">
               Full overview
             </Link>
           </div>
@@ -102,18 +157,16 @@ function DashboardContent({ data }: { data: Awaited<ReturnType<typeof fetchPrinc
                 </div>
               ))}
             </div>
-          ) : (
-            <EmptyState text="No active departments have been configured yet." />
-          )}
+          ) : <EmptyState text="No delegated departments have recorded attendance yet." />}
         </Card>
 
         <Card className="lg:col-span-2">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="font-display text-base font-bold text-primary">Upcoming exams</h2>
-              <p className="mt-1 text-xs text-muted-foreground">From the institution schedule.</p>
+              <p className="mt-1 text-xs text-muted-foreground">From the permitted academic schedule.</p>
             </div>
-            <Link href="/principal/examinations" className="text-sm font-semibold text-accent hover:underline">
+            <Link href={config.examinationsHref} className="text-sm font-semibold text-accent hover:underline">
               All exams
             </Link>
           </div>
@@ -129,9 +182,7 @@ function DashboardContent({ data }: { data: Awaited<ReturnType<typeof fetchPrinc
                 </li>
               ))}
             </ol>
-          ) : (
-            <EmptyState text="No future exams are currently scheduled." />
-          )}
+          ) : <EmptyState text="No future exams are currently scheduled." />}
         </Card>
       </section>
 
@@ -140,11 +191,11 @@ function DashboardContent({ data }: { data: Awaited<ReturnType<typeof fetchPrinc
           <span className="rounded-lg bg-accent-light p-2 text-accent"><FileSpreadsheet className="h-4 w-4" /></span>
           <div>
             <h2 className="font-display text-base font-bold text-primary">Quick actions</h2>
-            <p className="text-xs text-muted-foreground">Actions are limited to the Principal&apos;s academic authority.</p>
+            <p className="text-xs text-muted-foreground">Actions are limited to this leadership role&apos;s academic authority.</p>
           </div>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          {quickActions.map((action) => (
+          {config.actions.map((action) => (
             <Link
               key={action.href}
               href={action.href}
@@ -159,7 +210,7 @@ function DashboardContent({ data }: { data: Awaited<ReturnType<typeof fetchPrinc
 
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <Users className="h-3.5 w-3.5" aria-hidden="true" />
-        {data.total_notices} active notice{data.total_notices === 1 ? "" : "s"} across the institution.
+        {data.total_notices} active notice{data.total_notices === 1 ? "" : "s"} in the visible academic scope.
       </p>
     </div>
   );

@@ -4,25 +4,30 @@ import { useState } from "react";
 
 import { Card, EmptyState, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
-import { downloadPrincipalReport, fetchPrincipalAttendance } from "@/lib/principal";
+import { downloadPrincipalReport, fetchPrincipalAttendance, type PrincipalAttendanceOverview } from "@/lib/principal";
 import { AsyncState, ExportButton, MetricCard, percent } from "./principal-ui";
 
-/** C-PR-02 — department and class attendance overview with a bounded date filter. */
-export function PrincipalAttendancePage() {
+export interface LeadershipAttendanceConfig {
+  title: string;
+  subtitle: string;
+  load: (filters: { fromDate?: string; toDate?: string }) => Promise<PrincipalAttendanceOverview>;
+  download: (filters: { fromDate?: string; toDate?: string }) => Promise<void>;
+}
+
+/** Shared C-PR-02 / C-VP-02 attendance renderer. */
+export function LeadershipAttendancePage({ config }: { config: LeadershipAttendanceConfig }) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const resource = useResource(
-    () => fetchPrincipalAttendance({ fromDate: fromDate || undefined, toDate: toDate || undefined }),
-    [fromDate, toDate],
-  );
+  const filters = { fromDate: fromDate || undefined, toDate: toDate || undefined };
+  const resource = useResource(() => config.load(filters), [fromDate, toDate]);
 
   async function exportCsv() {
     setExporting(true);
     setExportError(null);
     try {
-      await downloadPrincipalReport("attendance", { fromDate: fromDate || undefined, toDate: toDate || undefined });
+      await config.download(filters);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : "Could not export attendance.");
     } finally {
@@ -33,8 +38,8 @@ export function PrincipalAttendancePage() {
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
-        title="Attendance overview"
-        subtitle="Institution attendance by department and class. Percentages are weighted by recorded marks."
+        title={config.title}
+        subtitle={config.subtitle}
         action={<ExportButton onClick={exportCsv} disabled={exporting} label={exporting ? "Preparing…" : "Export CSV"} />}
       />
 
@@ -62,7 +67,21 @@ export function PrincipalAttendancePage() {
   );
 }
 
-function AttendanceContent({ data }: { data: Awaited<ReturnType<typeof fetchPrincipalAttendance>> }) {
+/** C-PR-02 — institution-wide live Principal attendance. */
+export function PrincipalAttendancePage() {
+  return (
+    <LeadershipAttendancePage
+      config={{
+        title: "Attendance overview",
+        subtitle: "Institution attendance by department and class. Percentages are weighted by recorded marks.",
+        load: fetchPrincipalAttendance,
+        download: (filters) => downloadPrincipalReport("attendance", filters),
+      }}
+    />
+  );
+}
+
+function AttendanceContent({ data }: { data: PrincipalAttendanceOverview }) {
   return (
     <div className="space-y-5">
       <section className="grid gap-4 sm:grid-cols-3">
@@ -113,7 +132,7 @@ function AttendanceContent({ data }: { data: Awaited<ReturnType<typeof fetchPrin
             </Card>
           ))}
         </div>
-      ) : <EmptyState text="No active departments have been configured yet." />}
+      ) : <EmptyState text="No delegated departments have attendance data in this period." />}
     </div>
   );
 }

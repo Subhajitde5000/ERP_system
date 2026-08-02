@@ -113,10 +113,35 @@ export const createDepartment = (payload: { name: string; code: string; descript
   call<Department>("/departments", { method: "POST", body: JSON.stringify(payload) });
 
 export const fetchStaff = () => call<StaffMember[]>("/staff");
-export const inviteStaff = (payload: { name: string; email: string; phone?: string; role: string }) =>
-  call<StaffMember>("/staff", { method: "POST", body: JSON.stringify(payload) });
-export const assignStaffRole = (userId: string, roleName: string) =>
-  call<StaffMember>(`/staff/${userId}/roles`, { method: "PUT", body: JSON.stringify({ role_name: roleName }) });
+export const inviteStaff = (payload: {
+  name: string;
+  email: string;
+  phone?: string;
+  role: string;
+  departmentId?: string;
+}) =>
+  call<StaffMember>("/staff", {
+    method: "POST",
+    body: JSON.stringify({
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone,
+      role: payload.role,
+      department_id: payload.departmentId,
+    }),
+  });
+export const assignStaffRole = (userId: string, roleName: string, departmentId?: string) =>
+  call<StaffMember>(`/staff/${userId}/roles`, {
+    method: "PUT",
+    body: JSON.stringify({ role_name: roleName, department_id: departmentId }),
+  });
+export const revokeStaffRole = (userId: string, roleName: string, departmentId?: string) =>
+  call<StaffMember>(
+    `/staff/${userId}/roles/${encodeURIComponent(roleName)}${
+      departmentId ? `?department_id=${encodeURIComponent(departmentId)}` : ""
+    }`,
+    { method: "DELETE" },
+  );
 
 export const fetchModules = () => call<ModuleRow[]>("/modules");
 export const toggleModule = (key: string, enabled: boolean) =>

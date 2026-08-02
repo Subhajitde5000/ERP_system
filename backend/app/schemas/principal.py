@@ -225,7 +225,9 @@ class ResultApprovalRequest(BaseModel):
 
 # ── Notice board ─────────────────────────────────────────────────────────────
 
-class PrincipalNoticeRow(BaseModel):
+class LeadershipNoticeRow(BaseModel):
+    """Notice metadata shared by leadership roles without receipt data."""
+
     id: uuid.UUID
     title: str
     body: str
@@ -239,6 +241,11 @@ class PrincipalNoticeRow(BaseModel):
     is_pinned: bool
     published_at: datetime
     expires_at: datetime | None = None
+
+
+class PrincipalNoticeRow(LeadershipNoticeRow):
+    """Principal-only row adds the aggregate read receipt count."""
+
     read_count: int
 
 
