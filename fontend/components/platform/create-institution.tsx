@@ -23,9 +23,24 @@ import type { PlanRow, TenantRow } from "@/types/platform";
 export function CreateInstitution({
   plans,
   existing,
+  onCreate,
 }: {
   plans: PlanRow[];
   existing: TenantRow[];
+  /**
+   * Wired by the page to POST /platform/tenants. Resolves to a success
+   * message, or throws — the thrown message is shown against the form.
+   * Omitted = the original unwired demo behaviour.
+   */
+  onCreate?: (input: {
+    name: string;
+    slug: string;
+    type: "COLLEGE" | "SCHOOL";
+    planSlug: string;
+    adminName: string;
+    adminEmail: string;
+    trial: boolean;
+  }) => Promise<string>;
 }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -79,14 +94,38 @@ export function CreateInstitution({
     if (Object.keys(e).length) return;
 
     setBusy(true);
-    // TODO(Dev-A): POST /api/v1/platform/tenants — creates the tenant row
-    // (§4.2), its first subscription (§4.4) and the Institution Admin user
-    // (§5.5), then emails an activation link.
-    await new Promise((r) => setTimeout(r, 800));
-    setBusy(false);
-    setDone(
-      `POST /platform/tenants { slug: "${slug}", type: "${type}", plan: "${planSlug}"${trial ? ", trial: 30d" : ""} } — API not connected yet (Dev-A, C-SA-04).`,
-    );
+    if (!onCreate) {
+      // Unwired preview (no backend): report what would have been sent.
+      await new Promise((r) => setTimeout(r, 800));
+      setBusy(false);
+      setDone(
+        `POST /platform/tenants { slug: "${slug}", type: "${type}", plan: "${planSlug}"${trial ? ", trial: 30d" : ""} } — API not connected yet (Dev-A, C-SA-04).`,
+      );
+      return;
+    }
+
+    try {
+      // Creates the tenant (§4.2), its first subscription (§4.4) and the
+      // Institution Admin (§5.5), then emails an activation link.
+      setDone(
+        await onCreate({
+          name: name.trim(),
+          slug,
+          type,
+          planSlug,
+          adminName: adminName.trim(),
+          adminEmail: adminEmail.trim(),
+          trial,
+        }),
+      );
+      setErrors({});
+    } catch (err) {
+      setErrors({
+        form: err instanceof Error ? err.message : "Could not create the institution.",
+      });
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -108,8 +147,14 @@ export function CreateInstitution({
       </p>
 
       {done && (
-        <FormAlert variant="info" className="mt-4">
+        <FormAlert variant={onCreate ? "success" : "info"} className="mt-4">
           {done}
+        </FormAlert>
+      )}
+
+      {errors.form && (
+        <FormAlert variant="error" className="mt-4">
+          {errors.form}
         </FormAlert>
       )}
 

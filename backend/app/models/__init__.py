@@ -22,6 +22,12 @@ from app.models.billing import (
     TenantModule,
     TenantSetting,
 )
+from app.models.audit import AuditLog
+from app.models.platform_setting import (
+    PLATFORM_SETTING_DEFAULTS,
+    PLATFORM_SETTING_INT_KEYS,
+    PlatformSetting,
+)
 from app.models.academic import AcademicYear, Department, SchoolClass, Subject
 from app.models.enrollment import Enrollment, TeacherSubject
 
@@ -50,6 +56,10 @@ __all__ = [
     "Coupon",
     "Order",
     "OutboxEmail",
+    "AuditLog",
+    "PlatformSetting",
+    "PLATFORM_SETTING_DEFAULTS",
+    "PLATFORM_SETTING_INT_KEYS",
     "AcademicYear",
     "Department",
     "SchoolClass",

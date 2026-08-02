@@ -20,9 +20,17 @@ import type { PlatformUserRow } from "@/types/platform";
 export function PlatformUsers({
   users,
   actingRole,
+  onToggleActive,
+  onInvite,
+  busy = false,
 }: {
   users: PlatformUserRow[];
   actingRole: PlatformRole;
+  /** Wired by the page to PATCH /platform/users/:id. Omitted = read-only demo. */
+  onToggleActive?: (user: PlatformUserRow, next: boolean) => void;
+  /** Wired by the page to POST /platform/users. */
+  onInvite?: () => void;
+  busy?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<string>("ALL");
@@ -58,9 +66,11 @@ export function PlatformUsers({
         <button
           type="button"
           onClick={() =>
-            setNotice(
-              "POST /platform/users — invite flow not connected yet (Dev-A, C-SA-06).",
-            )
+            onInvite
+              ? onInvite()
+              : setNotice(
+                  "POST /platform/users — invite flow not connected yet (Dev-A, C-SA-06).",
+                )
           }
           className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-field bg-accent px-4 text-sm font-semibold text-white shadow-accent transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15"
         >
@@ -192,16 +202,18 @@ export function PlatformUsers({
                       </button>
                       <button
                         type="button"
-                        disabled={isLastAdmin}
+                        disabled={isLastAdmin || busy}
                         title={
                           isLastAdmin
                             ? "You can't deactivate the only active Super Admin"
                             : undefined
                         }
                         onClick={() =>
-                          setNotice(
-                            `PATCH /platform/users/${u.id} { is_active: ${!u.isActive} } — API not connected yet (Dev-A).`,
-                          )
+                          onToggleActive
+                            ? onToggleActive(u, !u.isActive)
+                            : setNotice(
+                                `PATCH /platform/users/${u.id} { is_active: ${!u.isActive} } — API not connected yet (Dev-A).`,
+                              )
                         }
                         className={cn(
                           "inline-flex h-8 shrink-0 items-center rounded-field border px-2.5 text-[12px] font-medium transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15",

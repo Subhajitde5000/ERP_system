@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.middleware.request_id import RequestIDMiddleware
 from app.routers import (
     platform_auth_router,
+    platform_admin_router,
     public_signup_router,
     owner_router,
     institution_router,
@@ -78,6 +79,7 @@ async def health_check():
 # ── Router Mounts ─────────────────────────────────────────────────────────────
 api_prefix = "/api/v1"
 app.include_router(platform_auth_router, prefix=api_prefix)
+app.include_router(platform_admin_router, prefix=api_prefix)
 app.include_router(tenant_auth_router, prefix=api_prefix)
 app.include_router(service_requests_router, prefix=api_prefix)
 app.include_router(public_signup_router, prefix=api_prefix)
