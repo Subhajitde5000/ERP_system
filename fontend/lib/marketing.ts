@@ -9,7 +9,6 @@
 import {
   Award,
   BookOpenCheck,
-  Boxes,
   Briefcase,
   Building2,
   Bus,

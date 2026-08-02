@@ -42,7 +42,6 @@ const STAFF_ROLES_WITH_DEPT: Partial<
 const CONTACTS: Partial<Record<InstitutionRole, { email: string; phone: string }>> = {
   INSTITUTION_ADMIN: { email: "meera.k@abc-college.edu", phone: "+91 98450 11234" },
   PRINCIPAL: { email: "principal@abc-college.edu", phone: "+91 98450 22345" },
-  VICE_PRINCIPAL: { email: "anil.r@abc-college.edu", phone: "+91 98450 33456" },
   HOD: { email: "kavita.m@abc-college.edu", phone: "+91 98450 44567" },
   TEACHER: { email: "priya.s@abc-college.edu", phone: "+91 98450 55678" },
   MENTOR: { email: "rajiv.n@abc-college.edu", phone: "+91 98450 66789" },

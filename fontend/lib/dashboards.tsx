@@ -12,7 +12,6 @@ import {
   ClipboardCheck,
   ClipboardList,
   Coins,
-  Contact,
   DoorOpen,
   FileBadge,
   FileCheck2,
@@ -151,192 +150,35 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
   },
 
   /* ── 5.2 Principal ─────────────────────────────────────────────────────── */
+  // The live Principal console is mounted at /principal/dashboard.  Keep this
+  // empty compatibility entry only for the dynamic preview route; it carries
+  // no fixture metrics or institution data.
   PRINCIPAL: {
     roleChip: "Principal",
-    summary: "2 results awaiting your approval",
-    stats: [
-      {
-        label: "Avg Attendance",
-        value: "84%",
-        icon: ClipboardCheck,
-        tone: "success",
-        delta: { text: "↑ 3% vs last month", tone: "success" },
-      },
-      {
-        label: "Exams",
-        value: "3 ongoing",
-        icon: FileSpreadsheet,
-        tone: "accent",
-        delta: { text: "12 upcoming", tone: "muted" },
-      },
-      {
-        label: "Results Awaiting",
-        value: "2",
-        icon: FileCheck2,
-        tone: "warning",
-        pulse: true,
-      },
-      { label: "Total Staff", value: "85", icon: Users, tone: "cyan" },
-    ],
-    panels: [
-      {
-        kind: "grid",
-        title: "Attendance by Department",
-        span: 7,
-        items: [
-          { label: "CSE", value: 88, tone: "success" },
-          { label: "ECE", value: 81, tone: "warning" },
-          { label: "Mechanical", value: 72, tone: "danger" },
-          { label: "Civil", value: 86, tone: "success" },
-          { label: "Commerce", value: 90, tone: "success" },
-          { label: "Arts", value: 78, tone: "warning" },
-        ],
-      },
-      {
-        kind: "timeline",
-        title: "Upcoming Exams",
-        span: 5,
-        items: [
-          { time: "Mon 4", title: "Mid-term · CSE", subtitle: "Sem 3 · 180 students", current: true },
-          { time: "Wed 6", title: "Mid-term · ECE", subtitle: "Sem 3 · 140 students" },
-          { time: "Fri 8", title: "Practical · Mech", subtitle: "Sem 5 · 90 students" },
-        ],
-      },
-      {
-        kind: "actions",
-        title: "Quick Actions",
-        span: 12,
-        items: [
-          { label: "Post Institution Notice", icon: Megaphone, href: "/notices/new", primary: true },
-          { label: "Approve Results", icon: FileCheck2, href: "/results" },
-          { label: "View Reports", icon: TrendingUp, href: "/reports" },
-          // C-PR-05, not the merged `/users` — the Principal's own directory
-          { label: "Staff Directory", icon: Contact, href: "/principal/staff" },
-        ],
-      },
-    ],
+    summary: "Open the Principal console for live institution data.",
+    stats: [],
+    panels: [],
   },
 
-  /* ── 5.3 Vice Principal — delegated, read-only ─────────────────────────── */
+  /* ── 5.3 Vice Principal ─────────────────────────────────────────────── */
+  // The authenticated delegated console is mounted at /vp/dashboard. Keep an
+  // empty compatibility config for the legacy dynamic preview route only;
+  // it must never contain fixture departments, metrics or access decisions.
   VICE_PRINCIPAL: {
     roleChip: "Vice Principal",
-    summary: "Read-only view of your delegated departments",
-    scope: "Delegated: CSE, ECE",
-    stats: [
-      {
-        label: "Avg Attendance",
-        value: "85%",
-        icon: ClipboardCheck,
-        tone: "success",
-        delta: { text: "CSE 88% · ECE 81%", tone: "muted" },
-      },
-      {
-        label: "Exams",
-        value: "2 ongoing",
-        icon: FileSpreadsheet,
-        tone: "accent",
-        delta: { text: "6 upcoming", tone: "muted" },
-      },
-      { label: "Teachers", value: "28", icon: Users, tone: "cyan" },
-      { label: "Students", value: "320", icon: GraduationCap, tone: "accent" },
-    ],
-    panels: [
-      {
-        kind: "grid",
-        title: "Attendance — Delegated Departments",
-        span: 7,
-        items: [
-          { label: "CSE", value: 88, tone: "success" },
-          { label: "ECE", value: 81, tone: "warning" },
-        ],
-      },
-      {
-        kind: "timeline",
-        title: "Upcoming Exams",
-        span: 5,
-        items: [
-          { time: "Mon 4", title: "Mid-term · CSE", subtitle: "Sem 3", current: true },
-          { time: "Wed 6", title: "Mid-term · ECE", subtitle: "Sem 3" },
-        ],
-      },
-      {
-        kind: "actions",
-        title: "Quick Actions",
-        span: 12,
-        items: [
-          { label: "Post Notice", icon: Megaphone, href: "/notices/new", primary: true },
-          { label: "View Reports", icon: TrendingUp, href: "/reports" },
-          // C-VP-07 — the VP's own staff directory
-          { label: "Staff Directory", icon: Contact, href: "/vp/staff" },
-        ],
-      },
-    ],
+    summary: "Open the Vice Principal console for delegated live data.",
+    stats: [],
+    panels: [],
   },
 
-  /* ── 5.4 HOD ───────────────────────────────────────────────────────────── */
+  /* ── 5.4 HOD ───────────────────────────────────────────────────────── */
+  // `/hod/dashboard` is the authenticated department console. Do not keep a
+  // second fixture dashboard here; the dynamic route redirects before render.
   HOD: {
     roleChip: "HOD",
-    summary: "18 assignments pending review in your department",
-    scope: "Department: CSE",
-    stats: [
-      { label: "My Dept Students", value: "180", icon: GraduationCap, tone: "accent" },
-      {
-        label: "Dept Attendance",
-        value: "81%",
-        icon: ClipboardCheck,
-        tone: "warning",
-        delta: { text: "↓ 2% vs last month", tone: "danger" },
-      },
-      { label: "Teachers in Dept", value: "12", icon: Users, tone: "cyan" },
-      {
-        label: "Pending Review",
-        value: "18",
-        icon: FileText,
-        tone: "danger",
-        pulse: true,
-      },
-    ],
-    panels: [
-      {
-        kind: "bars",
-        title: "Class-wise Attendance",
-        span: 7,
-        items: [
-          { label: "CSE Sem 1", value: 89, tone: "success" },
-          { label: "CSE Sem 3", value: 84, tone: "success" },
-          { label: "CSE Sem 5", value: 76, tone: "warning" },
-          { label: "CSE Sem 7", value: 71, tone: "danger" },
-        ],
-      },
-      {
-        kind: "table",
-        title: "Pending Assignments",
-        span: 5,
-        action: "Review",
-        columns: [
-          { key: "teacher", label: "Teacher" },
-          { key: "subject", label: "Subject" },
-          { key: "count", label: "Count", numeric: true },
-        ],
-        rows: [
-          { teacher: "Priya S.", subject: "CS301", count: "8" },
-          { teacher: "Arun K.", subject: "CS305", count: "6" },
-          { teacher: "Neha R.", subject: "CS307", count: "4" },
-        ],
-      },
-      {
-        kind: "actions",
-        title: "Quick Actions",
-        span: 12,
-        items: [
-          { label: "Post Dept Notice", icon: Megaphone, href: "/notices/new", primary: true },
-          // C-HD-08, not /users — /users lists people, it doesn't assign mentors
-          { label: "Assign Mentor", icon: UserCheck, href: "/hod/mentors" },
-          { label: "View Timetable", icon: CalendarDays, href: "/timetable" },
-          { label: "Moderate Discussion", icon: ShieldAlert, href: "/discussion" },
-        ],
-      },
-    ],
+    summary: "Open the HOD console for live department data.",
+    stats: [],
+    panels: [],
   },
 
   /* ── 5.5 Teacher — most-used role ──────────────────────────────────────── */
@@ -1203,9 +1045,8 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
   /* ── Mentor — teacher-level role scoped to assigned mentees ────────────── */
   MENTOR: {
     roleChip: "Mentor",
-    // Matches `getMentorBoard()`: Priya Sharma carries 3 mentees, 1 of them
-    // below the 75% threshold. The old "12 mentees · 2 below" predated any
-    // mentor data and contradicted every other page once C-HD-08 landed.
+    // Mentor operational data is served by its role-specific API when that
+    // console is activated; this legacy preview dashboard carries no HOD data.
     scope: "3 mentees · CSE",
     summary: "1 mentee below 75% attendance · needs follow-up",
     notice: {

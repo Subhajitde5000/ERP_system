@@ -182,6 +182,9 @@ class StaffOut(BaseModel):
 
 class AssignRoleRequest(BaseModel):
     role_name: str = Field(..., max_length=50)
+    # Required when assigning VICE_PRINCIPAL: it is the delegated department
+    # scope, not an optional profile field.
+    department_id: uuid.UUID | None = None
 
 
 # ── People: students + enrollments ───────────────────────────────────────────

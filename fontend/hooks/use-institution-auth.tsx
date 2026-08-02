@@ -35,7 +35,8 @@ export interface InstitutionUser {
 interface InstitutionAuthContextType {
   user: InstitutionUser | null;
   isAuthenticated: boolean;
-  isAdmin: boolean;
+  /** Live role check used by every protected institution console. */
+  hasRole: (role: string) => boolean;
   isLoading: boolean;
   logout: () => Promise<void>;
 }
@@ -99,7 +100,7 @@ export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         isAuthenticated: !!user,
-        isAdmin: !!user && user.roles.includes("INSTITUTION_ADMIN"),
+        hasRole: (role: string) => !!user && user.roles.includes(role),
         isLoading,
         logout,
       }}

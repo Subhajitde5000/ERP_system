@@ -5,124 +5,52 @@
 > `complete_webpage_developer_assignment.md` against the routes that
 > actually exist under `app/`.
 
-**135 of 211 built · 76 remaining**
+**169 of 211 built · 42 remaining**
 
 ## Summary by role
 
 | Role | Built | Remaining |
 |---|---:|---:|
-| Super Admin | 3/8 | 5 |
-| Support Staff | 1/4 | 3 |
-| Sales Executive | 1/4 | 3 |
-| Finance Manager | 4/4 | — |
-| Institution Admin | 10/18 | 8 |
-| Principal | 8/10 | 2 |
-| Vice Principal | 6/7 | 1 |
-| HOD | 10/12 | 2 |
-| Teacher | 21/22 | 1 |
-| Exam Controller | 6/10 | 4 |
-| Acad. Coordinator | 6/8 | 2 |
+| Super Admin | 8/8 | — |
+| Support Staff | 4/4 | — |
+| Sales Executive | 4/4 | — |
+| Finance Manager | 0/4 | 4 |
+| Institution Admin | 18/18 | — |
+| Principal | 10/10 | — |
+| Vice Principal | 7/7 | — |
+| HOD | 12/12 | — |
+| Teacher | 22/22 | — |
+| Exam Controller | 10/10 | — |
+| Acad. Coordinator | 8/8 | — |
 | Accountant | 6/10 | 4 |
 | Student | 20/20 | — |
 | Parent | 8/8 | — |
-| Librarian | 2/8 | 6 |
+| Librarian | 8/8 | — |
 | Hostel Warden | 4/8 | 4 |
 | Transport Manager | 3/6 | 3 |
 | Placement Officer | 3/10 | 7 |
 | HR Manager | 6/12 | 6 |
 | Admission Officer | 2/8 | 6 |
 | Store Manager | 1/8 | 7 |
-| Public | 4/6 | 2 |
+| Public | 5/6 | 1 |
 
 ## Build order
 
-**Tier 1 — institution pages (inside the app users already use)** — 24 pages
-**Tier 2 — optional-module depth (hubs exist; these are the inner pages)** — 39 pages
-**Tier 3 — public/auth** — 2 pages
-**Tier 4 — platform console (separate host, §8 — different app)** — 11 pages
+**Tier 1 — institution pages (inside the app users already use)** — 4 pages
+**Tier 2 — optional-module depth (hubs exist; these are the inner pages)** — 33 pages
+**Tier 3 — public/auth** — 1 pages
+**Tier 4 — platform console (separate host, §8 — different app)** — 4 pages
 
 ## Remaining pages
 
-### Super Admin — 5
+### Finance Manager — 4
 
 | # | Page | Route | Task | Backend |
 |---|---|---|---|---|
-| 2 | Institution List | `/institutions` | C-SA-02 | Dev-A |
-| 3 | Institution Detail | `/institutions/:id` | C-SA-03 | Dev-A |
-| 4 | Create Institution | `/institutions/new` | C-SA-04 | Dev-A |
-| 5 | Plans Management | `/plans` | C-SA-05 | Dev-A |
-| 6 | Platform Users | `/platform-users` | C-SA-06 | Dev-A |
-
-### Support Staff — 3
-
-| # | Page | Route | Task | Backend |
-|---|---|---|---|---|
-| 10 | Ticket List | `/support/tickets` | C-SP-02 | Dev-A |
-| 11 | Ticket Detail | `/support/tickets/:id` | C-SP-03 | Dev-A |
-| 12 | Institution Read-Only | `/support/institutions/:id` | C-SP-04 | Dev-A |
-
-### Sales Executive — 3
-
-| # | Page | Route | Task | Backend |
-|---|---|---|---|---|
-| 14 | Trial Institutions | `/sales/trials` | C-SL-02 | Dev-A |
-| 15 | Convert Trial | `/sales/trials/:id/convert` | C-SL-03 | Dev-A |
-| 16 | Subscriptions | `/sales/subscriptions` | C-SL-04 | Dev-A |
-
-### Institution Admin — 8
-
-| # | Page | Route | Task | Backend |
-|---|---|---|---|---|
-| 22 | Department Management | `/departments` | C-IA-02 | Dev-A |
-| 23 | Department Detail | `/departments/:id` | C-IA-03 | Dev-A |
-| 24 | Academic Year Setup | `/academic-years` | C-IA-04 | Dev-A |
-| 25 | Class Management | `/classes` | C-IA-05 | Dev-A |
-| 26 | Class Detail | `/classes/:id` | C-IA-06 | Dev-A |
-| 27 | Subject Management | `/subjects` | C-IA-07 | Dev-A |
-| 31 | Student Enrollment | `/enrollments` | C-IA-11 | Dev-A |
-| 32 | Parent–Student Links | `/parent-links` | C-IA-12 | Dev-A |
-
-### Principal — 2
-
-| # | Page | Route | Task | Backend |
-|---|---|---|---|---|
-| 43 | Staff Directory | `/principal/staff` | C-PR-05 | Dev-A |
-| 44 | Student Directory | `/principal/students` | C-PR-06 | Dev-A |
-
-### Vice Principal — 1
-
-| # | Page | Route | Task | Backend |
-|---|---|---|---|---|
-| 55 | Staff Directory | `/vp/staff` | C-VP-07 | Dev-A |
-
-### HOD — 2
-
-| # | Page | Route | Task | Backend |
-|---|---|---|---|---|
-| 62 | Teacher List | `/hod/teachers` | C-HD-07 | Dev-A |
-| 63 | Mentor Assignments | `/hod/mentors` | C-HD-08 | Dev-A |
-
-### Teacher — 1
-
-| # | Page | Route | Task | Backend |
-|---|---|---|---|---|
-| 83 | Submission Detail | `/teacher/submissions/:id` | C-TC-16 | Dev-B |
-
-### Exam Controller — 4
-
-| # | Page | Route | Task | Backend |
-|---|---|---|---|---|
-| 92 | Create Schedule | `/exam-controller/schedule/new` | C-EC-03 | Dev-B |
-| 93 | Hall Allocation | `/exam-controller/halls` | C-EC-04 | Dev-B |
-| 94 | Active Exams Monitor | `/exam-controller/monitor` | C-EC-05 | Dev-B |
-| 95 | Malpractice Logs | `/exam-controller/malpractice` | C-EC-06 | Dev-B |
-
-### Acad. Coordinator — 2
-
-| # | Page | Route | Task | Backend |
-|---|---|---|---|---|
-| 104 | Substitutions | `/coordinator/substitutions` | C-AC-05 | Dev-B |
-| 105 | Add Substitution | `/coordinator/substitutions/new` | C-AC-06 | Dev-B |
+| 17 | Finance Dashboard | `/finance/dashboard` | C-FM-01 | Dev-A |
+| 18 | Invoices | `/finance/invoices` | C-FM-02 | Dev-A |
+| 19 | Payment Records | `/finance/payments` | C-FM-03 | Dev-A |
+| 20 | Revenue Reports | `/finance/reports` | C-FM-04 | Dev-A |
 
 ### Accountant — 4
 
@@ -132,17 +60,6 @@
 | 110 | Student Fee Accounts | `/accountant/accounts` | C-AC-F03 | Dev-B |
 | 111 | Student Fee Detail | `/accountant/accounts/:studentId` | C-AC-F04 | Dev-B |
 | 116 | Installment Schedule | `/accountant/installments` | C-AC-F09 | Dev-B |
-
-### Librarian — 6
-
-| # | Page | Route | Task | Backend |
-|---|---|---|---|---|
-| 147 | Book Catalogue | `/library/books` | C-LB-02 | Dev-B |
-| 149 | Issue Book | `/library/issues/new` | C-LB-04 | Dev-B |
-| 150 | Return Book | `/library/issues/:id/return` | C-LB-05 | Dev-B |
-| 151 | Issued Books List | `/library/issues` | C-LB-06 | Dev-B |
-| 152 | Overdue List | `/library/overdue` | C-LB-07 | Dev-B |
-| 153 | E-Resources | `/library/e-resources` | C-LB-08 | Dev-B |
 
 ### Hostel Warden — 4
 
@@ -207,11 +124,10 @@
 | 204 | Purchase Orders | `/inventory/purchase-orders` | C-SM-07 | Dev-B |
 | 205 | Purchase Order Detail | `/inventory/purchase-orders/:id` | C-SM-08 | Dev-B |
 
-### Public — 2
+### Public — 1
 
 | # | Page | Route | Task | Backend |
 |---|---|---|---|---|
-| 208 | Reset Password | `/reset-password` | C-PB-03 | Dev-A |
 | 209 | Public Admission Form | `/apply` | C-PB-04 | Dev-B |
 
 ## Already built
@@ -219,18 +135,33 @@
 | # | Role | Page | Route | Task |
 |---|---|---|---|---|
 | 1 | Super Admin | Dashboard | `/dashboard` | C-SA-01 |
+| 2 | Super Admin | Institution List | `/institutions` | C-SA-02 |
+| 3 | Super Admin | Institution Detail | `/institutions/:id` | C-SA-03 |
+| 4 | Super Admin | Create Institution | `/institutions/new` | C-SA-04 |
+| 5 | Super Admin | Plans Management | `/plans` | C-SA-05 |
+| 6 | Super Admin | Platform Users | `/platform-users` | C-SA-06 |
 | 7 | Super Admin | Audit Logs | `/audit-logs` | C-SA-07 |
 | 8 | Super Admin | Platform Settings | `/settings` | C-SA-08 |
 | 9 | Support Staff | Support Dashboard | `/support/dashboard` | C-SP-01 |
+| 10 | Support Staff | Ticket List | `/support/tickets` | C-SP-02 |
+| 11 | Support Staff | Ticket Detail | `/support/tickets/:id` | C-SP-03 |
+| 12 | Support Staff | Institution Read-Only | `/support/institutions/:id` | C-SP-04 |
 | 13 | Sales Executive | Sales Dashboard | `/sales/dashboard` | C-SL-01 |
-| 17 | Finance Manager | Finance Dashboard | `/finance/dashboard` | C-FM-01 |
-| 18 | Finance Manager | Invoices | `/finance/invoices` | C-FM-02 |
-| 19 | Finance Manager | Payment Records | `/finance/payments` | C-FM-03 |
-| 20 | Finance Manager | Revenue Reports | `/finance/reports` | C-FM-04 |
+| 14 | Sales Executive | Trial Institutions | `/sales/trials` | C-SL-02 |
+| 15 | Sales Executive | Convert Trial | `/sales/trials/:id/convert` | C-SL-03 |
+| 16 | Sales Executive | Subscriptions | `/sales/subscriptions` | C-SL-04 |
 | 21 | Institution Admin | Admin Dashboard | `/dashboard` | C-IA-01 |
+| 22 | Institution Admin | Department Management | `/departments` | C-IA-02 |
+| 23 | Institution Admin | Department Detail | `/departments/:id` | C-IA-03 |
+| 24 | Institution Admin | Academic Year Setup | `/academic-years` | C-IA-04 |
+| 25 | Institution Admin | Class Management | `/classes` | C-IA-05 |
+| 26 | Institution Admin | Class Detail | `/classes/:id` | C-IA-06 |
+| 27 | Institution Admin | Subject Management | `/subjects` | C-IA-07 |
 | 28 | Institution Admin | User Management | `/users` | C-IA-08 |
 | 29 | Institution Admin | User Detail | `/users/:id` | C-IA-09 |
 | 30 | Institution Admin | Role Assignment | `/users/:id/roles` | C-IA-10 |
+| 31 | Institution Admin | Student Enrollment | `/enrollments` | C-IA-11 |
+| 32 | Institution Admin | Parent–Student Links | `/parent-links` | C-IA-12 |
 | 33 | Institution Admin | Settings — General | `/settings/general` | C-IA-13 |
 | 34 | Institution Admin | Settings — Modules | `/settings/modules` | C-IA-14 |
 | 35 | Institution Admin | Settings — Fee Structure | `/settings/fees` | C-IA-15 |
@@ -241,6 +172,8 @@
 | 40 | Principal | Attendance Overview | `/principal/attendance` | C-PR-02 |
 | 41 | Principal | Exam Schedule View | `/principal/examinations` | C-PR-03 |
 | 42 | Principal | Results Overview | `/principal/results` | C-PR-04 |
+| 43 | Principal | Staff Directory | `/principal/staff` | C-PR-05 |
+| 44 | Principal | Student Directory | `/principal/students` | C-PR-06 |
 | 45 | Principal | Notice Board | `/principal/notices` | C-PR-07 |
 | 46 | Principal | Post Notice | `/principal/notices/new` | C-PR-08 |
 | 47 | Principal | Timetable View | `/principal/timetable` | C-PR-09 |
@@ -251,12 +184,15 @@
 | 52 | Vice Principal | Results View | `/vp/results` | C-VP-04 |
 | 53 | Vice Principal | Notice Board | `/vp/notices` | C-VP-05 |
 | 54 | Vice Principal | Post Notice | `/vp/notices/new` | C-VP-06 |
+| 55 | Vice Principal | Staff Directory | `/vp/staff` | C-VP-07 |
 | 56 | HOD | Dashboard | `/hod/dashboard` | C-HD-01 |
 | 57 | HOD | Department Attendance | `/hod/attendance` | C-HD-02 |
 | 58 | HOD | Attendance Report | `/hod/attendance/report` | C-HD-03 |
 | 59 | HOD | Exam List (Dept) | `/hod/examinations` | C-HD-04 |
 | 60 | HOD | Assignment Overview | `/hod/assignments` | C-HD-05 |
 | 61 | HOD | Results Overview | `/hod/results` | C-HD-06 |
+| 62 | HOD | Teacher List | `/hod/teachers` | C-HD-07 |
+| 63 | HOD | Mentor Assignments | `/hod/mentors` | C-HD-08 |
 | 64 | HOD | Notice Board | `/hod/notices` | C-HD-09 |
 | 65 | HOD | Post Notice | `/hod/notices/new` | C-HD-10 |
 | 66 | HOD | Discussion Moderation | `/hod/discussion` | C-HD-11 |
@@ -276,6 +212,7 @@
 | 80 | Teacher | Create Assignment | `/teacher/assignments/new` | C-TC-13 |
 | 81 | Teacher | Assignment Detail | `/teacher/assignments/:id` | C-TC-14 |
 | 82 | Teacher | Submission Review | `/teacher/assignments/:id/submissions` | C-TC-15 |
+| 83 | Teacher | Submission Detail | `/teacher/submissions/:id` | C-TC-16 |
 | 84 | Teacher | Content Upload List | `/teacher/content` | C-TC-17 |
 | 85 | Teacher | Upload Content | `/teacher/content/upload` | C-TC-18 |
 | 86 | Teacher | Notice Board | `/teacher/notices` | C-TC-19 |
@@ -284,6 +221,10 @@
 | 89 | Teacher | Thread Detail | `/teacher/discussion/:id` | C-TC-22 |
 | 90 | Exam Controller | Dashboard | `/exam-controller/dashboard` | C-EC-01 |
 | 91 | Exam Controller | Exam Schedule | `/exam-controller/schedule` | C-EC-02 |
+| 92 | Exam Controller | Create Schedule | `/exam-controller/schedule/new` | C-EC-03 |
+| 93 | Exam Controller | Hall Allocation | `/exam-controller/halls` | C-EC-04 |
+| 94 | Exam Controller | Active Exams Monitor | `/exam-controller/monitor` | C-EC-05 |
+| 95 | Exam Controller | Malpractice Logs | `/exam-controller/malpractice` | C-EC-06 |
 | 96 | Exam Controller | Results Compilation | `/exam-controller/results` | C-EC-07 |
 | 97 | Exam Controller | Publish Results | `/exam-controller/results/:id/publish` | C-EC-08 |
 | 98 | Exam Controller | Grade Cards | `/exam-controller/grade-cards` | C-EC-09 |
@@ -292,6 +233,8 @@
 | 101 | Acad. Coordinator | Timetable Builder | `/coordinator/timetable` | C-AC-02 |
 | 102 | Acad. Coordinator | Timetable Grid | `/coordinator/timetable/grid` | C-AC-03 |
 | 103 | Acad. Coordinator | Conflict Checker | `/coordinator/timetable/conflicts` | C-AC-04 |
+| 104 | Acad. Coordinator | Substitutions | `/coordinator/substitutions` | C-AC-05 |
+| 105 | Acad. Coordinator | Add Substitution | `/coordinator/substitutions/new` | C-AC-06 |
 | 106 | Acad. Coordinator | Academic Calendar | `/coordinator/calendar` | C-AC-07 |
 | 107 | Acad. Coordinator | Post Notice | `/coordinator/notices/new` | C-AC-08 |
 | 108 | Accountant | Dashboard | `/accountant/dashboard` | C-AC-F01 |
@@ -329,7 +272,13 @@
 | 144 | Parent | Notice Board | `/parent/notices` | C-PA-07 |
 | 145 | Parent | Fee Account | `/parent/fees` | C-PA-08 |
 | 146 | Librarian | Library Dashboard | `/library/dashboard` | C-LB-01 |
+| 147 | Librarian | Book Catalogue | `/library/books` | C-LB-02 |
 | 148 | Librarian | Book Detail | `/library/books/:id` | C-LB-03 |
+| 149 | Librarian | Issue Book | `/library/issues/new` | C-LB-04 |
+| 150 | Librarian | Return Book | `/library/issues/:id/return` | C-LB-05 |
+| 151 | Librarian | Issued Books List | `/library/issues` | C-LB-06 |
+| 152 | Librarian | Overdue List | `/library/overdue` | C-LB-07 |
+| 153 | Librarian | E-Resources | `/library/e-resources` | C-LB-08 |
 | 154 | Hostel Warden | Hostel Dashboard | `/hostel/dashboard` | C-HW-01 |
 | 158 | Hostel Warden | Hostel Attendance | `/hostel/attendance` | C-HW-05 |
 | 159 | Hostel Warden | Leave Requests | `/hostel/leaves` | C-HW-06 |
@@ -351,5 +300,6 @@
 | 198 | Store Manager | Inventory Dashboard | `/inventory/dashboard` | C-SM-01 |
 | 206 | Public | Login | `/login` | C-PB-01 |
 | 207 | Public | Forgot Password | `/forgot-password` | C-PB-02 |
+| 208 | Public | Reset Password | `/reset-password` | C-PB-03 |
 | 210 | Public | 404 Not Found | `/404` | C-PB-05 |
 | 211 | Public | 403 Forbidden | `/403` | C-PB-06 |

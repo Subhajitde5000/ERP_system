@@ -26,7 +26,7 @@ const WRITE_MD = process.argv.includes("--md");
 const ROLES = [
   ["INSTITUTION_ADMIN", "admin", "Institution Admin"],
   ["PRINCIPAL", "principal", "Principal"],
-  ["VICE_PRINCIPAL", "vice-principal", "Vice Principal"],
+  ["VICE_PRINCIPAL", "vp", "Vice Principal"],
   ["HOD", "hod", "HOD"],
   ["TEACHER", "teacher", "Teacher"],
   ["MENTOR", "mentor", "Mentor"],
@@ -63,7 +63,7 @@ const ID = {
   loan: "b1-i1",
 };
 
-/** Mirrors the guard in `components/hod/hod-page.tsx` (§4.4 / §4.2 / §4.3). */
+/** HOD console route expectation — API independently enforces department scope. */
 const hodOk = (role: string) =>
   role === "HOD" ||
   role === "INSTITUTION_ADMIN" ||
