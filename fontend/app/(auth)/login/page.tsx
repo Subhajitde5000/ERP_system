@@ -29,16 +29,18 @@ export default async function LoginPage({
   const tenant = await resolveTenant(headerList.get("host"), params.tenant);
 
   /*
-   * `app.xyz.com` (and bare localhost, which resolves the same way) is the
-   * platform console, not an institution. This page used to render a
-   * half-platform variant of the tenant form — "Work email" wording, but it
-   * still POSTed to the tenant endpoint with `tenantId: "app"`, which no
-   * amount of correct credentials could authenticate. Platform staff live in
-   * `platform_users` (DB §4.5), a different table with a different endpoint.
+   * `xyz.com` (the apex domain) and bare localhost resolve to no institution.
+   * Under the account-holder model, `xyz.com/login` is the *owner* platform
+   * login — the door Rahul uses to manage every institution he owns. (Staff
+   * — Super Admin, Support, Sales — still sign in at `/platform/login`, reached
+   * in production by rewriting `app.xyz.com/login`.)
    *
-   * Send them to the console's own sign-in instead.
+   * Previously this redirected to the staff console, but that door is for the
+   * platform's own employees, not for customers. Send apex-domain visitors to
+   * their account login instead. Institution members still sign in at their
+   * own subdomain, e.g. `green.xyz.com/login`.
    */
-  if (tenant.isPlatform) redirect("/platform/login");
+  if (tenant.isPlatform) redirect("/account/login");
 
   return (
     <div className="flex min-h-screen flex-col bg-[#F8FAFC] lg:flex-row">

@@ -156,6 +156,7 @@ export function CheckoutFlow({
   initialPlan,
   initialMode,
   orderId,
+  ownerToken,
 }: {
   /** Pre-selected plan from ?plan= on the pricing page. */
   initialPlan?: string | null;
@@ -163,6 +164,12 @@ export function CheckoutFlow({
   initialMode?: "TRIAL" | null;
   /** Recover the success page after a refresh (?order=<id>&done=1). */
   orderId?: string | null;
+  /**
+   * When set, the checkout runs against the owner-scoped endpoints
+   * (/owner/orders) so the provisioned institution is linked to the signed-in
+   * owner's account. Anonymous public checkout leaves it unset.
+   */
+  ownerToken?: string | null;
 }) {
   const router = useRouter();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -201,7 +208,7 @@ export function CheckoutFlow({
     if (!orderId || provision) return;
     let cancelled = false;
     import("@/lib/signup").then(({ fetchOrderResult }) =>
-      fetchOrderResult(orderId)
+      fetchOrderResult(orderId, ownerToken ?? undefined)
         .then((result) => {
           if (!cancelled) setProvision(result);
         })
@@ -212,7 +219,7 @@ export function CheckoutFlow({
     return () => {
       cancelled = true;
     };
-  }, [orderId, provision]);
+  }, [orderId, provision, ownerToken]);
 
   // Persist the draft as it changes.
   useEffect(() => {
@@ -353,9 +360,13 @@ export function CheckoutFlow({
           quote={effectiveQuote}
           busy={busy}
           setBusy={setBusy}
+          ownerToken={ownerToken ?? undefined}
           onPaid={(result) => {
             setProvision(result);
-            router.replace(`/signup?order=${result.orderId}&done=1`);
+            const doneUrl = ownerToken
+              ? `/account/institutions/new?order=${result.orderId}&done=1`
+              : `/signup?order=${result.orderId}&done=1`;
+            router.replace(doneUrl);
           }}
         />
     </CheckoutShell>
@@ -942,12 +953,14 @@ function PaymentStep({
   busy,
   setBusy,
   onPaid,
+  ownerToken,
 }: {
   draft: Draft;
   quote: Quote | null;
   busy: boolean;
   setBusy: (v: boolean) => void;
   onPaid: (result: ProvisionResult) => void;
+  ownerToken?: string;
 }) {
   const [method, setMethod] = useState<(typeof PAYMENT_METHODS)[number]["id"]>("UPI");
   const [error, setError] = useState<string | null>(null);
@@ -978,8 +991,13 @@ function PaymentStep({
         },
         urlSlug: draft.urlSlug,
         password: draft.password,
-      });
-      const result = await payOrder(order.id, draft.mode === "TRIAL" ? "TRIAL" : method);
+      }, ownerToken);
+      const result = await payOrder(
+        order.id,
+        draft.mode === "TRIAL" ? "TRIAL" : method,
+        undefined,
+        ownerToken,
+      );
       onPaid(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Payment failed — please try again.");
