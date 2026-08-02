@@ -6,12 +6,13 @@ Provides FastAPI Depends handlers for protecting routes:
 - get_current_tenant_user: verifies Tenant JWT token & returns User
 """
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -123,33 +124,64 @@ async def get_current_platform_owner(
     return owner
 
 
-async def get_current_tenant_user_admin(
-    current_user: Annotated[User, Depends(get_current_tenant_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+async def _require_current_tenant_roles(
+    current_user: User,
+    db: AsyncSession,
+    allowed_roles: set[str],
+    denial_message: str,
 ) -> User:
-    """
-    Require an authenticated tenant user who holds the INSTITUTION_ADMIN role
-    for their tenant. Used to guard every institution-management endpoint
-    (structure, people, modules, settings, profile).
+    """Resolve tenant roles from the database, not a stale JWT claim.
 
-    RBAC is derived from role_assignments (not the JWT's role string) so an
-    admin who was granted the role after login is still recognised, and a user
-    whose grant was revoked is blocked even with a still-valid access token.
+    A role grant may be revoked or have an expiry after an access token was
+    issued.  Every privileged tenant dependency therefore shares this one
+    query and honours both flags before allowing a request through.
     """
+    now = datetime.now(timezone.utc)
     stmt = (
         select(RoleAssignment.id)
         .join(Role, RoleAssignment.role_id == Role.id)
         .where(
             RoleAssignment.user_id == current_user.id,
             RoleAssignment.tenant_id == current_user.tenant_id,
-            RoleAssignment.is_active == True,  # noqa: E712
-            Role.name == "INSTITUTION_ADMIN",
+            RoleAssignment.is_active.is_(True),
+            or_(RoleAssignment.expires_at.is_(None), RoleAssignment.expires_at > now),
+            Role.name.in_(allowed_roles),
         )
+        .limit(1)
     )
     res = await db.execute(stmt)
     if res.scalar_one_or_none() is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Institution admin privileges are required",
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=denial_message)
     return current_user
+
+
+async def get_current_tenant_user_admin(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Require a live ``INSTITUTION_ADMIN`` assignment for this tenant."""
+    return await _require_current_tenant_roles(
+        current_user,
+        db,
+        {"INSTITUTION_ADMIN"},
+        "Institution admin privileges are required",
+    )
+
+
+async def get_current_tenant_user_principal(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Require a live Principal assignment for the institution-wide console.
+
+    The Vice Principal intentionally does not satisfy this guard: the role
+    design explicitly withholds final schedule/result approval.  Its delegated
+    read surface can be added as a separate, scoped dependency later without
+    weakening the Principal approval boundary.
+    """
+    return await _require_current_tenant_roles(
+        current_user,
+        db,
+        {"PRINCIPAL"},
+        "Principal privileges are required",
+    )

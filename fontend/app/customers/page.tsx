@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowRight, Quote, Star } from "lucide-react";
+import { Quote, Star } from "lucide-react";
 
 import { CtaBand, MarketingShell, Section, SectionHeading } from "@/components/marketing/marketing-shell";
 import { STATS, TESTIMONIALS } from "@/lib/marketing";

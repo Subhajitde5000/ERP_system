@@ -1,9 +1,9 @@
 -- ============================================================================
--- update2.sql — Super Admin console (C-SA-01 … C-SA-08)
+-- update2.sql — Platform consoles + Principal governance (C-SA-01 … C-SA-08, C-PR-01 … C-PR-10)
 -- ============================================================================
 -- Applies AFTER database.sql and update.sql. Every block is idempotent, so
--- re-running is safe, and each is mirrored by an Alembic migration in
--- backend/app/alembic/versions/a4c8e1d2f930_super_admin_console.py.
+-- re-running is safe, and each section is mirrored by the corresponding
+-- Alembic migration under backend/app/alembic/versions/.
 --
 -- Apply order on a fresh DB:
 --   1. psql -f database/database.sql        (base schema + seeds)
@@ -13,10 +13,11 @@
 --
 -- Teams on Alembic get all of this from `alembic upgrade head` instead.
 --
--- Scope note: almost everything the Super Admin console needs already exists
--- (plans §4.1, tenants §4.2, subscriptions §4.4, platform_users §4.5,
--- support_tickets §4.6, audit_logs §10.3). This file adds only what was
--- genuinely missing, rather than restating tables that are already there.
+-- Scope note: almost everything the platform and Principal consoles need
+-- already exists (plans §4.1, tenants §4.2, subscriptions §4.4,
+-- platform_users §4.5, core academic tables §6–7, support_tickets §4.6,
+-- audit_logs §10.3). This file adds only genuinely missing columns/indexes,
+-- rather than restating the base tables that already own the data.
 -- ============================================================================
 
 
@@ -484,3 +485,85 @@ CREATE INDEX IF NOT EXISTS idx_support_tickets_assigned_to ON support_tickets (a
 CREATE INDEX IF NOT EXISTS idx_support_tickets_created_at  ON support_tickets (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_tenant_status
   ON support_tickets (tenant_id, status);
+
+
+-- --------------------------------------------------------------------------
+-- 9. Principal academic-governance workflow (C-PR-01 … C-PR-10).
+--
+-- The base schema already owns attendance, exams, results, notices, people
+-- and timetables.  What it did *not* represent was the two-person control
+-- required by role_based_system_design.md §4.3 / §6:
+--
+--   Exam Controller prepares a schedule     → Principal approves or rejects
+--   Exam Controller compiles results        → Principal approves or rejects
+--   Exam Controller publishes an approved result
+--
+-- A boolean is not enough: rejected is materially different from pending and
+-- the decision needs an actor, timestamp and an auditable rationale.  These
+-- columns are additive, default legacy rows deterministically, and every
+-- constraint/index is idempotent for safe production re-runs.
+-- --------------------------------------------------------------------------
+
+-- ── Exam schedule approval ─────────────────────────────────────────────────
+ALTER TABLE exams
+  ADD COLUMN IF NOT EXISTS schedule_approval_status VARCHAR(20);
+ALTER TABLE exams
+  ADD COLUMN IF NOT EXISTS schedule_approved_by UUID REFERENCES users(id);
+ALTER TABLE exams
+  ADD COLUMN IF NOT EXISTS schedule_approved_at TIMESTAMPTZ;
+ALTER TABLE exams
+  ADD COLUMN IF NOT EXISTS schedule_approval_note TEXT;
+
+-- Existing future schedules have never been reviewed; do not silently grant
+-- approval during rollout. Historical completed rows are marked approved;
+-- cancelled rows are terminally rejected rather than left in the queue.
+UPDATE exams
+   SET schedule_approval_status = CASE
+     WHEN status IN ('ONGOING', 'COMPLETED', 'RESULTS_RELEASED') THEN 'APPROVED'
+     WHEN status = 'CANCELLED' THEN 'REJECTED'
+     ELSE 'PENDING'
+   END
+ WHERE schedule_approval_status IS NULL;
+
+ALTER TABLE exams
+  ALTER COLUMN schedule_approval_status SET DEFAULT 'PENDING';
+ALTER TABLE exams
+  ALTER COLUMN schedule_approval_status SET NOT NULL;
+
+ALTER TABLE exams DROP CONSTRAINT IF EXISTS ck_exams_schedule_approval_status;
+ALTER TABLE exams ADD CONSTRAINT ck_exams_schedule_approval_status
+  CHECK (schedule_approval_status IN ('PENDING', 'APPROVED', 'REJECTED'));
+
+CREATE INDEX IF NOT EXISTS idx_exams_tenant_schedule_approval
+  ON exams (tenant_id, schedule_approval_status, scheduled_at);
+
+-- ── Result-publication approval ────────────────────────────────────────────
+ALTER TABLE result_publications
+  ADD COLUMN IF NOT EXISTS approval_status VARCHAR(20);
+ALTER TABLE result_publications
+  ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES users(id);
+ALTER TABLE result_publications
+  ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE result_publications
+  ADD COLUMN IF NOT EXISTS approval_note TEXT;
+
+-- A publication already visible to students must have passed governance before
+-- this feature existed; unpublished legacy rows enter the explicit queue.
+UPDATE result_publications
+   SET approval_status = CASE
+     WHEN is_visible_to_students THEN 'APPROVED'
+     ELSE 'PENDING'
+   END
+ WHERE approval_status IS NULL;
+
+ALTER TABLE result_publications
+  ALTER COLUMN approval_status SET DEFAULT 'PENDING';
+ALTER TABLE result_publications
+  ALTER COLUMN approval_status SET NOT NULL;
+
+ALTER TABLE result_publications DROP CONSTRAINT IF EXISTS ck_result_publications_approval_status;
+ALTER TABLE result_publications ADD CONSTRAINT ck_result_publications_approval_status
+  CHECK (approval_status IN ('PENDING', 'APPROVED', 'REJECTED'));
+
+CREATE INDEX IF NOT EXISTS idx_result_publications_tenant_approval
+  ON result_publications (tenant_id, approval_status, published_at DESC);

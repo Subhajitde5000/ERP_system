@@ -36,6 +36,8 @@ interface InstitutionAuthContextType {
   user: InstitutionUser | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isPrincipal: boolean;
+  hasRole: (role: string) => boolean;
   isLoading: boolean;
   logout: () => Promise<void>;
 }
@@ -100,6 +102,8 @@ export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
         user,
         isAuthenticated: !!user,
         isAdmin: !!user && user.roles.includes("INSTITUTION_ADMIN"),
+        isPrincipal: !!user && user.roles.includes("PRINCIPAL"),
+        hasRole: (role: string) => !!user && user.roles.includes(role),
         isLoading,
         logout,
       }}

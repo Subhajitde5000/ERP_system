@@ -80,10 +80,8 @@ export function useResource<T>(
   }, [key]);
 
   useEffect(() => {
-    // Data fetching on mount / dependency change. The rule targets synchronous
-    // setState in an effect; here the state updates happen after an awaited
-    // network call, guarded by the `alive` + `seq` checks above.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // Data fetching on mount / dependency change. State updates happen after
+    // an awaited network call and are guarded by `alive` + `seq` above.
     run();
   }, [run]);
 

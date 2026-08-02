@@ -34,7 +34,7 @@ type so a token from one is never accepted by another:
 ```
 fontend/   Next.js 16 (App Router) + React 19 + Tailwind
 backend/   FastAPI + SQLAlchemy 2 (async) + asyncpg + Alembic + bcrypt + JWT
-database/  database.sql (106-table base schema) + update.sql (post-base changes)
+database/  database.sql (106-table base schema) + update.sql + update2.sql (post-base changes)
 doc/       architecture, system-flow, owner-accounts, page specs
 ```
 
@@ -43,8 +43,8 @@ doc/       architecture, system-flow, owner-accounts, page specs
 - **Frontend** has three surfaces:
   - **Public marketing site** (`/`, `/features`, `/pricing`, …) — no auth.
   - **Owner console** (`/account/*`) — owner JWT, manages institutions/billing.
-  - **Institution console** (`/admin/*` real admin; `(institution)/*` legacy
-    module-preview pages — see §7).
+  - **Institution consoles** (`/admin/*` and `/principal/*` real authenticated
+    surfaces; `(institution)/*` legacy module-preview pages — see §8).
 - **Auth** stores the short-lived access token in memory only; the refresh token
   is in `localStorage` (tenant + owner) or memory (staff). Passwords are bcrypt
   cost-12; refresh tokens are SHA-256 hashed at rest.
@@ -71,17 +71,20 @@ psql -U postgres -c "CREATE DATABASE erp_db OWNER erp_user;"
 # 2. Base schema (106 tables + role/permission/module seeds)
 psql -U erp_user -d erp_db -f database/database.sql
 
-# 3. Post-base updates (owner accounts, academic link tables, role seed guards)
+# 3. Post-base updates (owner accounts, academic links, support and Principal governance)
 psql -U erp_user -d erp_db -f database/update.sql
+psql -U erp_user -d erp_db -f database/update2.sql
 ```
 
 > **Alembic-managed deployments** instead of raw SQL:
 > ```bash
 > cd backend && alembic upgrade head
 > ```
-> The migrations (`c6bcf…` → … → `f3b4c6d8e9a1`) reproduce everything
-> `database.sql` + `update.sql` create. Pick **one** path (raw SQL **or**
-> Alembic), not both on the same DB.
+> The migrations end at `c9d3e7f1a602` and include the Principal approval
+> workflow. Apply the raw schema plus both update files for the documented
+> production path, or use your validated Alembic baseline for a
+> migrations-managed environment — never mix a raw-schema bootstrap and
+> Alembic on the same database without stamping/validating its revision.
 
 ### 4.2 Backend
 
@@ -90,7 +93,7 @@ cd backend
 python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-cp .env.example .env       # then edit values (see §8 Production checklist)
+cp .env.example .env       # then edit values (see §9 Production checklist)
 python scripts/seed_data.py        # catalogue, plans, 22 roles, demo tenant + users
 python run.py                     # dev server on :8000  (python run.py --prod for prod)
 ```
@@ -138,6 +141,7 @@ npm run dev                     # http://localhost:3000
 - `identifier` is an **email or roll number**. JWT is bound to the tenant
   (`tenant_id`) and the origin — replaying it against another institution fails.
 - Institution Admins land on the **real** admin console at `/admin/dashboard`.
+- Principals land on the **real** academic-oversight console at `/principal/dashboard`.
 
 ### 5.3 Staff (xyz.com employees) — `app.xyz.com/login` → `/platform/login`
 - `POST /api/v1/platform/auth/login`. Created via `create_superadmin.py` or seed.
@@ -173,12 +177,45 @@ no password and a one-time token; a "set your password" email is queued in
 
 ---
 
-## 7. Module workflows — status
+## 7. Principal — what is LIVE (real backend, no demo data)
 
-The deeper role workflows under `(institution)/*` (attendance marking, exams,
+The `/principal/*` console is wired to `/api/v1/principal/*` and accepts only a
+current **PRINCIPAL** tenant-role assignment. The role is checked from
+`role_assignments` on every request, so a revoked or expired assignment cannot
+use an old JWT. The Vice Principal is intentionally excluded from this surface:
+final schedule and result approval belong to the Principal.
+
+| Page | Backend | What works |
+|---|---|---|
+| `/principal/dashboard` | `GET /principal/dashboard` | Live attendance, exam, result-approval, staff-leave and notice metrics |
+| `/principal/attendance` | `GET /principal/attendance` | Department/class weighted attendance with date range and CSV export |
+| `/principal/examinations` | `GET /principal/examinations`, `POST /…/{id}/approval` | All schedules, filters, audited approve/reject decision, CSV export |
+| `/principal/results` | `GET /principal/results`, `POST /results/publications/{id}/approval` | Department/class result roll-ups and two-person publication approval |
+| `/principal/staff` | `GET /principal/staff`, `GET /principal/staff/{id}` | Read-only staff directory and non-sensitive profile fields |
+| `/principal/students` | `GET /principal/students`, `GET /principal/students/{id}` | Read-only student directory with class/enrolment status |
+| `/principal/notices` | `GET/POST /principal/notices` | All notices, receipt viewer, institution/department/class composer |
+| `/principal/timetable` | `GET /principal/timetable` | Read-only institution/class timetable and CSV export |
+| `/principal/reports` | `GET /principal/reports`, `/reports/export` | Attendance, results and combined performance reports / CSV exports |
+
+### Governance migration
+
+`database/update2.sql` (or Alembic revision `c9d3e7f1a602`) adds explicit
+`PENDING` / `APPROVED` / `REJECTED` decision state, actor, timestamp and note
+to exam schedules and result publications. Existing visible result publications
+are backfilled as approved; unpublished legacy publications enter the pending
+queue. Every Principal decision is written to the append-only `audit_logs`
+table in the same transaction.
+
+---
+
+## 8. Module workflows — status
+
+The legacy preview workflows under `(institution)/*` (attendance marking,
 fees, library, hostel, timetable, etc.) currently read from in-memory **demo
-data** (`lib/*-data.ts`) and the demo `getSession`. They render for every role
-for preview/QA but are **not yet wired to the backend**.
+data** (`lib/*-data.ts`) and the demo `getSession`. They render for preview/QA
+but are **not yet wired to the backend**. The Principal routes in §7 are the
+exception: they are standalone authenticated production routes and do not use
+those fixtures.
 
 The migration pattern is established and identical for each:
 1. Add an ORM model (most tables already exist in `database.sql`).
@@ -186,16 +223,16 @@ The migration pattern is established and identical for each:
 3. Add a `lib/institution.ts` call + a `/admin/<feature>` client page (or convert
    the existing `(institution)/<feature>` page), removing its `*-data.ts`.
 
-`update.sql` is the single place to record any new schema those features need.
+`database/update2.sql` is the current post-base migration file for additive production schema changes; every change also needs a matching Alembic revision.
 
 ---
 
-## 8. Production checklist
+## 9. Production checklist
 
 - [ ] **Secrets** — `JWT_SECRET_KEY` a 64-hex random string; rotate periodically.
       `APP_DEBUG=false` (hides `/docs`, `/redoc`, stack traces; also hides the
       raw email-verification token from API responses).
-- [ ] **Database** — `update.sql` applied (or `alembic upgrade head`); backups on.
+- [ ] **Database** — `database.sql`, `update.sql` **and** `update2.sql` applied (or the validated Alembic path reaches `c9d3e7f1a602`); backups on.
 - [ ] **CORS** — `ALLOWED_ORIGINS` lists only your real origins
       (`https://xyz.com,https://app.xyz.com`, approved tenant origins).
 - [ ] **Email** — wire an outbound provider to drain `outbox_emails`
@@ -205,8 +242,7 @@ The migration pattern is established and identical for each:
       `SignupService.mark_paid` with a real Razorpay/Cashfree webhook handler
       (SYSTEM-FLOW §9.1; `UNIQUE(gateway, gateway_ref)` already guards replays).
 - [ ] **DNS / hosts** — apex `xyz.com`, staff `app.xyz.com`, tenant `*.xyz.com`.
-- [ ] **Frontend build** — `npm run build` in CI (needs network for Google Fonts;
-      offline builds fail only on font fetch, not on code).
+- [ ] **Frontend build** — `npm run build` in CI. The app uses local/system font stacks, so production builds do not depend on a Google Fonts network fetch.
 - [ ] **Process** — run the backend with `python run.py --prod` (4 workers) or a
       process manager; serve the frontend via `next start` or a CDN.
 - [ ] **Rate limits** — already set per endpoint via `slowapi`; front with your
@@ -214,7 +250,7 @@ The migration pattern is established and identical for each:
 
 ---
 
-## 9. API quick reference
+## 10. API quick reference
 
 All under `/api/v1`. Authenticated routes take `Authorization: Bearer <jwt>`.
 
@@ -223,6 +259,7 @@ All under `/api/v1`. Authenticated routes take `Authorization: Bearer <jwt>`.
 | Owner (customer) | `/owner` | `/signup`, `/verify-email`, `/login`, `/me`, `/institutions`, `/billing/summary`, `/subscriptions`, `/invoices`, `/payments`, `/tickets`, `/orders` (+ `/pay`) |
 | Public signup | `/public` | `/catalog`, `/subdomains/check`, `/quote`, `/orders` (+ `/pay`), `/service-requests` |
 | Institution admin | `/institution` | `/dashboard`, `/academic-years`, `/departments`, `/classes`, `/subjects`, `/staff`, `/students`, `/enrollments`, `/modules`, `/settings`, `/profile` |
+| Principal | `/principal` | `/dashboard`, `/attendance`, `/examinations` (+ schedule approval), `/results` (+ publication approval), `/staff`, `/students`, `/notices`, `/timetable`, `/reports`, `/reports/export` |
 | Tenant auth | `/tenant/auth` | `/login`, `/logout`, `/refresh`, `/me`, `/forgot-password`, `/reset-password` |
 | Platform staff auth | `/platform/auth` | `/login`, `/logout`, `/refresh`, `/me` |
 | Setup wizard | `/setup` | `GET`, `PUT`, `POST /complete` |
@@ -231,11 +268,11 @@ OpenAPI: with `APP_DEBUG=true`, browse `http://localhost:8000/docs`.
 
 ---
 
-## 10. Running the tests
+## 11. Running the tests
 
 ```bash
 cd backend
-pytest -q          # 31 tests: auth, signup/provisioning, owner flow, institution admin
+pytest -q          # backend unit/API tests, including Principal governance routes
 ```
 
 Tests use scripted fake DB sessions (no Postgres required) and cover the
@@ -244,20 +281,21 @@ institution-admin RBAC guard + plan-gated modules.
 
 ---
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
 | `401 Could not validate …` | Token missing, expired, or wrong type for the endpoint. Re-login; owner tokens are `type=owner`, institution `type=tenant`, staff `type=platform`. |
 | `403 Institution admin privileges are required` | The tenant user does not hold the INSTITUTION_ADMIN role in `role_assignments` for their tenant. Grant it (seed/setup wizard). |
+| `403 Principal privileges are required` | The tenant user needs an active, unexpired PRINCIPAL assignment. A Vice Principal cannot approve final schedules or result publications. |
 | `402 … not included in your plan` | Optional module toggle blocked by `plans.allowed_modules`. Upgrade the plan. |
-| `next build` fails on Google Fonts | Build host has no network. Pre-build fonts or run in CI with network. Code is unaffected. |
+| `next build` fails | Run `npm ci` first, then inspect the reported TypeScript/route error. The app no longer fetches Google Fonts during build. |
 | Email links never arrive | No outbound provider draining `outbox_emails`. In dev (`APP_DEBUG=true`) the owner verification token is returned in the signup response. |
-| Migration conflict | Ensure a single source: raw SQL (`database.sql` + `update.sql`) **or** Alembic (`alembic upgrade head`), not both. Head revision is `f3b4c6d8e9a1`. |
+| Migration conflict | Ensure a single source: raw SQL (`database.sql` + `update.sql` + `update2.sql`) **or** your validated Alembic path, not both. Current head revision is `c9d3e7f1a602`. |
 
 ---
 
-## 12. Documentation index
+## 13. Documentation index
 
 - `doc/ARCHITECTURE.md` — system architecture
 - `doc/SYSTEM-FLOW.md` — lead → purchase → onboarding → daily operation
@@ -265,5 +303,5 @@ institution-admin RBAC guard + plan-gated modules.
 - `doc/database_design_complete.md`, `doc/role_based_system_design.md`
 - `doc/PAGES-TODO.md` — page coverage matrix
 
-_Manual v1.0 — verified against the 106-table schema, the Alembic head
-`f3b4c6d8e9a1`, and the live `/admin` console._
+_Manual v1.1 — verified against the 106-table schema, `update2.sql`, Alembic
+head `c9d3e7f1a602`, and the live `/admin` and `/principal` consoles._

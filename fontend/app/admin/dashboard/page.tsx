@@ -9,7 +9,6 @@ import {
   GraduationCap,
   Puzzle,
   Users,
-  UserRound,
 } from "lucide-react";
 
 import { useInstitutionAuth } from "@/hooks/use-institution-auth";

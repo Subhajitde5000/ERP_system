@@ -151,70 +151,14 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
   },
 
   /* ── 5.2 Principal ─────────────────────────────────────────────────────── */
+  // The live Principal console is mounted at /principal/dashboard.  Keep this
+  // empty compatibility entry only for the dynamic preview route; it carries
+  // no fixture metrics or institution data.
   PRINCIPAL: {
     roleChip: "Principal",
-    summary: "2 results awaiting your approval",
-    stats: [
-      {
-        label: "Avg Attendance",
-        value: "84%",
-        icon: ClipboardCheck,
-        tone: "success",
-        delta: { text: "↑ 3% vs last month", tone: "success" },
-      },
-      {
-        label: "Exams",
-        value: "3 ongoing",
-        icon: FileSpreadsheet,
-        tone: "accent",
-        delta: { text: "12 upcoming", tone: "muted" },
-      },
-      {
-        label: "Results Awaiting",
-        value: "2",
-        icon: FileCheck2,
-        tone: "warning",
-        pulse: true,
-      },
-      { label: "Total Staff", value: "85", icon: Users, tone: "cyan" },
-    ],
-    panels: [
-      {
-        kind: "grid",
-        title: "Attendance by Department",
-        span: 7,
-        items: [
-          { label: "CSE", value: 88, tone: "success" },
-          { label: "ECE", value: 81, tone: "warning" },
-          { label: "Mechanical", value: 72, tone: "danger" },
-          { label: "Civil", value: 86, tone: "success" },
-          { label: "Commerce", value: 90, tone: "success" },
-          { label: "Arts", value: 78, tone: "warning" },
-        ],
-      },
-      {
-        kind: "timeline",
-        title: "Upcoming Exams",
-        span: 5,
-        items: [
-          { time: "Mon 4", title: "Mid-term · CSE", subtitle: "Sem 3 · 180 students", current: true },
-          { time: "Wed 6", title: "Mid-term · ECE", subtitle: "Sem 3 · 140 students" },
-          { time: "Fri 8", title: "Practical · Mech", subtitle: "Sem 5 · 90 students" },
-        ],
-      },
-      {
-        kind: "actions",
-        title: "Quick Actions",
-        span: 12,
-        items: [
-          { label: "Post Institution Notice", icon: Megaphone, href: "/notices/new", primary: true },
-          { label: "Approve Results", icon: FileCheck2, href: "/results" },
-          { label: "View Reports", icon: TrendingUp, href: "/reports" },
-          // C-PR-05, not the merged `/users` — the Principal's own directory
-          { label: "Staff Directory", icon: Contact, href: "/principal/staff" },
-        ],
-      },
-    ],
+    summary: "Open the Principal console for live institution data.",
+    stats: [],
+    panels: [],
   },
 
   /* ── 5.3 Vice Principal — delegated, read-only ─────────────────────────── */
