@@ -6,7 +6,7 @@
 --  Generated from  : docs/database_design_complete.md (v2.1)
 --  Target          : PostgreSQL 15+   (verified on PostgreSQL 17.10)
 --  Contents        : 54 enum types
---                    106 tables
+--                    107 tables
 --                    58 documented indexes (§11 + per-table)
 --                    216 generated foreign-key indexes
 --
@@ -116,7 +116,7 @@ CREATE TYPE ticket_status AS ENUM ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED');
 
 
 -- ============================================================================
---  SECTION 3 — TABLES (106)
+--  SECTION 3 — TABLES (107)
 --  Topologically sorted by foreign-key dependency. See note 2 above.
 -- ============================================================================
 
@@ -136,6 +136,30 @@ CREATE TABLE plans (
   created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Public website enquiries are sales leads only. They never create a tenant,
+-- subscription or user until a Sales Executive qualifies the request.
+CREATE TABLE service_requests (
+
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_name                 VARCHAR(100) NOT NULL,
+  institution_name             VARCHAR(255) NOT NULL,
+  work_email                   VARCHAR(255) NOT NULL,
+  phone                        VARCHAR(30),
+  institution_type             VARCHAR(20) NOT NULL,
+  student_count                INTEGER,
+  service_interest             VARCHAR(100) NOT NULL,
+  message                      TEXT,
+  status                       VARCHAR(20) NOT NULL DEFAULT 'NEW',
+  source                       VARCHAR(100) NOT NULL DEFAULT 'website',
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_service_requests_student_count
+    CHECK (student_count IS NULL OR student_count > 0)
+);
+
+CREATE INDEX idx_service_requests_status_created_at
+  ON service_requests (status, created_at);
+CREATE INDEX idx_service_requests_work_email ON service_requests (work_email);
 
 CREATE TABLE platform_users (
 
@@ -2180,7 +2204,7 @@ ON CONFLICT (slug) DO NOTHING;
 
 -- ============================================================================
 --  SECTION 8 — VERIFICATION
---  Run after loading. Expected: 106 tables · 54 enums · 283 foreign keys
+--  Run after loading. Expected: 107 tables · 54 enums · 283 foreign keys
 --  · 0 unindexed foreign keys.
 -- ============================================================================
 
@@ -2233,8 +2257,8 @@ BEGIN
   RAISE NOTICE ' Seed: plans       : %', v_plans;
   RAISE NOTICE '─────────────────────────────────────────────';
 
-  IF v_tables <> 106 THEN
-    RAISE EXCEPTION 'Expected 106 tables, found %', v_tables;
+  IF v_tables <> 107 THEN
+    RAISE EXCEPTION 'Expected 107 tables, found %', v_tables;
   END IF;
   IF v_unindexed <> 0 THEN
     RAISE EXCEPTION 'Expected every FK to be indexed, found % unindexed', v_unindexed;
