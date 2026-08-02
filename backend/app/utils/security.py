@@ -10,7 +10,21 @@ Nothing here knows about FastAPI, SQLAlchemy, or business logic.
 """
 
 import hashlib
+import logging
 import secrets
+import warnings
+
+# passlib 1.7.x tries to read bcrypt.__about__.__version__ which was removed
+# in bcrypt 4.0.  The AttributeError is caught internally and the correct
+# backend is still selected, but it prints a noisy "(trapped) error" line.
+# Suppress it at the warnings level before importing passlib's bcrypt handler.
+warnings.filterwarnings(
+    "ignore",
+    message=".*error reading bcrypt version.*",
+    category=UserWarning,
+)
+# Also silence the logger passlib uses for the same message.
+logging.getLogger("passlib.handlers.bcrypt").setLevel(logging.ERROR)
 
 from passlib.context import CryptContext
 

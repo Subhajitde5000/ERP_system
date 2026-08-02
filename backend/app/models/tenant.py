@@ -36,6 +36,13 @@ class Tenant(Base):
     plan_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+    # The platform owner (customer / account-holder) who purchased this
+    # institution.  NULL for institutions provisioned before owners existed.
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("platform_owners.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     owner_platform_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform_users.id"), nullable=True
     )
