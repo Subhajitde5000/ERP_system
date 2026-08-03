@@ -19,6 +19,35 @@ target_metadata = Base.metadata
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
+# ── Tables that exist in database.sql but are NOT yet in the ORM.
+# Autogenerate would wrongly emit DROP TABLE for these; we exclude them.
+# Remove entries here as ORM models are added for each module.
+_UNMANAGED_TABLES = frozenset([
+    "payslips", "purchase_orders", "purchase_order_items",
+    "data_export_jobs", "transport_stops", "student_transport",
+    "hostel_attendance", "hostel_allotments", "hostel_rooms",
+    "hostel_complaints", "hostel_leave_requests", "hostel_blocks",
+    "stock_transactions", "drivers", "fee_heads", "interview_rounds",
+    "admission_cycles", "admission_applications", "application_documents",
+    "merit_lists", "e_resources", "book_issues", "book_copies", "books",
+    "appraisal_cycles", "appraisals", "leave_policies", "placement_drives",
+    "placement_applications", "placement_offers", "drive_eligibility",
+    "companies", "mentor_notes", "notifications", "device_tokens",
+    "parent_student_links", "transport_routes", "grade_cards",
+    "inventory_categories", "inventory_items", "bulk_import_jobs",
+    "vehicles", "payroll_runs", "vendors", "salary_structures",
+    "notification_templates", "notice_attachments", "staff_documents",
+    "scholarships", "scholarship_grants", "student_fee_accounts",
+    "fee_structures", "fee_installments", "fee_payments",
+])
+
+
+def include_object(obj, name, type_, reflected, compare_to):
+    """Skip tables that exist in the DB but have no ORM model yet."""
+    if type_ == "table" and name in _UNMANAGED_TABLES:
+        return False
+    return True
+
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
@@ -27,6 +56,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -34,7 +64,11 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection):
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=include_object,
+    )
 
     with context.begin_transaction():
         context.run_migrations()

@@ -31,6 +31,8 @@ httpx==0.28.1
 
 # Utilities
 python-multipart==0.0.12
+# Windows requires tzdata for Python's zoneinfo module (no system tz database)
+tzdata>=2024.1
 
 # Testing
 pytest==8.3.4

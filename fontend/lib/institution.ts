@@ -7,8 +7,8 @@
  * the institution login.
  */
 
-import { API_BASE_URL, getAccessToken } from "./auth";
-import { APIError, requestJson } from "./api-client";
+import { API_BASE_URL, getAccessToken, refreshAccessToken } from "./auth";
+import { APIError, requestJson, guardTenantRefresh } from "./api-client";
 
 const BASE = `${API_BASE_URL}/api/v1/institution`;
 
@@ -16,7 +16,14 @@ const BASE = `${API_BASE_URL}/api/v1/institution`;
 export { APIError as InstitutionAPIError };
 
 const call = <T>(path: string, init: RequestInit = {}): Promise<T> =>
-  requestJson<T>(`${BASE}${path}`, init, getAccessToken(), "InstitutionAPIError");
+  requestJson<T>(
+    `${BASE}${path}`,
+    init,
+    getAccessToken(),
+    "InstitutionAPIError",
+    refreshAccessToken,
+    guardTenantRefresh,
+  );
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

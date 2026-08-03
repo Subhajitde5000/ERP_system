@@ -111,6 +111,8 @@ CREATE TYPE payment_mode AS ENUM ('CASH', 'ONLINE', 'CHEQUE', 'DD', 'UPI');
 CREATE TYPE scholarship_type AS ENUM ('PERCENTAGE', 'FIXED_AMOUNT', 'FULL_WAIVER');
 CREATE TYPE stock_txn_type AS ENUM ('STOCK_IN', 'STOCK_OUT', 'ADJUSTMENT', 'RETURN');
 CREATE TYPE po_status AS ENUM ('DRAFT', 'SENT', 'ACKNOWLEDGED', 'DELIVERED', 'CANCELLED');
+CREATE TYPE exam_controller_publication_status AS ENUM ('DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'PUBLISHED', 'WITHDRAWN');
+CREATE TYPE exam_controller_grade_card_status AS ENUM ('PENDING', 'GENERATED', 'PUBLISHED', 'FAILED');
 
 
 -- ============================================================================
@@ -656,12 +658,17 @@ CREATE TABLE exams (
   window_end_at                TIMESTAMPTZ,
   results_release_at           TIMESTAMPTZ,
   status                       exam_status NOT NULL DEFAULT 'DRAFT',
+  schedule_approval_status     VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  schedule_approved_by         UUID REFERENCES users(id),
+  schedule_approved_at         TIMESTAMPTZ,
+  schedule_approval_note       TEXT,
   allow_review                 BOOLEAN NOT NULL DEFAULT FALSE,
   shuffle_questions            BOOLEAN NOT NULL DEFAULT FALSE,
   show_score_immediately       BOOLEAN NOT NULL DEFAULT FALSE,
   created_by                   UUID NOT NULL REFERENCES users(id),
   created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_exams_schedule_approval_status CHECK (schedule_approval_status IN ('PENDING', 'APPROVED', 'REJECTED'))
 );
 
 CREATE TABLE exam_sections (
@@ -980,7 +987,12 @@ CREATE TABLE result_publications (
   exam_ids                     UUID[] NOT NULL DEFAULT '{}',
   published_by                 UUID NOT NULL REFERENCES users(id),
   published_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  is_visible_to_students       BOOLEAN NOT NULL DEFAULT FALSE
+  is_visible_to_students       BOOLEAN NOT NULL DEFAULT FALSE,
+  approval_status              VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  approved_by                  UUID REFERENCES users(id),
+  approved_at                  TIMESTAMPTZ,
+  approval_note                TEXT,
+  CONSTRAINT ck_result_publications_approval_status CHECK (approval_status IN ('PENDING', 'APPROVED', 'REJECTED'))
 );
 
 CREATE TABLE student_results (
@@ -1010,6 +1022,41 @@ CREATE TABLE grade_cards (
   file_key                     TEXT NOT NULL,
   generated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   template_version             VARCHAR(20) NOT NULL DEFAULT '1.0'
+);
+
+CREATE TABLE exam_controller_publications (
+
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  title               VARCHAR(255) NOT NULL,
+  academic_year_id    UUID NOT NULL REFERENCES academic_years(id),
+  class_id            UUID REFERENCES classes(id),
+  exam_ids            UUID[] NOT NULL DEFAULT '{}',
+  compiled_by         UUID NOT NULL REFERENCES users(id),
+  compiled_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  published_at        TIMESTAMPTZ,
+  status              exam_controller_publication_status NOT NULL DEFAULT 'DRAFT',
+  summary             JSONB NOT NULL DEFAULT '{}'::jsonb,
+  note                TEXT
+);
+
+CREATE TABLE exam_controller_grade_cards (
+
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id               UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  publication_id          UUID NOT NULL REFERENCES exam_controller_publications(id) ON DELETE CASCADE,
+  student_id              UUID NOT NULL REFERENCES users(id),
+  class_id                UUID NOT NULL REFERENCES classes(id),
+  total_marks_obtained    NUMERIC(8, 2) NOT NULL,
+  total_marks_possible    NUMERIC(8, 2) NOT NULL,
+  percentage              NUMERIC(5, 2) NOT NULL,
+  grade                   VARCHAR(5) NOT NULL,
+  rank                    INTEGER,
+  subject_scores          JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status                  exam_controller_grade_card_status NOT NULL DEFAULT 'PENDING',
+  generated_at            TIMESTAMPTZ,
+  published_at            TIMESTAMPTZ,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE timetable_slots (
@@ -2195,6 +2242,25 @@ CREATE INDEX IF NOT EXISTS idx_support_tickets_owner_status ON support_tickets (
 CREATE INDEX IF NOT EXISTS idx_support_tickets_raised_by ON support_tickets (raised_by);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets (status);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_priority ON support_tickets (priority);
+CREATE INDEX IF NOT EXISTS idx_exams_tenant_schedule_approval ON exams (tenant_id, schedule_approval_status, scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_exams_schedule_approved_by ON exams (schedule_approved_by);
+CREATE INDEX IF NOT EXISTS idx_result_publications_tenant_approval ON result_publications (tenant_id, approval_status, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_result_publications_approved_by ON result_publications (approved_by);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mentor_assignments__tenant_student_year_active ON mentor_assignments (tenant_id, student_id, academic_year_id) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_timetable_substitutions_date ON timetable_substitutions (tenant_id, date);
+CREATE INDEX IF NOT EXISTS idx_academic_events_tenant_year ON academic_events (tenant_id, academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_academic_events_dates ON academic_events (tenant_id, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_academic_events_is_holiday ON academic_events (tenant_id, is_holiday, start_date) WHERE is_holiday = TRUE;
+CREATE INDEX IF NOT EXISTS idx_ec_publications_tenant_year ON exam_controller_publications (tenant_id, academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_ec_publications_academic_year_id ON exam_controller_publications (academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_ec_publications_status ON exam_controller_publications (tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_ec_publications_compiled_by ON exam_controller_publications (compiled_by);
+CREATE INDEX IF NOT EXISTS idx_ec_publications_class_id ON exam_controller_publications (class_id);
+CREATE INDEX IF NOT EXISTS idx_ec_grade_cards_publication ON exam_controller_grade_cards (publication_id);
+CREATE INDEX IF NOT EXISTS idx_ec_grade_cards_tenant_class ON exam_controller_grade_cards (tenant_id, class_id);
+CREATE INDEX IF NOT EXISTS idx_ec_grade_cards_class_id ON exam_controller_grade_cards (class_id);
+CREATE INDEX IF NOT EXISTS idx_ec_grade_cards_student_id ON exam_controller_grade_cards (student_id);
+CREATE INDEX IF NOT EXISTS idx_grade_cards_tenant_pub ON exam_controller_grade_cards (tenant_id, publication_id);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_created_at ON support_tickets (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_tenant_id ON support_tickets (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_tenant_status ON support_tickets (tenant_id, status);
@@ -2453,7 +2519,8 @@ DECLARE
 BEGIN
   SELECT count(*) INTO v_tables
     FROM information_schema.tables
-   WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
+   WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+     AND table_name <> 'alembic_version';
 
   SELECT count(*) INTO v_enums
     FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -2490,8 +2557,8 @@ BEGIN
   RAISE NOTICE ' Seed: plans       : %', v_plans;
   RAISE NOTICE '─────────────────────────────────────────────';
 
-  IF v_tables <> 118 THEN
-    RAISE EXCEPTION 'Expected 118 tables, found %', v_tables;
+  IF v_tables <> 120 THEN
+    RAISE EXCEPTION 'Expected 120 tables, found %', v_tables;
   END IF;
   IF v_unindexed <> 0 THEN
     RAISE EXCEPTION 'Expected every FK to be indexed, found % unindexed', v_unindexed;

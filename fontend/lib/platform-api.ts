@@ -22,8 +22,8 @@
  * payload is the TypeScript interface.
  */
 
-import { API_BASE_URL, getAccessToken, normalizePlatformRole } from "./auth";
-import { APIError, requestJson } from "./api-client";
+import { API_BASE_URL, getAccessToken, normalizePlatformRole, refreshPlatformToken } from "./auth";
+import { APIError, requestJson, guardTenantRefresh } from "./api-client";
 import type { ModuleKey, PlatformRole } from "@/types/auth";
 import type {
   PlanRow,
@@ -50,7 +50,14 @@ const BASE = `${API_BASE_URL}/api/v1/platform`;
 export { APIError as PlatformAPIError };
 
 const call = <T>(path: string, init: RequestInit = {}): Promise<T> =>
-  requestJson<T>(`${BASE}${path}`, init, getAccessToken(), "PlatformAPIError");
+  requestJson<T>(
+    `${BASE}${path}`,
+    init,
+    getAccessToken(),
+    "PlatformAPIError",
+    refreshPlatformToken,
+    guardTenantRefresh,
+  );
 
 const qs = (params: Record<string, string | number | boolean | undefined>) => {
   const s = new URLSearchParams();

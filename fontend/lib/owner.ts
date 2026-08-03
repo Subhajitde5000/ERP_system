@@ -11,7 +11,7 @@
  */
 
 import { API_BASE_URL } from "./auth";
-import { APIError, requestJson } from "./api-client";
+import { APIError, requestJson, guardOwnerRefresh } from "./api-client";
 import type {
   BillingSummary,
   OwnerCredentials,
@@ -64,6 +64,10 @@ const ownerFetch = <T>(
     init,
     auth ? _ownerAccessToken : null,
     "OwnerAPIError",
+    // Only inject the refresh function for authenticated calls — unauthenticated
+    // endpoints (signup, verify-email, etc.) should never attempt a token refresh.
+    auth ? refreshOwnerToken : null,
+    guardOwnerRefresh,
   );
 
 // ── Signup & verification ────────────────────────────────────────────────────

@@ -145,9 +145,10 @@ class PrincipalService:
         ).scalar_one_or_none()
         try:
             return datetime.now(ZoneInfo(timezone_name or "UTC")).date()
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, KeyError):
             # Tenant timezone is admin-controlled.  A bad legacy value must not
             # break every Principal page, but it must not alter tenant scoping.
+            # KeyError covers ZoneInfoNotFoundError (Windows: missing tzdata).
             return datetime.now(timezone.utc).date()
 
     @staticmethod

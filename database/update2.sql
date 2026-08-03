@@ -323,9 +323,18 @@ ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NU
 CREATE INDEX IF NOT EXISTS idx_support_tickets_owner_status
   ON support_tickets (owner_id, status);
 
-ALTER TABLE support_tickets ALTER COLUMN raised_by DROP NOT NULL;
-ALTER TABLE support_tickets ALTER COLUMN description DROP NOT NULL;
-ALTER TABLE support_tickets ALTER COLUMN tenant_id DROP NOT NULL;
+DO $do$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_tickets' AND column_name='raised_by') THEN
+    EXECUTE 'ALTER TABLE support_tickets ALTER COLUMN raised_by DROP NOT NULL';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_tickets' AND column_name='description') THEN
+    EXECUTE 'ALTER TABLE support_tickets ALTER COLUMN description DROP NOT NULL';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_tickets' AND column_name='tenant_id') THEN
+    EXECUTE 'ALTER TABLE support_tickets ALTER COLUMN tenant_id DROP NOT NULL';
+  END IF;
+END $do$;
 
 
 -- --------------------------------------------------------------------------
@@ -417,9 +426,18 @@ END $do$;
 
 -- Relax database.sql's NOT NULLs: an owner-raised ticket has no raised_by,
 -- no tenant and (until the first message) no description.
-ALTER TABLE support_tickets ALTER COLUMN raised_by DROP NOT NULL;
-ALTER TABLE support_tickets ALTER COLUMN description DROP NOT NULL;
-ALTER TABLE support_tickets ALTER COLUMN tenant_id DROP NOT NULL;
+DO $do$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_tickets' AND column_name='raised_by') THEN
+    EXECUTE 'ALTER TABLE support_tickets ALTER COLUMN raised_by DROP NOT NULL';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_tickets' AND column_name='description') THEN
+    EXECUTE 'ALTER TABLE support_tickets ALTER COLUMN description DROP NOT NULL';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_tickets' AND column_name='tenant_id') THEN
+    EXECUTE 'ALTER TABLE support_tickets ALTER COLUMN tenant_id DROP NOT NULL';
+  END IF;
+END $do$;
 
 -- Every ticket must be attributable to someone.
 ALTER TABLE support_tickets DROP CONSTRAINT IF EXISTS ck_support_tickets_raiser;
@@ -484,68 +502,65 @@ CREATE INDEX IF NOT EXISTS idx_support_tickets_tenant_status
 -- --------------------------------------------------------------------------
 
 -- ── Exam schedule approval ─────────────────────────────────────────────────
-ALTER TABLE exams
-  ADD COLUMN IF NOT EXISTS schedule_approval_status VARCHAR(20);
-ALTER TABLE exams
-  ADD COLUMN IF NOT EXISTS schedule_approved_by UUID REFERENCES users(id);
-ALTER TABLE exams
-  ADD COLUMN IF NOT EXISTS schedule_approved_at TIMESTAMPTZ;
-ALTER TABLE exams
-  ADD COLUMN IF NOT EXISTS schedule_approval_note TEXT;
+DO $do$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'exams') THEN
+    ALTER TABLE exams ADD COLUMN IF NOT EXISTS schedule_approval_status VARCHAR(20);
+    ALTER TABLE exams ADD COLUMN IF NOT EXISTS schedule_approved_by UUID REFERENCES users(id);
+    ALTER TABLE exams ADD COLUMN IF NOT EXISTS schedule_approved_at TIMESTAMPTZ;
+    ALTER TABLE exams ADD COLUMN IF NOT EXISTS schedule_approval_note TEXT;
 
--- Existing future schedules have never been reviewed; do not silently grant
--- approval during rollout. Historical completed rows are marked approved;
--- cancelled rows are terminally rejected rather than left in the queue.
-UPDATE exams
-   SET schedule_approval_status = CASE
-     WHEN status IN ('ONGOING', 'COMPLETED', 'RESULTS_RELEASED') THEN 'APPROVED'
-     WHEN status = 'CANCELLED' THEN 'REJECTED'
-     ELSE 'PENDING'
-   END
- WHERE schedule_approval_status IS NULL;
+    UPDATE exams
+       SET schedule_approval_status = CASE
+         WHEN status IN ('ONGOING', 'COMPLETED', 'RESULTS_RELEASED') THEN 'APPROVED'
+         WHEN status = 'CANCELLED' THEN 'REJECTED'
+         ELSE 'PENDING'
+       END
+     WHERE schedule_approval_status IS NULL;
 
-ALTER TABLE exams
-  ALTER COLUMN schedule_approval_status SET DEFAULT 'PENDING';
-ALTER TABLE exams
-  ALTER COLUMN schedule_approval_status SET NOT NULL;
+    ALTER TABLE exams ALTER COLUMN schedule_approval_status SET DEFAULT 'PENDING';
+    ALTER TABLE exams ALTER COLUMN schedule_approval_status SET NOT NULL;
 
-ALTER TABLE exams DROP CONSTRAINT IF EXISTS ck_exams_schedule_approval_status;
-ALTER TABLE exams ADD CONSTRAINT ck_exams_schedule_approval_status
-  CHECK (schedule_approval_status IN ('PENDING', 'APPROVED', 'REJECTED'));
+    ALTER TABLE exams DROP CONSTRAINT IF EXISTS ck_exams_schedule_approval_status;
+    ALTER TABLE exams ADD CONSTRAINT ck_exams_schedule_approval_status
+      CHECK (schedule_approval_status IN ('PENDING', 'APPROVED', 'REJECTED'));
 
-CREATE INDEX IF NOT EXISTS idx_exams_tenant_schedule_approval
-  ON exams (tenant_id, schedule_approval_status, scheduled_at);
+    CREATE INDEX IF NOT EXISTS idx_exams_tenant_schedule_approval
+      ON exams (tenant_id, schedule_approval_status, scheduled_at);
+    CREATE INDEX IF NOT EXISTS idx_exams_schedule_approved_by
+      ON exams (schedule_approved_by);
+  END IF;
+END $do$;
 
 -- ── Result-publication approval ────────────────────────────────────────────
-ALTER TABLE result_publications
-  ADD COLUMN IF NOT EXISTS approval_status VARCHAR(20);
-ALTER TABLE result_publications
-  ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES users(id);
-ALTER TABLE result_publications
-  ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
-ALTER TABLE result_publications
-  ADD COLUMN IF NOT EXISTS approval_note TEXT;
+DO $do$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'result_publications') THEN
+    ALTER TABLE result_publications ADD COLUMN IF NOT EXISTS approval_status VARCHAR(20);
+    ALTER TABLE result_publications ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES users(id);
+    ALTER TABLE result_publications ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+    ALTER TABLE result_publications ADD COLUMN IF NOT EXISTS approval_note TEXT;
 
--- A publication already visible to students must have passed governance before
--- this feature existed; unpublished legacy rows enter the explicit queue.
-UPDATE result_publications
-   SET approval_status = CASE
-     WHEN is_visible_to_students THEN 'APPROVED'
-     ELSE 'PENDING'
-   END
- WHERE approval_status IS NULL;
+    UPDATE result_publications
+       SET approval_status = CASE
+         WHEN is_visible_to_students THEN 'APPROVED'
+         ELSE 'PENDING'
+       END
+     WHERE approval_status IS NULL;
 
-ALTER TABLE result_publications
-  ALTER COLUMN approval_status SET DEFAULT 'PENDING';
-ALTER TABLE result_publications
-  ALTER COLUMN approval_status SET NOT NULL;
+    ALTER TABLE result_publications ALTER COLUMN approval_status SET DEFAULT 'PENDING';
+    ALTER TABLE result_publications ALTER COLUMN approval_status SET NOT NULL;
 
-ALTER TABLE result_publications DROP CONSTRAINT IF EXISTS ck_result_publications_approval_status;
-ALTER TABLE result_publications ADD CONSTRAINT ck_result_publications_approval_status
-  CHECK (approval_status IN ('PENDING', 'APPROVED', 'REJECTED'));
+    ALTER TABLE result_publications DROP CONSTRAINT IF EXISTS ck_result_publications_approval_status;
+    ALTER TABLE result_publications ADD CONSTRAINT ck_result_publications_approval_status
+      CHECK (approval_status IN ('PENDING', 'APPROVED', 'REJECTED'));
 
-CREATE INDEX IF NOT EXISTS idx_result_publications_tenant_approval
-  ON result_publications (tenant_id, approval_status, published_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_result_publications_tenant_approval
+      ON result_publications (tenant_id, approval_status, published_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_result_publications_approved_by
+      ON result_publications (approved_by);
+  END IF;
+END $do$;
 
 
 -- --------------------------------------------------------------------------
@@ -558,23 +573,23 @@ CREATE INDEX IF NOT EXISTS idx_result_publications_tenant_approval
 -- inactive rows, while the partial unique index guarantees one active mentor.
 -- --------------------------------------------------------------------------
 
-DO $$
+DO $do$
 BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM mentor_assignments
-    WHERE is_active = TRUE
-    GROUP BY tenant_id, student_id, academic_year_id
-    HAVING COUNT(*) > 1
-  ) THEN
-    RAISE EXCEPTION
-      'Cannot enforce one active mentor per student/year: resolve duplicate active mentor_assignments first';
-  END IF;
-END $$;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'mentor_assignments') THEN
+    IF EXISTS (
+      SELECT 1
+      FROM mentor_assignments
+      WHERE is_active = TRUE
+      GROUP BY tenant_id, student_id, academic_year_id
+      HAVING COUNT(*) > 1
+    ) THEN
+      RAISE EXCEPTION
+        'Cannot enforce one active mentor per student/year: resolve duplicate active mentor_assignments first';
+    END IF;
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_mentor_assignments__tenant_student_year_active
-  ON mentor_assignments (tenant_id, student_id, academic_year_id)
-  WHERE is_active = TRUE;
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_mentor_assignments__tenant_student_year_active ON mentor_assignments (tenant_id, student_id, academic_year_id) WHERE is_active = TRUE';
+  END IF;
+END $do$;
 
 
 -- --------------------------------------------------------------------------
@@ -632,22 +647,25 @@ SELECT gen_random_uuid(), d.hod_id, r.id, d.tenant_id, d.id, 'DEPARTMENT', NOW()
 
 -- Substitutions — the C-AC-05 board filters by tenant + date and the
 -- C-AC-06 form needs (slot_id, date) lookups for the unique-key check.
-CREATE INDEX IF NOT EXISTS idx_timetable_substitutions_tenant_id
-  ON timetable_substitutions (tenant_id);
-CREATE INDEX IF NOT EXISTS idx_timetable_substitutions_date
-  ON timetable_substitutions (tenant_id, date);
+DO $do$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'timetable_substitutions') THEN
+    CREATE INDEX IF NOT EXISTS idx_timetable_substitutions_tenant_id
+      ON timetable_substitutions (tenant_id);
+    CREATE INDEX IF NOT EXISTS idx_timetable_substitutions_date
+      ON timetable_substitutions (tenant_id, date);
+  END IF;
 
--- Academic events — the C-AC-07 calendar lists everything between
--- from_date and to_date; the tenant + year composite serves the dashboard's
--- "next 14 days" rollup, and a holiday flag index keeps the legend
--- response time bounded.
-CREATE INDEX IF NOT EXISTS idx_academic_events_tenant_year
-  ON academic_events (tenant_id, academic_year_id);
-CREATE INDEX IF NOT EXISTS idx_academic_events_dates
-  ON academic_events (tenant_id, start_date, end_date);
-CREATE INDEX IF NOT EXISTS idx_academic_events_is_holiday
-  ON academic_events (tenant_id, is_holiday, start_date)
-  WHERE is_holiday = TRUE;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'academic_events') THEN
+    CREATE INDEX IF NOT EXISTS idx_academic_events_tenant_year
+      ON academic_events (tenant_id, academic_year_id);
+    CREATE INDEX IF NOT EXISTS idx_academic_events_dates
+      ON academic_events (tenant_id, start_date, end_date);
+    CREATE INDEX IF NOT EXISTS idx_academic_events_is_holiday
+      ON academic_events (tenant_id, is_holiday, start_date)
+      WHERE is_holiday = TRUE;
+  END IF;
+END $do$;
 
 -- The base schema defines the ACADEMIC_COORDINATOR role in §5.6 but older
 -- tenants may not have an active role assignment for their coordinator
@@ -709,18 +727,35 @@ CREATE TABLE IF NOT EXISTS exam_controller_publications (
 
 CREATE INDEX IF NOT EXISTS idx_ec_publications_tenant_year
   ON exam_controller_publications (tenant_id, academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_ec_publications_academic_year_id
+  ON exam_controller_publications (academic_year_id);
 CREATE INDEX IF NOT EXISTS idx_ec_publications_status
   ON exam_controller_publications (tenant_id, status);
 
-DO $$ BEGIN
-  CREATE TYPE exam_controller_publication_status AS ENUM (
-    'DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'PUBLISHED', 'WITHDRAWN'
-  );
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $do$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE t.typname = 'exam_controller_publication_status' AND n.nspname = 'public'
+  ) THEN
+    EXECUTE 'CREATE TYPE exam_controller_publication_status AS ENUM (''DRAFT'', ''PENDING_APPROVAL'', ''APPROVED'', ''PUBLISHED'', ''WITHDRAWN'')';
+  END IF;
+END $do$;
 
-ALTER TABLE exam_controller_publications
-  ALTER COLUMN status TYPE exam_controller_publication_status
-  USING status::exam_controller_publication_status;
+DO $do$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'exam_controller_publications' AND column_name = 'status'
+      AND data_type = 'character varying'
+  ) THEN
+    ALTER TABLE exam_controller_publications ALTER COLUMN status DROP DEFAULT;
+    ALTER TABLE exam_controller_publications
+      ALTER COLUMN status TYPE exam_controller_publication_status
+      USING status::exam_controller_publication_status;
+    ALTER TABLE exam_controller_publications
+      ALTER COLUMN status SET DEFAULT 'DRAFT'::exam_controller_publication_status;
+  END IF;
+END $do$;
 
 CREATE TABLE IF NOT EXISTS exam_controller_grade_cards (
   id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -744,16 +779,33 @@ CREATE INDEX IF NOT EXISTS idx_ec_grade_cards_publication
   ON exam_controller_grade_cards (publication_id);
 CREATE INDEX IF NOT EXISTS idx_ec_grade_cards_tenant_class
   ON exam_controller_grade_cards (tenant_id, class_id);
+CREATE INDEX IF NOT EXISTS idx_ec_grade_cards_class_id
+  ON exam_controller_grade_cards (class_id);
 
-DO $$ BEGIN
-  CREATE TYPE exam_controller_grade_card_status AS ENUM (
-    'PENDING', 'GENERATED', 'PUBLISHED', 'FAILED'
-  );
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $do$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE t.typname = 'exam_controller_grade_card_status' AND n.nspname = 'public'
+  ) THEN
+    EXECUTE 'CREATE TYPE exam_controller_grade_card_status AS ENUM (''PENDING'', ''GENERATED'', ''PUBLISHED'', ''FAILED'')';
+  END IF;
+END $do$;
 
-ALTER TABLE exam_controller_grade_cards
-  ALTER COLUMN status TYPE exam_controller_grade_card_status
-  USING status::exam_controller_grade_card_status;
+DO $do$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'exam_controller_grade_cards' AND column_name = 'status'
+      AND data_type = 'character varying'
+  ) THEN
+    ALTER TABLE exam_controller_grade_cards ALTER COLUMN status DROP DEFAULT;
+    ALTER TABLE exam_controller_grade_cards
+      ALTER COLUMN status TYPE exam_controller_grade_card_status
+      USING status::exam_controller_grade_card_status;
+    ALTER TABLE exam_controller_grade_cards
+      ALTER COLUMN status SET DEFAULT 'PENDING'::exam_controller_grade_card_status;
+  END IF;
+END $do$;
 
 -- The Exam Controller dashboard and schedule pages filter on (tenant_id,
 -- status) and (tenant_id, scheduled_at).  The base schema already indexes
