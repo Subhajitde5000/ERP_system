@@ -22,21 +22,58 @@ export function moduleLabel(key: ModuleKey): string {
 export const ROOT_DOMAIN_LABEL = ROOT_DOMAIN;
 
 /**
- * A tenant's public host — `green.xyz.com`.
+ * Returns the effective root domain at runtime.
  *
- * Defined once because the console printed `{slug}.xyz.com` inline in six
- * places, which hardcoded the production domain into the markup: a staging or
- * white-label deployment (NEXT_PUBLIC_ROOT_DOMAIN) showed the wrong host, and
- * "Open" links pointed at the wrong environment.
+ * NEXT_PUBLIC_ROOT_DOMAIN is embedded at compile time, so if .env.local
+ * changes without a server restart the stale value is used. This function
+ * reads window.location.hostname at runtime in the browser so the correct
+ * host is always used, regardless of the compiled env value.
+ *
+ * Rules:
+ *  - On localhost / 127.0.0.1 → always returns "localhost:<port>"
+ *  - On a real subdomain like abc.xyz.com → returns "xyz.com" (last 2 parts)
+ *  - Server-side (no window) → falls back to NEXT_PUBLIC_ROOT_DOMAIN env
  */
-export function tenantHost(slug: string): string {
-  return `${slug}.${ROOT_DOMAIN}`;
+function getRootDomain(): string {
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+    const port = window.location.port;
+
+    // Local development: bare localhost or 127.0.0.1
+    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0") {
+      return port ? `localhost:${port}` : "localhost";
+    }
+
+    // On a subdomain (e.g. abc.xyz.com) extract the root (xyz.com)
+    const parts = hostname.split(".");
+    if (parts.length >= 2) {
+      return parts.slice(-2).join(".");
+    }
+    return hostname;
+  }
+  // Server-side rendering fallback
+  return ROOT_DOMAIN;
 }
 
-/** A tenant's login URL — what the console links to. */
-export function tenantUrl(slug: string, path = ""): string {
-  return `https://${tenantHost(slug)}${path}`;
+/**
+ * A tenant's public host — `green.localhost:3000` in dev, `green.xyz.com` in prod.
+ *
+ * Uses getRootDomain() so it always reflects the actual running environment,
+ * not a potentially stale compiled env value.
+ */
+export function tenantHost(slug: string): string {
+  const domain = getRootDomain();
+  return `${slug}.${domain}`;
 }
+
+/** A tenant's login URL — uses http for localhost, https for everything else. */
+export function tenantUrl(slug: string, path = ""): string {
+  const host = tenantHost(slug);
+  const protocol = host.includes("localhost") ? "http" : "https";
+  return `${protocol}://${host}${path}`;
+}
+
+
 
 /** The platform console's own host — `app.xyz.com`. */
 export const PLATFORM_HOST = `app.${ROOT_DOMAIN}`;

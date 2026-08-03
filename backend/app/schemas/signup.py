@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, EmailStr, Field
 
-from app.schemas.common import APIResponse
+from app.schemas.common import APIResponse, Wire
 
 # ── Catalogue ─────────────────────────────────────────────────────────────────
 
@@ -91,7 +91,7 @@ class PriceQuoteResponse(BaseModel):
 # ── Platform account / owner ───────────────────────────────────────────────
 
 
-class OwnerDraft(BaseModel):
+class OwnerDraft(Wire):
     """Platform account owner captured before institution checkout.
 
     This is the xyz.com account (AWS/Shopify style). One owner can later
@@ -134,7 +134,7 @@ class VerifyEmailResponse(BaseModel):
 
 # ── Order ─────────────────────────────────────────────────────────────────────
 
-class InstitutionDraft(BaseModel):
+class InstitutionDraft(Wire):
     """Institution + admin identity captured during registration."""
 
     name: str = Field(..., min_length=2, max_length=255)
@@ -147,7 +147,7 @@ class InstitutionDraft(BaseModel):
     address: str | None = None
 
 
-class OrderCreateRequest(BaseModel):
+class OrderCreateRequest(Wire):
     """Body for POST /public/orders."""
 
     mode: str = Field(..., pattern="^(PURCHASE|TRIAL)$")
@@ -187,7 +187,7 @@ class OrderResponse(BaseModel):
 
 # ── Payment + provisioning ────────────────────────────────────────────────────
 
-class OrderPayRequest(BaseModel):
+class OrderPayRequest(Wire):
     """Body for POST /public/orders/{id}/pay.
 
     `method` is the payment channel: UPI, CARD, DEBIT_CARD, NET_BANKING,

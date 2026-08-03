@@ -29,6 +29,27 @@ export interface Envelope<T> {
   message: string;
 }
 
+// ── snake_case → camelCase conversion ─────────────────────────────────────────
+
+/**
+ * Recursively converts all object keys from snake_case to camelCase.
+ * Mirrors the toCamel helper in lib/signup.ts so every API surface
+ * (owner, platform, institution) returns consistent camelCase keys to the UI.
+ */
+export function toCamel(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toCamel);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [
+        k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()),
+        toCamel(v),
+      ]),
+    );
+  }
+  return value;
+}
+
+
 /** A failed request, carrying the HTTP status so callers can branch on 401/409. */
 export class APIError extends Error {
   status: number;
@@ -128,6 +149,7 @@ export async function requestJson<T>(
   errorName = "APIError",
   refreshFn?: (() => Promise<string | null>) | null,
   guard: ReturnType<typeof createRefreshGuard> = guardTenantRefresh,
+  camelCase = false,
 ): Promise<T> {
   const buildHeaders = (t?: string | null): Record<string, string> => ({
     "Content-Type": "application/json",
@@ -145,7 +167,8 @@ export async function requestJson<T>(
   // Fast path — success or a non-401 error that refresh cannot fix.
   if (res.ok) {
     const body = await res.json().catch(() => ({}));
-    return (body as Envelope<T>).data;
+    const data = (body as Envelope<T>).data;
+    return (camelCase ? toCamel(data) : data) as T;
   }
 
   // ── 401 + refreshFn → attempt a silent token refresh then retry once ───────
@@ -171,7 +194,8 @@ export async function requestJson<T>(
           errorName,
         );
       }
-      return (retryBody as Envelope<T>).data;
+      const data = (retryBody as Envelope<T>).data;
+      return (camelCase ? toCamel(data) : data) as T;
     }
 
     // Refresh returned null (session truly expired) — fall through to throw.

@@ -68,6 +68,7 @@ const ownerFetch = <T>(
     // endpoints (signup, verify-email, etc.) should never attempt a token refresh.
     auth ? refreshOwnerToken : null,
     guardOwnerRefresh,
+    true, // convert snake_case to camelCase for the owner API
   );
 
 // ── Signup & verification ────────────────────────────────────────────────────

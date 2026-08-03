@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, FileText, PartyPopper } from "lucide-react";
 
+import { tenantUrl } from "@/lib/platform-shared";
 import type { ProvisionResult } from "@/lib/signup";
 
 /** Step 8 — Success page after automatic provisioning. */
 export function SuccessStep({ result }: { result: ProvisionResult }) {
+  const loginUrl = tenantUrl(result.tenant.slug, "/login");
+
   return (
     <div className="animate-fade-up">
       <div className="rounded-card border border-border bg-white p-8 text-center shadow-card sm:p-10">
@@ -24,7 +27,7 @@ export function SuccessStep({ result }: { result: ProvisionResult }) {
         <dl className="mx-auto mt-8 max-w-sm space-y-3 rounded-field bg-[#F8FAFC] p-5 text-left">
           <Row label="Institution" value={result.tenant.name} />
           <Row label="Platform dashboard" value={result.platformDashboardUrl} mono />
-          <Row label="Institution login" value={result.tenant.loginUrl} mono />
+          <Row label="Institution login" value={loginUrl} mono />
           <Row
             label="Subscription"
             value={
@@ -55,12 +58,12 @@ export function SuccessStep({ result }: { result: ProvisionResult }) {
           >
             Open platform dashboard
           </Link>
-          <Link
-            href={result.tenant.loginUrl}
+          <a
+            href={loginUrl}
             className="inline-flex h-12 items-center gap-2 rounded-field bg-accent px-7 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover"
           >
             Go to institution login <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
+          </a>
         </div>
         <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-[#64748B]">
           <CheckCircle2 className="h-3.5 w-3.5 text-success-text" aria-hidden="true" />

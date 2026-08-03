@@ -488,7 +488,8 @@ class PlatformAdminService:
         )
 
         domain = settings.PUBLIC_ROOT_DOMAIN or "xyz.com"
-        login_url = f"https://{slug}.{domain}/login"
+        scheme = "http" if "localhost" in domain else "https"
+        login_url = f"{scheme}://{slug}.{domain}/login"
         queue_email(
             db,
             "staff.invited",

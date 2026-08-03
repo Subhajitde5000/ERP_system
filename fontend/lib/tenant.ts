@@ -95,10 +95,11 @@ async function fetchTenantBySlug(
 ): Promise<Omit<Tenant, "host" | "slug"> | null> {
   try {
     const res = await fetch(
-      `${API_BASE_URL}/api/v1/tenants/by-slug/${encodeURIComponent(slug)}`,
+      `${API_BASE_URL}/api/v1/public/tenants/by-slug/${encodeURIComponent(slug)}`,
       {
-        // Next.js server fetch — revalidate every 5 minutes (matches Redis TTL)
-        next: { revalidate: 300 },
+        // Disable caching in development so new institutions are recognized immediately;
+        // cache for 5 minutes in production to match the Redis TTL.
+        next: { revalidate: process.env.NODE_ENV === "development" ? 0 : 300 },
       },
     );
     if (!res.ok) return null;

@@ -33,7 +33,6 @@ import {
 
 import { cn, formatDate } from "@/lib/utils";
 import { compactINR } from "@/lib/platform";
-import { tenantUrl } from "@/lib/platform-shared";
 import { changeOwnerPassword, createOwnerTicket, updateOwnerProfile } from "@/lib/owner";
 import { Card, Chip, EmptyState } from "@/components/dashboard/primitives";
 import { StatsCard } from "@/components/dashboard/stats-card";
@@ -94,6 +93,22 @@ function OwnerHeader({
   );
 }
 
+/** Build the institution login URL at click-time from window.location. */
+function openInstitution(slug: string) {
+  const hostname = window.location.hostname;
+  const port = window.location.port;
+  let url: string;
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0") {
+    const domain = port ? `localhost:${port}` : "localhost";
+    url = `http://${slug}.${domain}/login`;
+  } else {
+    const parts = hostname.split(".");
+    const root = parts.length >= 2 ? parts.slice(-2).join(".") : hostname;
+    url = `https://${slug}.${root}/login`;
+  }
+  window.open(url, "_blank", "noreferrer");
+}
+
 /** One institution row — used by the dashboard and My Institutions. */
 function InstitutionRow({ inst }: { inst: OwnerInstitution }) {
   return (
@@ -110,12 +125,13 @@ function InstitutionRow({ inst }: { inst: OwnerInstitution }) {
       <Chip tone={STATUS_TONE[inst.subscriptionStatus ?? ""] ?? "muted"}>
         {inst.isActive ? (inst.subscriptionStatus ?? "—") : "SUSPENDED"}
       </Chip>
-      <Link
-        href={inst.loginUrl || tenantUrl(inst.slug, "/login")}
-        className="inline-flex shrink-0 items-center gap-1 rounded text-[12px] font-semibold text-accent hover:underline"
+      <button
+        type="button"
+        onClick={() => openInstitution(inst.slug)}
+        className="inline-flex shrink-0 items-center gap-1 rounded text-[12px] font-semibold text-accent hover:underline bg-transparent border-none p-0 cursor-pointer"
       >
         Go to <ArrowRight className="h-3 w-3" aria-hidden="true" />
-      </Link>
+      </button>
     </li>
   );
 }

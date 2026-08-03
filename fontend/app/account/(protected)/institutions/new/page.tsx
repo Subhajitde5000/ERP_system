@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 import { CheckoutFlow } from "@/components/checkout/checkout-flow";
 import { useOwnerAuth } from "@/hooks/use-owner-auth";
@@ -14,11 +15,26 @@ import { getOwnerAccessToken, refreshOwnerToken } from "@/lib/owner";
  * Provision), but runs against the owner-scoped endpoints so the provisioned
  * tenant is linked to this account and appears under "My Institutions".
  */
-export default function NewInstitutionPage({
-  searchParams,
-}: {
-  searchParams: { plan?: string; mode?: string; order?: string; done?: string };
-}) {
+export default function NewInstitutionPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground">
+          Loading checkout…
+        </div>
+      }
+    >
+      <NewInstitutionContent />
+    </Suspense>
+  );
+}
+
+function NewInstitutionContent() {
+  const searchParams = useSearchParams();
+  const plan = searchParams.get("plan");
+  const mode = searchParams.get("mode");
+  const order = searchParams.get("order");
+
   const { isAuthenticated } = useOwnerAuth();
   const [token, setToken] = useState<string | null>(null);
 
@@ -54,10 +70,11 @@ export default function NewInstitutionPage({
       </div>
       <CheckoutFlow
         ownerToken={token}
-        initialPlan={searchParams.plan ?? null}
-        initialMode={searchParams.mode === "trial" ? "TRIAL" : null}
-        orderId={searchParams.order ?? null}
+        initialPlan={plan ?? null}
+        initialMode={mode === "trial" ? "TRIAL" : null}
+        orderId={order ?? null}
       />
     </div>
   );
 }
+

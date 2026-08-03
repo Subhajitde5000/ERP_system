@@ -64,6 +64,12 @@ from app.utils.security import generate_secure_token, hash_password, hash_token
 
 settings = get_settings()
 
+
+def _login_url(slug: str, domain: str) -> str:
+    scheme = "http" if "localhost" in domain else "https"
+    return f"{scheme}://{slug}.{domain}/login"
+
+
 INVOICE_PREFIX = "INV"
 GST_RATE = Decimal("18.00")
 
@@ -431,7 +437,7 @@ class SignupService:
             status=order.status,
             institution_name=order.institution_name,
             url_slug=order.url_slug,
-            login_url=f"https://{order.url_slug}.{domain}/login",
+            login_url=_login_url(order.url_slug, domain),
             created_at=order.created_at,
         )
 
@@ -619,7 +625,7 @@ class SignupService:
         # 11. Welcome email — queued inside this transaction so a mail outage
         # can never roll back a paid signup; delivered right after the commit.
         domain = settings.PUBLIC_ROOT_DOMAIN or "xyz.com"
-        login_url = f"https://{tenant.slug}.{domain}/login"
+        login_url = _login_url(tenant.slug, domain)
         email = queue_email(
             db,
             "tenant.provisioned",
@@ -737,7 +743,7 @@ class SignupService:
                 id=tenant.id,
                 slug=tenant.slug,
                 name=tenant.name,
-                login_url=f"https://{tenant.slug}.{domain}/login",
+                login_url=_login_url(tenant.slug, domain),
             ),
             subscription=ProvisionedSubscription(
                 status=subscription.status if subscription else "ACTIVE",

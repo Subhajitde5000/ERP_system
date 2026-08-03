@@ -80,7 +80,8 @@ def _extract_ip(request: Request) -> str | None:
 
 def _login_url(slug: str) -> str:
     domain = settings.PUBLIC_ROOT_DOMAIN or "xyz.com"
-    return f"https://{slug}.{domain}/login"
+    scheme = "http" if "localhost" in domain else "https"
+    return f"{scheme}://{slug}.{domain}/login"
 
 
 class OwnerService:

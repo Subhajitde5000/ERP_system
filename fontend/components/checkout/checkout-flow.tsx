@@ -24,6 +24,7 @@ import {
 } from "./checkout-ui";
 import { ReviewStep } from "./review-step";
 import { SuccessStep } from "./success-step";
+import { tenantHost, tenantUrl } from "@/lib/platform-shared";
 import { checkSubdomain, createOrder, fetchQuote, formatINR, getCatalog, payOrder } from "@/lib/signup";
 import type {
   Catalog,
@@ -671,14 +672,14 @@ function UrlStep({
               placeholder="green"
               spellCheck={false}
             />
-            <span className="shrink-0 text-sm font-medium text-[#64748B]">.xyz.com</span>
+            <span className="shrink-0 text-sm font-medium text-[#64748B]">.{tenantHost("").replace(/^\./, "")}</span>
           </div>
         </Field>
 
         <div className="mt-5 rounded-field border border-border bg-[#F8FAFC] p-4">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#64748B]">Result</p>
           <p className="mt-1 font-display text-lg font-bold text-primary">
-            https://{derived || "…"}.xyz.com
+            {tenantUrl(derived || "…")}
           </p>
           <div className="mt-2 flex items-center gap-2">
             {checking ? (

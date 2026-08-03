@@ -2,6 +2,7 @@
 ERP Backend — Main FastAPI Application Entrypoint
 """
 
+import re
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -49,15 +50,20 @@ app = FastAPI(
 
 # Attach limiter to app state so the decorator can find it
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, lambda request, exc: _rate_limit_exceeded_handler(request, exc))
 
 # ── Middleware Stack ─────────────────────────────────────────────────────────
 # Order matters: RequestID first so every subsequent log entry has an ID.
 app.add_middleware(RequestIDMiddleware)
 
+# Support subdomains for both localhost (Method 2) and production/custom root domains
+escaped_root = re.escape(settings.PUBLIC_ROOT_DOMAIN or "xyz.com")
+cors_regex = rf"https?://([a-z0-9-]+\.)*({escaped_root}|localhost|127\.0\.0\.1)(:[0-9]+)?"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
+    allow_origin_regex=cors_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

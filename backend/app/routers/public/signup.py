@@ -135,7 +135,7 @@ async def check_subdomain(
     return APIResponse(success=True, data=data, message="Subdomain checked")
 
 
-@router.post("/quote", response_model=APIResponseQuote)
+@router.api_route("/quote", methods=["GET", "POST"], response_model=APIResponseQuote)
 @limiter.limit("60/minute")
 async def price_quote(
     request: Request,

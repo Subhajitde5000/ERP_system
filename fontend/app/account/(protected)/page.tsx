@@ -18,8 +18,33 @@ import {
   fetchBillingSummary,
   fetchOwnerInstitutions,
 } from "@/lib/owner";
+import { tenantHost } from "@/lib/platform-shared";
 import { formatINR } from "@/lib/signup";
 import type { BillingSummary, OwnerInstitution } from "@/types/owner";
+
+/**
+ * Build the institution login URL at click-time from window.location.
+ *
+ * We cannot use a static href derived from NEXT_PUBLIC_ROOT_DOMAIN because
+ * that env value is embedded at compile time and may be stale (e.g. still
+ * "xyz.com" when the dev server is running on localhost). Reading
+ * window.location at the moment of the click is always correct.
+ */
+function openInstitution(slug: string) {
+  const hostname = window.location.hostname;
+  const port = window.location.port;
+  let url: string;
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0") {
+    const domain = port ? `localhost:${port}` : "localhost";
+    url = `http://${slug}.${domain}/login`;
+  } else {
+    // On abc.xyz.com → root = xyz.com
+    const parts = hostname.split(".");
+    const root = parts.length >= 2 ? parts.slice(-2).join(".") : hostname;
+    url = `https://${slug}.${root}/login`;
+  }
+  window.open(url, "_blank", "noreferrer");
+}
 
 const SUB_LABELS: Record<string, string> = {
   TRIAL: "Trial",
@@ -125,19 +150,20 @@ export default function AccountDashboardPage() {
                         {inst.name}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {inst.slug}.xyz.com · {inst.planName ?? "No plan"}
+                        {tenantHost(inst.slug)} · {inst.planName ?? "No plan"}
                       </p>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <StatusPill status={inst.subscriptionStatus} isActive={inst.isActive} />
-                  <a
-                    href={inst.loginUrl}
+                  <button
+                    type="button"
+                    onClick={() => openInstitution(inst.slug)}
                     className="inline-flex items-center gap-1 text-sm font-semibold text-accent hover:underline"
                   >
                     Open <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-                  </a>
+                  </button>
                 </div>
               </li>
             ))}
