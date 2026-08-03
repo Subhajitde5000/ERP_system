@@ -10,8 +10,8 @@
  * pure-function logic.
  */
 
-import { API_BASE_URL, getAccessToken } from "./auth";
-import { APIError, requestJson } from "./api-client";
+import { API_BASE_URL, getAccessToken, refreshAccessToken } from "./auth";
+import { APIError, requestJson, guardTenantRefresh } from "./api-client";
 
 const API_PREFIX = "exam-controller";
 
@@ -39,6 +39,8 @@ const call = <T>(path: string, init: RequestInit = {}): Promise<T> =>
     init,
     getAccessToken(),
     "ExamControllerAPIError",
+    refreshAccessToken,
+    guardTenantRefresh,
   );
 
 export function queryString(

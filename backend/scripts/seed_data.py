@@ -96,17 +96,17 @@ PLANS = [
         200,
         7999,
         79990,
-        CORE_KEYS + ["library", "hostel", "transport", "placement", "hr", "finance"],
+        CORE_KEYS + ["finance"],
     ),
     (
         "Enterprise",
         "enterprise",
-        -1,
-        -1,
-        1000,
+        50000,
+        5000,
+        2000,
         19999,
         199990,
-        ALL_KEYS,
+        CORE_KEYS + ["finance"],
     ),
 ]
 

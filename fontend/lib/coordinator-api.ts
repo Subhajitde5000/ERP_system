@@ -10,8 +10,8 @@
  * form keep their pure-function logic.
  */
 
-import { API_BASE_URL, getAccessToken } from "./auth";
-import { APIError, errorMessage, requestJson } from "./api-client";
+import { API_BASE_URL, getAccessToken, refreshAccessToken } from "./auth";
+import { APIError, errorMessage, requestJson, guardTenantRefresh } from "./api-client";
 
 const API_PREFIX = "coordinator";
 
@@ -23,6 +23,8 @@ const call = <T>(path: string, init: RequestInit = {}): Promise<T> =>
     init,
     getAccessToken(),
     "CoordinatorAPIError",
+    refreshAccessToken,
+    guardTenantRefresh,
   );
 
 export function queryString(

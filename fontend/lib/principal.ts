@@ -6,8 +6,8 @@
  * in-memory data source or derives an institution metric in the browser.
  */
 
-import { API_BASE_URL, getAccessToken } from "./auth";
-import { APIError, errorMessage, requestJson } from "./api-client";
+import { API_BASE_URL, getAccessToken, refreshAccessToken } from "./auth";
+import { APIError, errorMessage, requestJson, guardTenantRefresh } from "./api-client";
 
 const API_PREFIX = "principal";
 
@@ -25,6 +25,8 @@ export function leadershipCall<T>(
     init,
     getAccessToken(),
     errorName,
+    refreshAccessToken,
+    guardTenantRefresh,
   );
 }
 
