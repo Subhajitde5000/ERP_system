@@ -71,6 +71,13 @@ class Assignment(Base):
     total_marks: Mapped[int] = mapped_column(Integer, nullable=False)
     passing_marks: Mapped[int] = mapped_column(Integer, nullable=False)
     due_date: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    # The teacher console (C-TC-13/14) owns the remaining canonical columns;
+    # the HOD console reads the same rows and ignores them.
+    allow_late_submission: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    late_penalty_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_file_size_mb: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    allowed_file_types: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
+    instructions_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[AssignmentStatus] = mapped_column(
         SAEnum(AssignmentStatus, name="assignment_status"), nullable=False, default=AssignmentStatus.DRAFT
     )
@@ -87,9 +94,14 @@ class Submission(Base):
     assignment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("assignments.id"), nullable=False)
     milestone_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("milestones.id"), nullable=True)
     student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    text_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     submitted_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    is_late: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    late_by_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     grade: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[SubmissionStatus] = mapped_column(
         SAEnum(SubmissionStatus, name="submission_status"), nullable=False, default=SubmissionStatus.SUBMITTED
     )

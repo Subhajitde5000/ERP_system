@@ -22,16 +22,24 @@ type ProtectedInstitutionRole =
   | "INSTITUTION_ADMIN"
   | "PRINCIPAL"
   | "VICE_PRINCIPAL"
-  | "HOD";
+  | "HOD"
+  | "ACADEMIC_COORDINATOR"
+  | "EXAM_CONTROLLER"
+  | "TEACHER"
+  | "MENTOR"
+  | "STUDENT";
 
 export function InstitutionRoleConsole({
   children,
   requiredRole,
+  alsoAllow = [],
   loadingLabel,
   Shell,
 }: {
   children: ReactNode;
   requiredRole: ProtectedInstitutionRole;
+  /** Extra roles admitted to the same console (e.g. MENTOR enters the Teacher console). */
+  alsoAllow?: ProtectedInstitutionRole[];
   loadingLabel: string;
   Shell: ComponentType<{ children: ReactNode }>;
 }) {
@@ -39,6 +47,7 @@ export function InstitutionRoleConsole({
     <InstitutionAuthProvider>
       <InstitutionRoleGate
         requiredRole={requiredRole}
+        alsoAllow={alsoAllow}
         loadingLabel={loadingLabel}
         Shell={Shell}
       >
@@ -51,17 +60,20 @@ export function InstitutionRoleConsole({
 function InstitutionRoleGate({
   children,
   requiredRole,
+  alsoAllow = [],
   loadingLabel,
   Shell,
 }: {
   children: ReactNode;
   requiredRole: ProtectedInstitutionRole;
+  alsoAllow?: ProtectedInstitutionRole[];
   loadingLabel: string;
   Shell: ComponentType<{ children: ReactNode }>;
 }) {
   const { isAuthenticated, isLoading, hasRole } = useInstitutionAuth();
   const router = useRouter();
-  const authorised = hasRole(requiredRole);
+  const authorised =
+    hasRole(requiredRole) || alsoAllow.some((role) => hasRole(role));
 
   useEffect(() => {
     if (!isLoading && (!isAuthenticated || !authorised)) router.replace("/login");
