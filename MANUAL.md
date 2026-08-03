@@ -260,16 +260,111 @@ unique mentor index. Section 11 backfills scoped HOD role assignments for
 legacy `departments.hod_id` records. Apply this update before deploying the
 HOD console.
 
+### Academic Coordinator — live console (C-AC-01 … C-AC-08)
+
+`/coordinator/*` is wired to `/api/v1/coordinator/*`. §4.5 gives the
+coordinator the build grant on the timetable and the only `canSubstitute`
+permission; the console is institution-wide, so there is no department fence.
+
+| Area | What works |
+|---|---|
+| `/coordinator/dashboard` | Conflicts, today's substitutions and upcoming events |
+| `/coordinator/timetable`, `/coordinator/timetable/conflicts` | Slot builder plus same-slot double-booking detection |
+| `/coordinator/substitutions`, `/coordinator/substitutions/new` | Cover board and substitute assignment with availability checks |
+| `/coordinator/calendar` | Holidays, exam weeks and term dates |
+| `/coordinator/notices/new` | Academic notices scoped to a class or department |
+
+### Exam Controller — live console (C-EC-01 … C-EC-10)
+
+`/exam-controller/*` is wired to `/api/v1/exam-controller/*`. §4.6 gives the
+controller authority over the examination module across every department.
+
+| Area | What works |
+|---|---|
+| `/exam-controller/dashboard`, `/exam-controller/schedule` | Status buckets and the institution-wide exam timetable |
+| `/exam-controller/halls` | Room and invigilator allocation with capacity/clash checks |
+| `/exam-controller/monitor`, `/exam-controller/malpractice` | Live attempts and flagged tab-switch events |
+| `/exam-controller/results`, `/exam-controller/grade-cards` | Compilation, forwarding for Principal approval and per-student cards |
+| `/exam-controller/reports` | Pass %, toppers and subject-wise performance |
+
+### Teacher — live subject console (C-TC-01 … C-TC-22)
+
+`/teacher/*` is wired to `/api/v1/teacher/*`. Scope is resolved per request by
+`TeacherScopeService` from `teacher_subjects` plus `classes.class_teacher_id`,
+and **every** read and write is filtered on it. An out-of-scope id returns
+**404, not 403** (`ARCHITECTURE.md` §1) so the URL space cannot be probed. A
+teacher with no subject and no class receives a 403 telling them to ask their
+HOD, rather than an empty console that looks broken.
+
+The role guard admits `TEACHER`, `MENTOR` and `HOD`: all three carry
+`teacher_subjects` rows and are fenced to exactly the subjects they hold, so
+admitting them widens nothing.
+
+| Area | What works |
+|---|---|
+| `/teacher/dashboard`, `/teacher/schedule` | Today's periods (flagged when a coordinator arranged cover), review queue, upcoming exams, notices |
+| `/teacher/attendance/mark` | Roster defaults to PRESENT, shows each learner's running % and refuses a future date or a student off the roster |
+| `/teacher/attendance/sessions[/:id]` | Correct a register until it is locked; locking is one-way |
+| `/teacher/attendance/leaves` | Student leave for the classes the teacher **owns** — a subject link alone is not standing to excuse a whole timetable |
+| `/teacher/examinations/*` | Create/edit a paper, add MCQ · true-false · descriptive questions, publish (only after Principal approval and once question marks equal the total) |
+| `/teacher/examinations/:id/results`, `/teacher/attempts/:id` | Objective answers arrive auto-scored; descriptive ones are graded here, capped at each question's marks |
+| `/teacher/assignments/*` | Regular, group and milestone coursework; milestone marks must add up to the total |
+| `/teacher/assignments/:id/submissions`, `/teacher/submissions/:id` | Approve, reject or request changes; a late submission is discounted by the assignment's own penalty |
+| `/teacher/content`, `/teacher/content/upload` | Notes, slides, video and links per chapter. §4.5: only the uploader may edit their own resource |
+| `/teacher/notices`, `/teacher/notices/new` | Post to an assigned class only; pinning stays a leadership affordance |
+| `/teacher/discussion[/:id]` | Reply, accept an answer, and moderate threads the teacher started |
+
+### Student — live self-service portal (C-ST-01 … C-ST-20)
+
+`/student/*` is wired to `/api/v1/student/*`. §4.9 limits a learner to their
+own data, and that is enforced structurally: **no student endpoint takes a
+student id**. `StudentScopeService` resolves the caller's ACTIVE enrolment and
+every query is filtered by it, so there is no parameter to tamper with.
+
+| Area | What works |
+|---|---|
+| `/student/dashboard`, `/student/profile` | Today's classes, attendance, dues and the contact details a learner may maintain themselves |
+| `/student/attendance` (+ `/calendar`) | Subject-wise percentages against the tenant threshold, and a month grid |
+| `/student/attendance/leaves/new` | Apply for leave; overlapping live requests are refused |
+| `/student/timetable` | Weekly grid for the enrolled class |
+| `/student/examinations` | Published exams only — a DRAFT paper is the teacher's workspace |
+| `/student/examinations/:id/attempt` | Timed attempt: autosave, focus-loss reporting and a server-computed deadline |
+| `/student/examinations/:id/result` | Score and grade; per-question review only when the teacher enabled it *and* results are released |
+| `/student/assignments[/:id]` | Submit or resubmit, with milestone stages that unlock in order |
+| `/student/content[/:id]` | Study material, filtered by subject and chapter |
+| `/student/results[/:id]` | Published results only — the Principal must have approved **and** the controller released them |
+| `/student/notices`, `/student/discussion[/:id]`, `/student/fees` | Notice board with read receipts, forum with upvotes, and a read-only fee ledger |
+
+**Exam integrity.** Three rules make the attempt engine safe to run in
+production:
+
+* the deadline is computed server-side from `exam_attempts.started_at`, and the
+  submit endpoint re-checks it — a frozen browser clock buys no extra time;
+* `question_options.is_correct` is never selected into the attempt payload, so
+  the answer key does not travel to the machine being examined;
+* objective questions are auto-scored on submit from the key, and negative
+  marking applies only to a *wrong* answer, never a blank one.
+
+`database/update2.sql` section 13 / Alembic `a2d4f6b8c013` adds the
+assignment/submission policy columns and the `NULLS NOT DISTINCT` version key
+that makes a resubmission a new row instead of an overwrite. Apply it before
+deploying the Teacher and Student consoles.
+
 ---
 
 ## 8. Module workflows — status
 
-The legacy preview workflows under `(institution)/*` (attendance marking,
-fees, library, hostel, timetable, etc.) currently read from in-memory **demo
-data** (`lib/*-data.ts`) and the demo `getSession`. They render for preview/QA
-but are **not yet wired to the backend**. The Principal, Vice Principal and
-HOD routes in §7 are the exception: they are standalone authenticated
-production routes and do not use those fixtures.
+The legacy preview workflows under `(institution)/*` (fees, library, hostel,
+transport, placement, HR, admission, inventory) still read from in-memory
+**demo data** (`lib/*-data.ts`) and the demo `getSession`. They render for
+preview/QA but are **not yet wired to the backend**.
+
+Every console listed in §7 is the exception — Institution Admin, Principal,
+Vice Principal, HOD, Academic Coordinator, Exam Controller, Teacher and
+Student are standalone authenticated production routes on real endpoints and
+use none of those fixtures. That is 8 of the 18 institution roles, and it
+covers the whole academic core: attendance, examination, assignment, content,
+notices, discussion, results and timetable.
 
 The migration pattern is established and identical for each:
 1. Add an ORM model (most tables already exist in `database.sql`).
@@ -286,7 +381,7 @@ The migration pattern is established and identical for each:
 - [ ] **Secrets** — `JWT_SECRET_KEY` a 64-hex random string; rotate periodically.
       `APP_DEBUG=false` (hides `/docs`, `/redoc`, stack traces; also hides the
       raw email-verification token from API responses).
-- [ ] **Database** — `database.sql`, `update.sql` **and** `update2.sql` applied (or the validated Alembic path reaches `e7f2a6c3b904`); backups on.
+- [ ] **Database** — `database.sql`, `update.sql` **and** `update2.sql` applied (or the validated Alembic path reaches `a2d4f6b8c013`); backups on.
 - [ ] **CORS** — `ALLOWED_ORIGINS` lists only your real origins
       (`https://xyz.com,https://app.xyz.com`, approved tenant origins).
 - [ ] **Email** — wire an outbound provider to drain `outbox_emails`
@@ -316,6 +411,10 @@ All under `/api/v1`. Authenticated routes take `Authorization: Bearer <jwt>`.
 | Principal | `/principal` | `/dashboard`, `/attendance`, `/examinations` (+ schedule approval), `/results` (+ publication approval), `/staff`, `/students`, `/notices`, `/timetable`, `/reports`, `/reports/export` |
 | Vice Principal | `/vice-principal` | Delegated `/dashboard`, `/attendance`, `/examinations`, `/results`, `/staff`, `/notices`, `/reports/export`; no final approval endpoints |
 | Head of Department | `/hod` | Department dashboard, attendance detail/export, exams, assignments, results, teachers/subjects, mentors, notices, discussion moderation and timetable |
+| Academic Coordinator | `/coordinator` | `/dashboard`, `/timetable` (+ slots, clashes), `/substitutions`, `/events`, `/notices` |
+| Exam Controller | `/exam-controller` | `/dashboard`, `/exams`, `/halls`, `/monitor`, `/malpractice`, `/publications`, `/grade-cards`, `/reports` |
+| Teacher | `/teacher` | `/dashboard`, `/schedule`, `/attendance/*` (context, sessions, lock, leaves), `/examinations/*` (+ questions, results), `/attempts/:id/grade`, `/assignments/*`, `/submissions/:id/review`, `/content`, `/notices`, `/discussion` |
+| Student | `/student` | `/dashboard`, `/profile`, `/attendance` (+ leaves), `/timetable`, `/examinations` (+ attempt, submit, result), `/assignments` (+ submissions), `/content`, `/results`, `/notices`, `/discussion`, `/fees` — no endpoint takes a student id |
 | Tenant auth | `/tenant/auth` | `/login`, `/logout`, `/refresh`, `/me`, `/forgot-password`, `/reset-password` |
 | Platform staff auth | `/platform/auth` | `/login`, `/logout`, `/refresh`, `/me` |
 | Setup wizard | `/setup` | `GET`, `PUT`, `POST /complete` |
@@ -331,9 +430,18 @@ cd backend
 pytest -q          # backend unit/API tests, including Principal governance routes
 ```
 
+```bash
+cd fontend
+npx tsc --noEmit   # type check
+npm run lint       # eslint
+npm run build      # production build of all routes
+```
+
 Tests use scripted fake DB sessions (no Postgres required) and cover the
-provisioning pipeline, gapless invoicing, owner signup→verify→login, and the
-institution-admin RBAC guard + plan-gated modules.
+provisioning pipeline, gapless invoicing, owner signup→verify→login, the
+institution-admin RBAC guard + plan-gated modules, and — for every role
+console — that each route rejects an anonymous caller and that an out-of-scope
+id is refused rather than served.
 
 ---
 
@@ -347,7 +455,11 @@ institution-admin RBAC guard + plan-gated modules.
 | `402 … not included in your plan` | Optional module toggle blocked by `plans.allowed_modules`. Upgrade the plan. |
 | `next build` fails | Run `npm ci` first, then inspect the reported TypeScript/route error. The app no longer fetches Google Fonts during build. |
 | Email links never arrive | No outbound provider draining `outbox_emails`. In dev (`APP_DEBUG=true`) the owner verification token is returned in the signup response. |
-| Migration conflict | Ensure a single source: raw SQL (`database.sql` + `update.sql` + `update2.sql`) **or** your validated Alembic path, not both. Current head revision is `e7f2a6c3b904`. |
+| `403 Teacher privileges are required` | The user holds no live TEACHER, MENTOR or HOD assignment for their tenant. |
+| `403 No subjects or classes are assigned to this teacher` | The role is granted but there is no `teacher_subjects` row and no `classes.class_teacher_id`. Fix it on `/hod/teachers`. |
+| `403 No active enrolment was found for this student` | The STUDENT role is granted but there is no ACTIVE `student_enrollments` row. Enrol them on `/admin/enrollments`. |
+| `404` on a teacher or student detail page | The id is outside the caller's scope. This is deliberate: a 403 would confirm the record exists (`ARCHITECTURE.md` §1). |
+| Migration conflict | Ensure a single source: raw SQL (`database.sql` + `update.sql` + `update2.sql`) **or** your validated Alembic path, not both. Current head revision is `a2d4f6b8c013`. |
 
 ---
 
@@ -357,7 +469,12 @@ institution-admin RBAC guard + plan-gated modules.
 - `doc/SYSTEM-FLOW.md` — lead → purchase → onboarding → daily operation
 - `doc/PLATFORM-OWNER-ACCOUNTS.md` — the account-holder (multi-institution) model
 - `doc/database_design_complete.md`, `doc/role_based_system_design.md`
+- `doc/SUPER-ADMIN-CONSOLE.md`, `doc/SUPPORT-CONSOLE.md` — platform consoles
+- `doc/TEACHER-STUDENT-CONSOLES.md` — C-TC-01…22 and C-ST-01…20: scope model,
+  exam integrity, schema changes and the verification matrix
 - `doc/PAGES-TODO.md` — page coverage matrix
 
-_Manual v1.5 — verified against the 106-table schema, `update2.sql`, Alembic
-head `e7f2a6c3b904`, and the live `/admin`, `/principal`, `/vp` and `/hod` consoles._
+_Manual v1.6 — verified against the 106-table schema, `update2.sql`, Alembic
+head `a2d4f6b8c013`, and the live `/admin`, `/principal`, `/vp`, `/hod`,
+`/coordinator`, `/exam-controller`, `/teacher` and `/student` consoles
+(402 backend tests, clean `tsc`, `eslint` and `next build`)._

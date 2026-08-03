@@ -24,7 +24,12 @@ type ProtectedInstitutionRole =
   | "VICE_PRINCIPAL"
   | "HOD"
   | "ACADEMIC_COORDINATOR"
-  | "EXAM_CONTROLLER";
+  | "EXAM_CONTROLLER"
+  | "TEACHER"
+  // A mentor is a teacher with mentees; the teacher API admits both, so the
+  // gate must too or a mentor is bounced from a console that would serve them.
+  | "MENTOR"
+  | "STUDENT";
 
 export function InstitutionRoleConsole({
   children,
@@ -33,7 +38,14 @@ export function InstitutionRoleConsole({
   Shell,
 }: {
   children: ReactNode;
-  requiredRole: ProtectedInstitutionRole;
+  /**
+   * One role, or every role the API admits to this console.
+   *
+   * The teacher API accepts TEACHER, MENTOR and HOD because all three carry
+   * `teacher_subjects` rows and are fenced to the same subjects. Gating the UI
+   * on TEACHER alone would bounce a mentor the backend would have served.
+   */
+  requiredRole: ProtectedInstitutionRole | ProtectedInstitutionRole[];
   loadingLabel: string;
   Shell: ComponentType<{ children: ReactNode }>;
 }) {
@@ -57,13 +69,14 @@ function InstitutionRoleGate({
   Shell,
 }: {
   children: ReactNode;
-  requiredRole: ProtectedInstitutionRole;
+  requiredRole: ProtectedInstitutionRole | ProtectedInstitutionRole[];
   loadingLabel: string;
   Shell: ComponentType<{ children: ReactNode }>;
 }) {
   const { isAuthenticated, isLoading, hasRole } = useInstitutionAuth();
   const router = useRouter();
-  const authorised = hasRole(requiredRole);
+  const accepted = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
+  const authorised = accepted.some((role) => hasRole(role));
 
   useEffect(() => {
     if (!isLoading && (!isAuthenticated || !authorised)) router.replace("/login");

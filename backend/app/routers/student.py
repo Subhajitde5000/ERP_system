@@ -1,0 +1,415 @@
+"""Student API (C-ST-01 … C-ST-20).
+
+Every endpoint requires a live ``STUDENT`` role.  No route takes a student id:
+``StudentService`` resolves the caller's own enrolment and scopes every query
+to it, so there is no parameter through which one learner could reach another's
+attendance, marks or fee ledger.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import date
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.dependencies.auth import get_current_tenant_user_student
+from app.models.user import User
+from app.schemas.common import APIResponse
+from app.schemas.student import (
+    APIResponseStudentAssignmentDetail,
+    APIResponseStudentAssignmentPage,
+    APIResponseStudentAttemptScreen,
+    APIResponseStudentAttendance,
+    APIResponseStudentContentPage,
+    APIResponseStudentContentRow,
+    APIResponseStudentDashboard,
+    APIResponseStudentEmpty,
+    APIResponseStudentExamPage,
+    APIResponseStudentExamResult,
+    APIResponseStudentFees,
+    APIResponseStudentLeavePage,
+    APIResponseStudentLeaveRow,
+    APIResponseStudentNoticePage,
+    APIResponseStudentProfile,
+    APIResponseStudentResultDetail,
+    APIResponseStudentResultList,
+    APIResponseStudentThreadDetail,
+    APIResponseStudentThreadPage,
+    APIResponseStudentTimetable,
+    StudentAnswerSave,
+    StudentAttemptSubmit,
+    StudentLeaveCreate,
+    StudentProfileUpdate,
+    StudentReplyCreate,
+    StudentSubmissionCreate,
+    StudentTabSwitch,
+    StudentThreadCreate,
+    StudentVote,
+)
+from app.services.student_service import StudentService
+
+router = APIRouter(prefix="/student", tags=["Student"])
+
+Student = Annotated[User, Depends(get_current_tenant_user_student)]
+DB = Annotated[AsyncSession, Depends(get_db)]
+
+
+# ── C-ST-01 / C-ST-02 ────────────────────────────────────────────────────────
+
+
+@router.get("/dashboard", response_model=APIResponseStudentDashboard)
+async def dashboard(db: DB, student: Student):
+    return APIResponse(
+        success=True,
+        data=await StudentService.dashboard(db, student),
+        message="Student dashboard loaded",
+    )
+
+
+@router.get("/profile", response_model=APIResponseStudentProfile)
+async def profile(db: DB, student: Student):
+    return APIResponse(
+        success=True, data=await StudentService.profile(db, student), message="Profile loaded"
+    )
+
+
+@router.patch("/profile", response_model=APIResponseStudentProfile)
+async def update_profile(payload: StudentProfileUpdate, db: DB, student: Student):
+    return APIResponse(
+        success=True,
+        data=await StudentService.update_profile(db, student, payload),
+        message="Profile updated",
+    )
+
+
+# ── C-ST-03 / C-ST-04 / C-ST-05 attendance ───────────────────────────────────
+
+
+@router.get("/attendance", response_model=APIResponseStudentAttendance)
+async def attendance(
+    db: DB,
+    student: Student,
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.attendance(db, student, from_date=from_date, to_date=to_date),
+        message="Attendance loaded",
+    )
+
+
+@router.get("/attendance/leaves", response_model=APIResponseStudentLeavePage)
+async def leaves(
+    db: DB,
+    student: Student,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.leaves(db, student, limit=limit, offset=offset),
+        message="Leave requests loaded",
+    )
+
+
+@router.post(
+    "/attendance/leaves",
+    response_model=APIResponseStudentLeaveRow,
+    status_code=status.HTTP_201_CREATED,
+)
+async def apply_leave(payload: StudentLeaveCreate, db: DB, student: Student):
+    return APIResponse(
+        success=True,
+        data=await StudentService.apply_leave(db, student, payload),
+        message="Leave request submitted",
+    )
+
+
+@router.delete("/attendance/leaves/{leave_id}", response_model=APIResponseStudentLeaveRow)
+async def cancel_leave(leave_id: uuid.UUID, db: DB, student: Student):
+    return APIResponse(
+        success=True,
+        data=await StudentService.cancel_leave(db, student, leave_id),
+        message="Leave request withdrawn",
+    )
+
+
+# ── C-ST-06 timetable ────────────────────────────────────────────────────────
+
+
+@router.get("/timetable", response_model=APIResponseStudentTimetable)
+async def timetable(db: DB, student: Student):
+    return APIResponse(
+        success=True, data=await StudentService.timetable(db, student), message="Timetable loaded"
+    )
+
+
+# ── C-ST-07 … C-ST-09 examinations ───────────────────────────────────────────
+
+
+@router.get("/examinations", response_model=APIResponseStudentExamPage)
+async def examinations(
+    db: DB,
+    student: Student,
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.examinations(
+            db, student, status_filter=status_filter, limit=limit, offset=offset
+        ),
+        message="Examinations loaded",
+    )
+
+
+@router.post(
+    "/examinations/{exam_id}/attempt", response_model=APIResponseStudentAttemptScreen
+)
+async def start_attempt(exam_id: uuid.UUID, db: DB, student: Student):
+    return APIResponse(
+        success=True,
+        data=await StudentService.start_attempt(db, student, exam_id),
+        message="Attempt started",
+    )
+
+
+@router.patch("/attempts/{attempt_id}", response_model=APIResponseStudentAttemptScreen)
+async def save_answers(
+    attempt_id: uuid.UUID, payload: StudentAnswerSave, db: DB, student: Student
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.save_answers(db, student, attempt_id, payload),
+        message="Answers saved",
+    )
+
+
+@router.post(
+    "/attempts/{attempt_id}/tab-switch", response_model=APIResponseStudentAttemptScreen
+)
+async def record_tab_switch(
+    attempt_id: uuid.UUID, payload: StudentTabSwitch, db: DB, student: Student
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.record_tab_switch(db, student, attempt_id, payload),
+        message="Recorded",
+    )
+
+
+@router.post("/attempts/{attempt_id}/submit", response_model=APIResponseStudentExamResult)
+async def submit_attempt(
+    attempt_id: uuid.UUID, payload: StudentAttemptSubmit, db: DB, student: Student
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.submit_attempt(db, student, attempt_id, payload),
+        message="Exam submitted",
+    )
+
+
+@router.get("/examinations/{exam_id}/result", response_model=APIResponseStudentExamResult)
+async def exam_result(exam_id: uuid.UUID, db: DB, student: Student):
+    return APIResponse(
+        success=True,
+        data=await StudentService.exam_result(db, student, exam_id),
+        message="Exam result loaded",
+    )
+
+
+# ── C-ST-10 … C-ST-12 assignments ────────────────────────────────────────────
+
+
+@router.get("/assignments", response_model=APIResponseStudentAssignmentPage)
+async def assignments(
+    db: DB,
+    student: Student,
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.assignments(
+            db, student, status_filter=status_filter, limit=limit, offset=offset
+        ),
+        message="Assignments loaded",
+    )
+
+
+@router.get("/assignments/{assignment_id}", response_model=APIResponseStudentAssignmentDetail)
+async def assignment_detail(assignment_id: uuid.UUID, db: DB, student: Student):
+    return APIResponse(
+        success=True,
+        data=await StudentService.assignment_detail(db, student, assignment_id),
+        message="Assignment loaded",
+    )
+
+
+@router.post(
+    "/assignments/{assignment_id}/submissions",
+    response_model=APIResponseStudentAssignmentDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_assignment(
+    assignment_id: uuid.UUID, payload: StudentSubmissionCreate, db: DB, student: Student
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.submit_assignment(db, student, assignment_id, payload),
+        message="Submission recorded",
+    )
+
+
+# ── C-ST-13 / C-ST-14 content ────────────────────────────────────────────────
+
+
+@router.get("/content", response_model=APIResponseStudentContentPage)
+async def content(
+    db: DB,
+    student: Student,
+    subject_id: uuid.UUID | None = Query(default=None),
+    chapter: str | None = Query(default=None),
+    content_type: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.content(
+            db,
+            student,
+            subject_id=subject_id,
+            chapter=chapter,
+            content_type=content_type,
+            limit=limit,
+            offset=offset,
+        ),
+        message="Content library loaded",
+    )
+
+
+@router.get("/content/{content_id}", response_model=APIResponseStudentContentRow)
+async def open_content(content_id: uuid.UUID, db: DB, student: Student):
+    return APIResponse(
+        success=True,
+        data=await StudentService.open_content(db, student, content_id),
+        message="Content loaded",
+    )
+
+
+# ── C-ST-15 … C-ST-17 results ────────────────────────────────────────────────
+
+
+@router.get("/results", response_model=APIResponseStudentResultList)
+async def results(db: DB, student: Student):
+    return APIResponse(
+        success=True, data=await StudentService.results(db, student), message="Results loaded"
+    )
+
+
+@router.get("/results/{result_id}", response_model=APIResponseStudentResultDetail)
+async def result_detail(result_id: uuid.UUID, db: DB, student: Student):
+    return APIResponse(
+        success=True,
+        data=await StudentService.result_detail(db, student, result_id),
+        message="Result loaded",
+    )
+
+
+# ── C-ST-18 notices ──────────────────────────────────────────────────────────
+
+
+@router.get("/notices", response_model=APIResponseStudentNoticePage)
+async def notices(
+    db: DB,
+    student: Student,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.notices(db, student, limit=limit, offset=offset),
+        message="Notices loaded",
+    )
+
+
+@router.post("/notices/{notice_id}/read", response_model=APIResponseStudentEmpty)
+async def mark_notice_read(notice_id: uuid.UUID, db: DB, student: Student):
+    await StudentService.mark_notice_read(db, student, notice_id)
+    return APIResponse(success=True, data={}, message="Marked as read")
+
+
+# ── C-ST-19 discussion ───────────────────────────────────────────────────────
+
+
+@router.get("/discussion", response_model=APIResponseStudentThreadPage)
+async def threads(
+    db: DB,
+    student: Student,
+    query: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.threads(db, student, query=query, limit=limit, offset=offset),
+        message="Discussion threads loaded",
+    )
+
+
+@router.post(
+    "/discussion",
+    response_model=APIResponseStudentThreadDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_thread(payload: StudentThreadCreate, db: DB, student: Student):
+    return APIResponse(
+        success=True,
+        data=await StudentService.create_thread(db, student, payload),
+        message="Thread posted",
+    )
+
+
+@router.get("/discussion/{thread_id}", response_model=APIResponseStudentThreadDetail)
+async def thread_detail(thread_id: uuid.UUID, db: DB, student: Student):
+    return APIResponse(
+        success=True,
+        data=await StudentService.thread_detail(db, student, thread_id),
+        message="Thread loaded",
+    )
+
+
+@router.post("/discussion/{thread_id}/replies", response_model=APIResponseStudentThreadDetail)
+async def reply_to_thread(
+    thread_id: uuid.UUID, payload: StudentReplyCreate, db: DB, student: Student
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.reply_to_thread(db, student, thread_id, payload),
+        message="Reply posted",
+    )
+
+
+@router.post("/discussion/vote", response_model=APIResponseStudentThreadDetail)
+async def vote(payload: StudentVote, db: DB, student: Student):
+    return APIResponse(
+        success=True, data=await StudentService.vote(db, student, payload), message="Vote recorded"
+    )
+
+
+# ── C-ST-20 fees ─────────────────────────────────────────────────────────────
+
+
+@router.get("/fees", response_model=APIResponseStudentFees)
+async def fees(db: DB, student: Student):
+    return APIResponse(
+        success=True, data=await StudentService.fees(db, student), message="Fee account loaded"
+    )

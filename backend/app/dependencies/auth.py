@@ -237,6 +237,46 @@ async def get_current_tenant_user_coordinator(
     )
 
 
+async def get_current_tenant_user_teacher(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Require a live teaching role; subject/class reach is resolved fail-closed later.
+
+    §4.5 scopes a Teacher to *assigned classes and subjects only*, and that
+    fence is a row-level question the role check cannot answer — it is applied
+    by ``TeacherScopeService`` on every read and write.  MENTOR and HOD satisfy
+    this guard because both are teaching staff who also carry ``teacher_subjects``
+    rows; their reach is still exactly the subjects they are assigned to, so
+    admitting them here widens nothing.
+    """
+    return await _require_current_tenant_roles(
+        current_user,
+        db,
+        {"TEACHER", "MENTOR", "HOD"},
+        "Teacher privileges are required",
+    )
+
+
+async def get_current_tenant_user_student(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Require a live STUDENT role; §4.9 scopes every read to the caller's own enrolment.
+
+    No other role satisfies this guard.  A Teacher wanting a student's data
+    uses the teacher console, which applies the subject fence; letting staff
+    call the student endpoints would hand them an unscoped read of any learner
+    who shares the tenant.
+    """
+    return await _require_current_tenant_roles(
+        current_user,
+        db,
+        {"STUDENT"},
+        "Student privileges are required",
+    )
+
+
 async def get_current_tenant_user_exam_controller(
     current_user: Annotated[User, Depends(get_current_tenant_user)],
     db: Annotated[AsyncSession, Depends(get_db)],

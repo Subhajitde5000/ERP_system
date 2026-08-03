@@ -49,7 +49,10 @@ class ExamStatus(str, enum.Enum):
 
 
 class AttemptStatus(str, enum.Enum):
-    NOT_STARTED = "NOT_STARTED"
+    # Mirrors the `attempt_status` DB enum exactly. A "not started" attempt is
+    # the *absence* of an exam_attempts row, not a value — the previous
+    # NOT_STARTED member had no counterpart in PostgreSQL, so persisting it
+    # would have failed at the driver with an invalid input value.
     IN_PROGRESS = "IN_PROGRESS"
     SUBMITTED = "SUBMITTED"
     GRADED = "GRADED"

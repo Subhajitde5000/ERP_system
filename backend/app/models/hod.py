@@ -12,7 +12,17 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Enum as SAEnum, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import (
+    Boolean,
+    Enum as SAEnum,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -71,6 +81,16 @@ class Assignment(Base):
     total_marks: Mapped[int] = mapped_column(Integer, nullable=False)
     passing_marks: Mapped[int] = mapped_column(Integer, nullable=False)
     due_date: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    # Late-submission policy (§8.1). Modelled here rather than in a second
+    # table because the teacher sets it on the assignment form (C-TC-13) and
+    # the student submit path (C-ST-11) is the only reader.
+    allow_late_submission: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    late_penalty_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_file_size_mb: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    allowed_file_types: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=False, default=lambda: ["pdf", "doc", "docx", "zip"]
+    )
+    instructions_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[AssignmentStatus] = mapped_column(
         SAEnum(AssignmentStatus, name="assignment_status"), nullable=False, default=AssignmentStatus.DRAFT
     )
@@ -80,21 +100,37 @@ class Assignment(Base):
 
 class Submission(Base):
     __tablename__ = "submissions"
-    __table_args__ = (Index("idx_submissions_assignment", "assignment_id", "student_id"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "assignment_id",
+            "milestone_id",
+            "student_id",
+            "version",
+            name="uq_submissions__assignment_id_milestone_id_student_id_ve",
+        ),
+        Index("idx_submissions_assignment", "assignment_id", "student_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
     assignment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("assignments.id"), nullable=False)
     milestone_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("milestones.id"), nullable=True)
     student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    text_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     submitted_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    is_late: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    late_by_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     grade: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[SubmissionStatus] = mapped_column(
         SAEnum(SubmissionStatus, name="submission_status"), nullable=False, default=SubmissionStatus.SUBMITTED
     )
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    # A resubmission creates a new row rather than mutating the graded one, so
+    # the unique key must include the version (§8.3).
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
 class DiscussionThread(Base):

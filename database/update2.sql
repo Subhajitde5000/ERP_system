@@ -802,3 +802,73 @@ SELECT gen_random_uuid(), u.id, r.id, u.tenant_id, 'INSTITUTION', NOW(), TRUE
         AND ra.role_id = r.id
         AND ra.tenant_id = u.tenant_id
    );
+
+
+-- --------------------------------------------------------------------------
+-- 13. Teacher & Student consoles (C-TC-01 … C-TC-22, C-ST-01 … C-ST-20)
+--
+-- The two consoles read and write tables that database.sql already creates:
+-- questions §7.2, answers §7.2, milestones §8.2, submission_files §8.3,
+-- submission_reviews §8.4, content_items §10.1, discussion_replies §9.2,
+-- discussion_votes §9.3, attendance_leaves §6.9 and the fee ledger §12.
+-- Nothing new is introduced here.
+--
+-- What *is* missing on a database built purely from the Alembic chain (rather
+-- than from database.sql) are the assignment/submission policy columns and
+-- the version key that makes a resubmission a new row instead of an
+-- overwrite. Mirrors backend/app/alembic/versions/a2d4f6b8c013.
+-- --------------------------------------------------------------------------
+
+ALTER TABLE assignments
+  ADD COLUMN IF NOT EXISTS allow_late_submission BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE assignments
+  ADD COLUMN IF NOT EXISTS late_penalty_percent  INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE assignments
+  ADD COLUMN IF NOT EXISTS max_file_size_mb      INTEGER NOT NULL DEFAULT 10;
+ALTER TABLE assignments
+  ADD COLUMN IF NOT EXISTS allowed_file_types    TEXT[] NOT NULL DEFAULT '{pdf,doc,docx,zip}';
+ALTER TABLE assignments
+  ADD COLUMN IF NOT EXISTS instructions_url      TEXT;
+
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS text_response   TEXT;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_late         BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS late_by_minutes INTEGER;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS feedback        TEXT;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS version         INTEGER NOT NULL DEFAULT 1;
+
+-- A top-level submission has milestone_id IS NULL. A plain UNIQUE treats every
+-- NULL as distinct, which would let the same student submit the same version
+-- twice; NULLS NOT DISTINCT is what actually enforces one row per version.
+DROP INDEX IF EXISTS uq_submissions__assignment_id_milestone_id_student_id_ve;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_submissions__assignment_id_milestone_id_student_id_ve
+  ON submissions (assignment_id, milestone_id, student_id, version) NULLS NOT DISTINCT;
+
+-- Indexes behind the queries both consoles run on every page load.
+CREATE INDEX IF NOT EXISTS idx_attendance_leaves_tenant_status
+  ON attendance_leaves (tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_attendance_leaves_student
+  ON attendance_leaves (student_id, from_date);
+CREATE INDEX IF NOT EXISTS idx_questions_exam_id
+  ON questions (exam_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_question_options_question_id
+  ON question_options (question_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_answers_attempt_id
+  ON answers (attempt_id);
+CREATE INDEX IF NOT EXISTS idx_milestones_assignment_id
+  ON milestones (assignment_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_submission_files_submission_id
+  ON submission_files (submission_id);
+CREATE INDEX IF NOT EXISTS idx_submission_reviews_submission_id
+  ON submission_reviews (submission_id);
+CREATE INDEX IF NOT EXISTS idx_content_items_subject
+  ON content_items (subject_id, chapter, sort_order);
+CREATE INDEX IF NOT EXISTS idx_content_items_tenant_class
+  ON content_items (tenant_id, class_id);
+CREATE INDEX IF NOT EXISTS idx_discussion_replies_thread
+  ON discussion_replies (thread_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_student_fee_accounts_tenant
+  ON student_fee_accounts (tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_fee_installments_account
+  ON fee_installments (fee_account_id, installment_number);
+CREATE INDEX IF NOT EXISTS idx_fee_payments_student
+  ON fee_payments (student_id, payment_date);
