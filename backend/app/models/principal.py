@@ -48,6 +48,14 @@ class ExamStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
 
 
+class AttemptStatus(str, enum.Enum):
+    NOT_STARTED = "NOT_STARTED"
+    IN_PROGRESS = "IN_PROGRESS"
+    SUBMITTED = "SUBMITTED"
+    GRADED = "GRADED"
+    MALPRACTICE = "MALPRACTICE"
+
+
 class ResultOutcome(str, enum.Enum):
     PASS = "PASS"
     FAIL = "FAIL"
@@ -128,6 +136,68 @@ class Exam(Base):
     schedule_approval_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class ExamHallAllocation(Base):
+    __tablename__ = "exam_hall_allocations"
+    __table_args__ = (
+        Index("idx_exam_hall_allocations_exam_id", "exam_id"),
+        Index("idx_exam_hall_allocations_invigilator_id", "invigilator_id"),
+        Index("idx_exam_hall_allocations_tenant_id", "tenant_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    exam_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("exams.id"), nullable=False)
+    room_no: Mapped[str] = mapped_column(String(50), nullable=False)
+    invigilator_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    student_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=False, default=list)
+    capacity: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+
+
+class ExamAttempt(Base):
+    __tablename__ = "exam_attempts"
+    __table_args__ = (
+        Index("idx_attempts_exam_student", "exam_id", "student_id"),
+        Index("idx_attempts_status", "status"),
+        Index("idx_exam_attempts_student_id", "student_id"),
+        Index("idx_exam_attempts_tenant_id", "tenant_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    exam_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("exams.id"), nullable=False)
+    student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    submitted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    auto_submitted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    total_score: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    percentage: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    grade: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    status: Mapped[AttemptStatus] = mapped_column(SAEnum(AttemptStatus, name="attempt_status"), nullable=False, default=AttemptStatus.IN_PROGRESS)
+    tab_switch_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    device_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+
+
+class MalpracticeLog(Base):
+    __tablename__ = "malpractice_logs"
+    __table_args__ = (
+        Index("idx_malpractice_tenant_logged", "tenant_id", "logged_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    attempt_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("exam_attempts.id"), nullable=False)
+    student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    action_taken: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    logged_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    handled_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
 class ResultPublication(Base):

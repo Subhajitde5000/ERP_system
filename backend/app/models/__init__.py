@@ -32,9 +32,15 @@ from app.models.academic import AcademicYear, Department, SchoolClass, Subject
 from app.models.enrollment import Enrollment, TeacherSubject
 from app.models.principal import (
     AttendanceSession,
+    AttemptStatus,
     Exam,
+    ExamAttempt,
+    ExamHallAllocation,
+    ExamStatus,
+    MalpracticeLog,
     Notice,
     NoticeRead,
+    ResultOutcome,
     ResultPublication,
     StaffLeaveRequest,
     StaffProfile,
@@ -47,6 +53,18 @@ from app.models.hod import (
     DiscussionThread,
     MentorAssignment,
     Submission,
+)
+from app.models.coordinator import (
+    AcademicEvent,
+    AcademicEventScope,
+    AcademicEventType,
+    TimetableSubstitution,
+)
+from app.models.exam_controller import (
+    ExamControllerGradeCard,
+    ExamControllerGradeCardStatus,
+    ExamControllerPublication,
+    ExamControllerPublicationStatus,
 )
 
 __all__ = [
@@ -83,9 +101,15 @@ __all__ = [
     "SchoolClass",
     "Subject",
     "AttendanceSession",
+    "AttemptStatus",
     "Exam",
+    "ExamAttempt",
+    "ExamHallAllocation",
+    "ExamStatus",
+    "MalpracticeLog",
     "Notice",
     "NoticeRead",
+    "ResultOutcome",
     "ResultPublication",
     "StaffLeaveRequest",
     "StaffProfile",
@@ -96,4 +120,12 @@ __all__ = [
     "DiscussionThread",
     "MentorAssignment",
     "Submission",
+    "AcademicEvent",
+    "AcademicEventScope",
+    "AcademicEventType",
+    "TimetableSubstitution",
+    "ExamControllerPublication",
+    "ExamControllerPublicationStatus",
+    "ExamControllerGradeCard",
+    "ExamControllerGradeCardStatus",
 ]
