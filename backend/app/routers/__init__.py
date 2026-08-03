@@ -17,6 +17,8 @@ from app.routers.email import router as email_router
 from app.routers.principal import router as principal_router
 from app.routers.vice_principal import router as vice_principal_router
 from app.routers.hod import router as hod_router
+from app.routers.coordinator import router as coordinator_router
+from app.routers.exam_controller import router as exam_controller_router
 
 __all__ = [
     "platform_auth_router",
@@ -32,4 +34,6 @@ __all__ = [
     "principal_router",
     "vice_principal_router",
     "hod_router",
+    "coordinator_router",
+    "exam_controller_router",
 ]

@@ -22,7 +22,9 @@ type ProtectedInstitutionRole =
   | "INSTITUTION_ADMIN"
   | "PRINCIPAL"
   | "VICE_PRINCIPAL"
-  | "HOD";
+  | "HOD"
+  | "ACADEMIC_COORDINATOR"
+  | "EXAM_CONTROLLER";
 
 export function InstitutionRoleConsole({
   children,

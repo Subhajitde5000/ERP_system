@@ -1,5 +1,5 @@
 -- ============================================================================
--- update2.sql — Platform consoles + academic leadership governance (C-SA, C-PR, C-HD)
+-- update2.sql — Platform consoles + academic leadership governance (C-SA, C-PR, C-HD, C-AC)
 -- ============================================================================
 -- Applies AFTER database.sql and update.sql. Every block is idempotent, so
 -- re-running is safe, and each section is mirrored by the corresponding
@@ -633,4 +633,172 @@ SELECT gen_random_uuid(), d.hod_id, r.id, d.tenant_id, d.id, 'DEPARTMENT', NOW()
         AND ra.role_id = r.id
         AND ra.tenant_id = d.tenant_id
         AND ra.scope_id = d.id
+   );
+
+
+-- --------------------------------------------------------------------------
+-- 12. Academic Coordinator console (C-AC-01 … C-AC-08).
+--
+-- The base schema already owns the timetable, the substitution log, the
+-- academic calendar and the notice board. §4.5 grants the coordinator a
+-- build grant on the timetable and the only ``canSubstitute`` permission;
+-- nothing in §7.4 had to change.
+--
+-- What this section adds is a small set of hot-path indexes the C-AC
+-- service filters on, plus the role grant reconciliation that older
+-- institutions may not have completed during the HOD bootstrap.  A DB
+-- built only from database.sql + update.sql therefore gets every index the
+-- production service requires.
+-- --------------------------------------------------------------------------
+
+-- Substitutions — the C-AC-05 board filters by tenant + date and the
+-- C-AC-06 form needs (slot_id, date) lookups for the unique-key check.
+CREATE INDEX IF NOT EXISTS idx_timetable_substitutions_tenant_id
+  ON timetable_substitutions (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_timetable_substitutions_date
+  ON timetable_substitutions (tenant_id, date);
+
+-- Academic events — the C-AC-07 calendar lists everything between
+-- from_date and to_date; the tenant + year composite serves the dashboard's
+-- "next 14 days" rollup, and a holiday flag index keeps the legend
+-- response time bounded.
+CREATE INDEX IF NOT EXISTS idx_academic_events_tenant_year
+  ON academic_events (tenant_id, academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_academic_events_dates
+  ON academic_events (tenant_id, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_academic_events_is_holiday
+  ON academic_events (tenant_id, is_holiday, start_date)
+  WHERE is_holiday = TRUE;
+
+-- The base schema defines the ACADEMIC_COORDINATOR role in §5.6 but older
+-- tenants may not have an active role assignment for their coordinator
+-- user.  The HOD bootstrap in section 11 has the same shape — reconcile
+-- the canonical link once during rollout so the role check never has to
+-- probe for the role row at request time.
+INSERT INTO role_assignments (
+  id, user_id, role_id, tenant_id, scope_type, assigned_at, is_active
+)
+SELECT gen_random_uuid(), u.id, r.id, u.tenant_id, 'INSTITUTION', NOW(), TRUE
+  FROM users u
+  JOIN roles r ON r.name = 'ACADEMIC_COORDINATOR'
+ WHERE u.deleted_at IS NULL
+   AND u.is_active IS TRUE
+   AND NOT EXISTS (
+     SELECT 1
+       FROM role_assignments ra
+      WHERE ra.user_id = u.id
+        AND ra.role_id = r.id
+        AND ra.tenant_id = u.tenant_id
+   );
+
+
+-- --------------------------------------------------------------------------
+-- 13. Exam Controller console (C-EC-01 … C-EC-10).
+--
+-- The exam module's canonical tables already belong to the base schema
+-- (§7.2 ``exams``, ``exam_hall_allocations``, ``exam_attempts``,
+-- ``malpractice_logs``, ``result_publications``, ``student_results``).  The
+-- controller service is institution-wide, so no department fence is
+-- applied; every filter hits ``tenant_id`` directly.
+--
+-- What this section adds:
+--
+--   1. The two new tables the controller console introduces:
+--      * ``exam_controller_publications`` — the controller's draft bundle
+--        before it is forwarded to the principal approval queue.
+--      * ``exam_controller_grade_cards`` — per-student grade cards
+--        generated for a publication.
+--   2. The composite indexes the C-EC service hot paths require.
+--   3. The role grant reconciliation for tenants whose ``EXAM_CONTROLLER``
+--      user does not yet have an active role assignment.
+-- --------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS exam_controller_publications (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  title               VARCHAR(255) NOT NULL,
+  academic_year_id    UUID NOT NULL REFERENCES academic_years(id),
+  class_id            UUID REFERENCES classes(id),
+  exam_ids            UUID[] NOT NULL DEFAULT '{}',
+  compiled_by         UUID NOT NULL REFERENCES users(id),
+  compiled_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  published_at        TIMESTAMPTZ,
+  status              VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+  summary             JSONB NOT NULL DEFAULT '{}'::jsonb,
+  note                TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_ec_publications_tenant_year
+  ON exam_controller_publications (tenant_id, academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_ec_publications_status
+  ON exam_controller_publications (tenant_id, status);
+
+DO $$ BEGIN
+  CREATE TYPE exam_controller_publication_status AS ENUM (
+    'DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'PUBLISHED', 'WITHDRAWN'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+ALTER TABLE exam_controller_publications
+  ALTER COLUMN status TYPE exam_controller_publication_status
+  USING status::exam_controller_publication_status;
+
+CREATE TABLE IF NOT EXISTS exam_controller_grade_cards (
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id               UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  publication_id          UUID NOT NULL REFERENCES exam_controller_publications(id) ON DELETE CASCADE,
+  student_id              UUID NOT NULL REFERENCES users(id),
+  class_id                UUID NOT NULL REFERENCES classes(id),
+  total_marks_obtained    NUMERIC(8, 2) NOT NULL,
+  total_marks_possible    NUMERIC(8, 2) NOT NULL,
+  percentage              NUMERIC(5, 2) NOT NULL,
+  grade                   VARCHAR(5) NOT NULL,
+  rank                    INTEGER,
+  subject_scores          JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status                  VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  generated_at            TIMESTAMPTZ,
+  published_at            TIMESTAMPTZ,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ec_grade_cards_publication
+  ON exam_controller_grade_cards (publication_id);
+CREATE INDEX IF NOT EXISTS idx_ec_grade_cards_tenant_class
+  ON exam_controller_grade_cards (tenant_id, class_id);
+
+DO $$ BEGIN
+  CREATE TYPE exam_controller_grade_card_status AS ENUM (
+    'PENDING', 'GENERATED', 'PUBLISHED', 'FAILED'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+ALTER TABLE exam_controller_grade_cards
+  ALTER COLUMN status TYPE exam_controller_grade_card_status
+  USING status::exam_controller_grade_card_status;
+
+-- The Exam Controller dashboard and schedule pages filter on (tenant_id,
+-- status) and (tenant_id, scheduled_at).  The base schema already indexes
+-- both, so this section only adds the publication-grade-card composite
+-- index that the C-EC-09 page relies on.
+CREATE INDEX IF NOT EXISTS idx_grade_cards_tenant_pub
+  ON exam_controller_grade_cards (tenant_id, publication_id);
+
+-- The base schema defines the EXAM_CONTROLLER role in §5.6 but older
+-- tenants may not have an active role assignment for their controller
+-- user.  Reconcile the canonical link once during rollout so the role
+-- check never has to probe for the role row at request time.
+INSERT INTO role_assignments (
+  id, user_id, role_id, tenant_id, scope_type, assigned_at, is_active
+)
+SELECT gen_random_uuid(), u.id, r.id, u.tenant_id, 'INSTITUTION', NOW(), TRUE
+  FROM users u
+  JOIN roles r ON r.name = 'EXAM_CONTROLLER'
+ WHERE u.deleted_at IS NULL
+   AND u.is_active IS TRUE
+   AND NOT EXISTS (
+     SELECT 1
+       FROM role_assignments ra
+      WHERE ra.user_id = u.id
+        AND ra.role_id = r.id
+        AND ra.tenant_id = u.tenant_id
    );

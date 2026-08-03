@@ -216,3 +216,40 @@ async def get_current_tenant_user_hod(
         {"HOD"},
         "HOD privileges are required",
     )
+
+
+async def get_current_tenant_user_coordinator(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Require a live ACADEMIC_COORDINATOR role; the C-AC console is institution-wide.
+
+    §4.5 grants the coordinator a build grant on the timetable and the only
+    ``canSubstitute`` permission.  Read access is separately given to HOD,
+    Principal, Teacher and Student by the timetable permission matrix, but
+    those roles do not satisfy this guard; they have their own consoles.
+    """
+    return await _require_current_tenant_roles(
+        current_user,
+        db,
+        {"ACADEMIC_COORDINATOR"},
+        "Academic Coordinator privileges are required",
+    )
+
+
+async def get_current_tenant_user_exam_controller(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Require a live EXAM_CONTROLLER role; the C-EC console is institution-wide.
+
+    §4.6 grants the controller full authority over the examination module
+    across all departments.  No department fence is applied here; the
+    service queries filter on tenant and reach every class.
+    """
+    return await _require_current_tenant_roles(
+        current_user,
+        db,
+        {"EXAM_CONTROLLER"},
+        "Exam Controller privileges are required",
+    )

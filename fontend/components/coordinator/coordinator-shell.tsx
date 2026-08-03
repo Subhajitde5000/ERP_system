@@ -1,0 +1,40 @@
+"use client";
+
+import {
+  AlertTriangle,
+  CalendarDays,
+  CalendarPlus,
+  LayoutDashboard,
+  Megaphone,
+  RefreshCw,
+  Repeat,
+} from "lucide-react";
+
+import {
+  InstitutionConsoleShell,
+  type InstitutionConsoleNavItem,
+} from "@/components/institution-console/institution-console-shell";
+
+/** C-AC-01 … C-AC-08 navigation for an institution-wide coordinator. */
+const NAVIGATION: InstitutionConsoleNavItem[] = [
+  { label: "Dashboard", href: "/coordinator/dashboard", icon: LayoutDashboard },
+  { label: "Timetable builder", href: "/coordinator/timetable", icon: CalendarDays },
+  { label: "Conflict checker", href: "/coordinator/timetable/conflicts", icon: AlertTriangle },
+  { label: "Substitutions", href: "/coordinator/substitutions", icon: Repeat },
+  { label: "Add substitution", href: "/coordinator/substitutions/new", icon: RefreshCw },
+  { label: "Academic calendar", href: "/coordinator/calendar", icon: CalendarPlus },
+  { label: "Post notice", href: "/coordinator/notices/new", icon: Megaphone },
+];
+
+export function CoordinatorShell({ children }: { children: React.ReactNode }) {
+  return (
+    <InstitutionConsoleShell
+      navigation={NAVIGATION}
+      consoleTitle="Coordinator console"
+      headerTitle="Academic operations"
+      roleLabel="Academic Coordinator"
+    >
+      {children}
+    </InstitutionConsoleShell>
+  );
+}
