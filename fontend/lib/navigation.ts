@@ -1,6 +1,7 @@
 import {
   Bus,
   Handshake,
+  AlertTriangle,
   BadgeIndianRupee,
   BookMarked,
   BookOpen,
@@ -9,10 +10,14 @@ import {
   Building2,
   CalendarClock,
   CalendarDays,
+  CalendarPlus,
   CalendarRange,
   Activity,
+  Award,
+  BarChart3,
   DoorOpen,
   ClipboardCheck,
+  ClipboardList,
   Contact,
   FileBarChart,
   FileSpreadsheet,
@@ -200,6 +205,46 @@ const NAV_ADMIN: NavItem[] = [
     roles: ["VICE_PRINCIPAL"],
   },
   {
+    // C-EC-01 — the Exam Controller's landing page.
+    label: "Dashboard",
+    href: "/exam-controller/dashboard",
+    icon: LayoutDashboard,
+    core: true,
+    roles: ["EXAM_CONTROLLER"],
+  },
+  {
+    // C-EC-02 — institution-wide exam schedule.
+    label: "Exam schedule",
+    href: "/exam-controller/schedule",
+    icon: ClipboardList,
+    core: true,
+    roles: ["EXAM_CONTROLLER"],
+  },
+  {
+    // C-EC-07 — result compilation and publication management.
+    label: "Results",
+    href: "/exam-controller/results",
+    icon: Award,
+    core: true,
+    roles: ["EXAM_CONTROLLER"],
+  },
+  {
+    // C-EC-09 — generated grade cards.
+    label: "Grade cards",
+    href: "/exam-controller/grade-cards",
+    icon: FileText,
+    core: true,
+    roles: ["EXAM_CONTROLLER"],
+  },
+  {
+    // C-EC-10 — analytics across every publication.
+    label: "Reports",
+    href: "/exam-controller/reports",
+    icon: BarChart3,
+    core: true,
+    roles: ["EXAM_CONTROLLER"],
+  },
+  {
     // C-EC-03…06 — the Exam Controller's console. §4.6 scopes them to the
     // examination module across all departments; the Admin and leadership
     // read it (leadership read-only, §4.3 "approve exam schedules").
@@ -255,6 +300,35 @@ const NAV_ADMIN: NavItem[] = [
     label: "Substitutions",
     href: "/coordinator/substitutions",
     icon: Repeat,
+    core: true,
+    roles: ["ACADEMIC_COORDINATOR"],
+  },
+  {
+    // C-AC-02 — the dedicated timetable builder. Reachable for the
+    // coordinator only; HOD/Principal/Teacher still use /timetable for
+    // their own read-only grids, so a second link to a read-only list would
+    // be noise in fifteen other sidebars.
+    label: "Timetable builder",
+    href: "/coordinator/timetable",
+    icon: CalendarDays,
+    core: true,
+    roles: ["ACADEMIC_COORDINATOR"],
+  },
+  {
+    // C-AC-04 — the conflict checker.
+    label: "Conflicts",
+    href: "/coordinator/timetable/conflicts",
+    icon: AlertTriangle,
+    core: true,
+    roles: ["ACADEMIC_COORDINATOR"],
+  },
+  {
+    // C-AC-07 — the academic calendar. Distinct from the shared /calendar
+    // (which every role has read access to) because the coordinator is the
+    // only role that publishes events.
+    label: "Calendar",
+    href: "/coordinator/calendar",
+    icon: CalendarPlus,
     core: true,
     roles: ["ACADEMIC_COORDINATOR"],
   },
