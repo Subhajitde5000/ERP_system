@@ -253,3 +253,41 @@ async def get_current_tenant_user_exam_controller(
         {"EXAM_CONTROLLER"},
         "Exam Controller privileges are required",
     )
+
+
+async def get_current_tenant_user_teacher(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Require a live TEACHER (or MENTOR) role; scope is resolved in the service.
+
+    MENTOR is allowed through the same guard because the role design treats a
+    mentor as a teacher with extra mentees — every teaching workflow
+    (§4.4, shared-pages sheet) applies to both.  The service still restricts
+    every read/write to subjects the caller actually teaches or classes they
+    own, so a role grant alone never widens data access.
+    """
+    return await _require_current_tenant_roles(
+        current_user,
+        db,
+        {"TEACHER", "MENTOR"},
+        "Teacher privileges are required",
+    )
+
+
+async def get_current_tenant_user_student(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Require a live STUDENT role; every row is scoped to the caller.
+
+    There is no scope argument on any student route: the service resolves the
+    caller's active enrollment and uses it as the single fence for classes,
+    exams, assignments, results, fees and notices.
+    """
+    return await _require_current_tenant_roles(
+        current_user,
+        db,
+        {"STUDENT"},
+        "Student privileges are required",
+    )

@@ -1,0 +1,460 @@
+"""Student API — C-ST-01 … C-ST-20.
+
+The caller is the scope: no route accepts a student id.  Every response is
+filtered through the signed-in student's active enrollment, resolved in the
+service on each request.
+"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.dependencies.auth import get_current_tenant_user_student
+from app.models.user import User
+from app.schemas.common import APIResponse
+from app.schemas.student import (
+    APIResponseStudentAssignment,
+    APIResponseStudentAssignments,
+    APIResponseStudentAttempt,
+    APIResponseStudentAttendance,
+    APIResponseStudentAttendanceCalendar,
+    APIResponseStudentContent,
+    APIResponseStudentContents,
+    APIResponseStudentDashboard,
+    APIResponseStudentExam,
+    APIResponseStudentExamResult,
+    APIResponseStudentExams,
+    APIResponseStudentFees,
+    APIResponseStudentLeave,
+    APIResponseStudentLeaves,
+    APIResponseStudentNotice,
+    APIResponseStudentNotices,
+    APIResponseStudentPaper,
+    APIResponseStudentProfile,
+    APIResponseStudentResult,
+    APIResponseStudentResults,
+    APIResponseStudentScopes,
+    APIResponseStudentSubmission,
+    APIResponseStudentTabSwitch,
+    APIResponseStudentThread,
+    APIResponseStudentThreads,
+    APIResponseStudentTimetable,
+    StudentAnswerSave,
+    StudentLeaveCreate,
+    StudentProfileUpdate,
+    StudentReplyCreate,
+    StudentSubmissionCreate,
+    StudentThreadCreate,
+    StudentVoteToggle,
+)
+from app.services.student_service import StudentService
+
+router = APIRouter(prefix="/student", tags=["Student"])
+
+
+# ── C-ST-01 / C-ST-02 ─────────────────────────────────────────────────────────
+
+
+@router.get("/dashboard", response_model=APIResponseStudentDashboard)
+async def dashboard(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.dashboard(db, student), message="Student dashboard loaded")
+
+
+@router.get("/profile", response_model=APIResponseStudentProfile)
+async def profile(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.profile(db, student), message="Profile loaded")
+
+
+@router.patch("/profile", response_model=APIResponseStudentProfile)
+async def update_profile(
+    payload: StudentProfileUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.update_profile(db, student, payload), message="Profile updated")
+
+
+# ── C-ST-03 … C-ST-05 attendance & leave ──────────────────────────────────────
+
+
+@router.get("/attendance", response_model=APIResponseStudentAttendance)
+async def attendance(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.attendance(db, student), message="Attendance loaded")
+
+
+@router.get("/attendance/calendar", response_model=APIResponseStudentAttendanceCalendar)
+async def attendance_calendar(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+    month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.attendance_calendar(db, student, month=month),
+        message="Attendance calendar loaded",
+    )
+
+
+@router.get("/attendance/leaves", response_model=APIResponseStudentLeaves)
+async def leaves(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.leaves(db, student, limit=limit, offset=offset),
+        message="Leave requests loaded",
+    )
+
+
+@router.post("/attendance/leaves", response_model=APIResponseStudentLeave, status_code=status.HTTP_201_CREATED)
+async def apply_leave(
+    payload: StudentLeaveCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.apply_leave(db, student, payload), message="Leave request submitted")
+
+
+@router.post("/attendance/leaves/{leave_id}/cancel", response_model=APIResponseStudentLeave)
+async def cancel_leave(
+    leave_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.cancel_leave(db, student, leave_id), message="Leave request cancelled")
+
+
+# ── C-ST-06 timetable ─────────────────────────────────────────────────────────
+
+
+@router.get("/timetable", response_model=APIResponseStudentTimetable)
+async def timetable(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.timetable(db, student), message="Timetable loaded")
+
+
+# ── C-ST-07 … C-ST-09 examinations ────────────────────────────────────────────
+
+
+@router.get("/examinations", response_model=APIResponseStudentExams)
+async def examinations(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+    when: Literal["upcoming", "completed", "all"] | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.examinations(db, student, when=when, limit=limit, offset=offset),
+        message="Examinations loaded",
+    )
+
+
+@router.get("/examinations/{exam_id}", response_model=APIResponseStudentExam)
+async def exam_detail(
+    exam_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.exam_detail(db, student, exam_id), message="Exam loaded")
+
+
+@router.post("/examinations/{exam_id}/attempt", response_model=APIResponseStudentAttempt, status_code=status.HTTP_201_CREATED)
+async def start_attempt(
+    exam_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.start_attempt(db, student, exam_id), message="Exam attempt started")
+
+
+@router.get("/examinations/{exam_id}/attempt/paper", response_model=APIResponseStudentPaper)
+async def attempt_paper(
+    exam_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.attempt_paper(db, student, exam_id), message="Exam paper loaded")
+
+
+@router.put("/examinations/{exam_id}/attempt/answers", response_model=APIResponseStudentPaper)
+async def save_answer(
+    exam_id: uuid.UUID,
+    payload: StudentAnswerSave,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.save_answer(db, student, exam_id, payload), message="Answer saved")
+
+
+@router.post("/examinations/{exam_id}/attempt/tab-switch", response_model=APIResponseStudentTabSwitch)
+async def record_tab_switch(
+    exam_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.record_tab_switch(db, student, exam_id),
+        message="Tab switch recorded",
+    )
+
+
+@router.post("/examinations/{exam_id}/attempt/submit", response_model=APIResponseStudentAttempt)
+async def submit_attempt(
+    exam_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.submit_attempt(db, student, exam_id), message="Exam submitted")
+
+
+@router.get("/examinations/{exam_id}/result", response_model=APIResponseStudentExamResult)
+async def exam_result(
+    exam_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.exam_result(db, student, exam_id), message="Exam result loaded")
+
+
+# ── C-ST-10 … C-ST-12 assignments ─────────────────────────────────────────────
+
+
+@router.get("/assignments", response_model=APIResponseStudentAssignments)
+async def assignments(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.assignments(db, student, status_filter=status_filter, limit=limit, offset=offset),
+        message="Assignments loaded",
+    )
+
+
+@router.get("/assignments/{assignment_id}", response_model=APIResponseStudentAssignment)
+async def assignment_detail(
+    assignment_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.assignment_detail(db, student, assignment_id),
+        message="Assignment loaded",
+    )
+
+
+@router.post("/assignments/{assignment_id}/submit", response_model=APIResponseStudentSubmission, status_code=status.HTTP_201_CREATED)
+async def submit_assignment(
+    assignment_id: uuid.UUID,
+    payload: StudentSubmissionCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.submit_assignment(db, student, assignment_id, payload),
+        message="Assignment submitted",
+    )
+
+
+# ── C-ST-13 / C-ST-14 content ─────────────────────────────────────────────────
+
+
+@router.get("/content", response_model=APIResponseStudentContents)
+async def content(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+    subject_id: uuid.UUID | None = Query(default=None),
+    chapter: str | None = Query(default=None, max_length=100),
+    content_type: str | None = Query(default=None),
+    query: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.content(
+            db, student, subject_id=subject_id, chapter=chapter,
+            content_type=content_type, query=query, limit=limit, offset=offset,
+        ),
+        message="Content loaded",
+    )
+
+
+@router.get("/content/{content_id}", response_model=APIResponseStudentContent)
+async def content_detail(
+    content_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.content_detail(db, student, content_id), message="Content loaded")
+
+
+# ── C-ST-15 … C-ST-17 results ─────────────────────────────────────────────────
+
+
+@router.get("/results", response_model=APIResponseStudentResults)
+async def results(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.results(db, student), message="Results loaded")
+
+
+@router.get("/results/{publication_id}", response_model=APIResponseStudentResult)
+async def result_detail(
+    publication_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.result_detail(db, student, publication_id),
+        message="Result loaded",
+    )
+
+
+@router.get("/results/{publication_id}/grade-card", response_model=APIResponseStudentResult)
+async def grade_card(
+    publication_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    """C-ST-17 — the printable grade card payload for a published result."""
+    return APIResponse(
+        success=True,
+        data=await StudentService.result_detail(db, student, publication_id),
+        message="Grade card loaded",
+    )
+
+
+# ── C-ST-18 notices ───────────────────────────────────────────────────────────
+
+
+@router.get("/notices", response_model=APIResponseStudentNotices)
+async def notices(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+    query: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.notices(db, student, query=query, limit=limit, offset=offset),
+        message="Notices loaded",
+    )
+
+
+@router.post("/notices/{notice_id}/read", response_model=APIResponseStudentNotice)
+async def mark_notice_read(
+    notice_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.mark_notice_read(db, student, notice_id), message="Notice marked as read")
+
+
+# ── C-ST-19 discussion ────────────────────────────────────────────────────────
+
+
+@router.get("/discussion/scopes", response_model=APIResponseStudentScopes)
+async def discussion_scopes(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.discussion_scopes(db, student), message="Discussion scopes loaded")
+
+
+@router.get("/discussion", response_model=APIResponseStudentThreads)
+async def discussion(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+    scope_id: uuid.UUID | None = Query(default=None),
+    query: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.discussion(db, student, scope_id=scope_id, query=query, limit=limit, offset=offset),
+        message="Discussions loaded",
+    )
+
+
+@router.post("/discussion", response_model=APIResponseStudentThread, status_code=status.HTTP_201_CREATED)
+async def create_thread(
+    payload: StudentThreadCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.create_thread(db, student, payload), message="Thread created")
+
+
+@router.get("/discussion/{thread_id}", response_model=APIResponseStudentThread)
+async def discussion_detail(
+    thread_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.discussion_detail(db, student, thread_id),
+        message="Thread loaded",
+    )
+
+
+@router.post("/discussion/{thread_id}/replies", response_model=APIResponseStudentThread, status_code=status.HTTP_201_CREATED)
+async def reply_thread(
+    thread_id: uuid.UUID,
+    payload: StudentReplyCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.reply_thread(db, student, thread_id, payload), message="Reply posted")
+
+
+@router.post("/discussion/vote", response_model=APIResponseStudentThread)
+async def toggle_vote(
+    payload: StudentVoteToggle,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.toggle_vote(db, student, payload), message="Vote updated")
+
+
+# ── C-ST-20 fees ──────────────────────────────────────────────────────────────
+
+
+@router.get("/fees", response_model=APIResponseStudentFees)
+async def fees(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(success=True, data=await StudentService.fees(db, student), message="Fee account loaded")

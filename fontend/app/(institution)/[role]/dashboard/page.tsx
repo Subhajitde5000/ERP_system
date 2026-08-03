@@ -102,6 +102,8 @@ export default async function DashboardSegmentPage({
   if (role === "HOD") redirect("/hod/dashboard");
   if (role === "ACADEMIC_COORDINATOR") redirect("/coordinator/dashboard");
   if (role === "EXAM_CONTROLLER") redirect("/exam-controller/dashboard");
+  if (role === "TEACHER" || role === "MENTOR") redirect("/teacher/dashboard");
+  if (role === "STUDENT") redirect("/student/dashboard");
 
   // The URL segment is authoritative for which dashboard renders.
   const dashboard = (
