@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolve the .env path relative to this file so it is found regardless of
 # the working directory uvicorn (or its --reload subprocess) was launched from.
-_ENV_FILE = Path(__file__).parent.parent / ".env"
+_ENV_FILE = Path(__file__).parent.parent / ".env.example"
 
 
 class Settings(BaseSettings):
@@ -44,6 +44,41 @@ class Settings(BaseSettings):
     # ── App ───────────────────────────────────────────────────────────────────
     APP_ENV: str = "development"
     APP_DEBUG: bool = True
+
+    # ── Signup / provisioning ─────────────────────────────────────────────────
+    # Root domain used to build login URLs and subdomain checks, e.g.
+    # https://green.xyz.com/login — defaults to xyz.com.
+    PUBLIC_ROOT_DOMAIN: str = "xyz.com"
+    TRIAL_DAYS: int = 14
+    TENANT_DEFAULT_TIMEZONE: str = "Asia/Kolkata"
+
+    # ── Email ─────────────────────────────────────────────────────────────────
+    # Which transport actually sends mail:
+    #   google  → Gmail / Workspace SMTP   (app/services/mailer/providers/google.py)
+    #   klaviyo → Klaviyo Events API       (app/services/mailer/providers/klaviyo.py)
+    #   console → log only, never delivers (safe default for dev/tests)
+    # A provider that is commented out in mailer/registry.py is ignored here.
+    EMAIL_PROVIDER: str = "console"
+    # Envelope identity — shared by both providers.
+    EMAIL_FROM: str = ""
+    EMAIL_FROM_NAME: str = "xyz.com ERP"
+    EMAIL_REPLY_TO: str = ""
+    EMAIL_TIMEOUT_SECONDS: int = 20
+
+    # -- Google (SMTP) --
+    # GOOGLE_SMTP_PASSWORD must be a 16-char App Password, not the account
+    # password: https://myaccount.google.com/apppasswords
+    GOOGLE_SMTP_HOST: str = "smtp.gmail.com"
+    GOOGLE_SMTP_PORT: int = 587          # 587 = STARTTLS, 465 = implicit TLS
+    GOOGLE_SMTP_USER: str = "dessubhajit00@gmail.com"
+    GOOGLE_SMTP_PASSWORD: str = "wjsb cwjq iqqy tnxn"
+
+    # -- Klaviyo (Events API) --
+    # Private key (pk_...) with Events:write + Profiles:write scopes.
+    KLAVIYO_API_KEY: str = ""
+    KLAVIYO_API_REVISION: str = "2024-10-15"
+    # Metric name prefix — the flow trigger becomes e.g. "ERP owner.verify_email"
+    KLAVIYO_METRIC_PREFIX: str = "ERP"
 
 
 @lru_cache

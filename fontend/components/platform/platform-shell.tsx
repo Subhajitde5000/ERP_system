@@ -6,6 +6,8 @@ import { Menu } from "lucide-react";
 
 import { SidebarNav } from "@/components/dashboard/sidebar-nav";
 import { getPlatformNav, PLATFORM_ROLE_LABELS } from "@/lib/platform";
+import { PLATFORM_HOST, ROOT_DOMAIN_LABEL } from "@/lib/platform-shared";
+import { usePlatformSession } from "@/hooks/use-platform-session";
 import type { PlatformRole } from "@/types/auth";
 
 /**
@@ -20,6 +22,12 @@ import type { PlatformRole } from "@/types/auth";
  * Nav is built here rather than passed in: nav items carry Lucide icon
  * components, which cannot cross the server→client boundary as props — the
  * same constraint the institution shell documents.
+ *
+ * The signed-in identity is resolved here, not passed down: `PlatformPage` is
+ * a server component and cannot read the session, so it used to hand down a
+ * hardcoded demo name and every Super Admin saw "Vikram" in the sidebar.
+ * `userName`/`role` are now the *preview* fallback, used only when there is no
+ * session (`?role=`).
  */
 export function PlatformShell({
   role,
@@ -27,13 +35,19 @@ export function PlatformShell({
   children,
 }: {
   role: PlatformRole;
+  /** Fallback shown only in `?role=` preview, when no session exists. */
   userName: string;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const params = useSearchParams();
+  const session = usePlatformSession();
 
-  const sections = useMemo(() => getPlatformNav(role), [role]);
+  // The real account wins whenever one is signed in.
+  const activeRole = session?.role ?? role;
+  const activeName = session?.name ?? userName;
+
+  const sections = useMemo(() => getPlatformNav(activeRole), [activeRole]);
 
   // Preview params must survive navigation, exactly as on the institution side
   const withPreview = useMemo(() => {
@@ -62,10 +76,10 @@ export function PlatformShell({
   const sidebar = (
     <SidebarNav
       sections={withPreview}
-      tenantName="xyz.com Platform"
-      tenantHost="app.xyz.com"
-      userName={userName}
-      roleChip={PLATFORM_ROLE_LABELS[role]}
+      tenantName={`${ROOT_DOMAIN_LABEL} Platform`}
+      tenantHost={PLATFORM_HOST}
+      userName={activeName}
+      roleChip={PLATFORM_ROLE_LABELS[activeRole]}
       onNavigate={() => setOpen(false)}
       // Platform staff have no account on any tenant login.
       logoutHref="/platform/login"

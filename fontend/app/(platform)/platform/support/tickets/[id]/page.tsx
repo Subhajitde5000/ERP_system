@@ -1,27 +1,17 @@
-import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { PlatformPage } from "@/components/platform/platform-page";
-import { TicketDetail } from "@/components/support/ticket-detail";
-import { getTicket, getTicketDetail, getTicketIds } from "@/lib/support-data";
+import { LiveTicketDetail } from "@/components/support/consoles";
 
-export function generateStaticParams() {
-  return getTicketIds().map((id) => ({ id }));
-}
-
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}): Promise<Metadata> {
-  const { id } = await params;
-  const t = getTicket(id);
-  return { title: t ? `${t.reference} — ${t.subject}` : "Ticket" };
-}
+export const metadata: Metadata = { title: "Ticket" };
 
 /**
  * C-SP-03 — Ticket Detail.
  * "View ticket + reply thread + change status"
+ *
+ * No `generateStaticParams`: tickets are created at runtime, so the id set is
+ * not known at build time. The record is fetched per request from
+ * GET /api/v1/platform/tickets/:id, which 404s on an unknown id.
  */
 export default async function TicketDetailPage({
   params,
@@ -32,12 +22,9 @@ export default async function TicketDetailPage({
 }) {
   const [{ id }, search] = await Promise.all([params, searchParams]);
 
-  const detail = getTicketDetail(id);
-  if (!detail) notFound();
-
   return (
     <PlatformPage search={search} allow={["SUPPORT_STAFF", "SUPER_ADMIN"]}>
-      {() => <TicketDetail detail={detail} />}
+      {() => <LiveTicketDetail id={id} />}
     </PlatformPage>
   );
 }

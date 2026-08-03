@@ -3,7 +3,6 @@ import { headers } from "next/headers";
 import { DashboardShell } from "./shell";
 import { roleChip } from "@/lib/roles";
 import { getSession } from "@/lib/session";
-import { getUnreadCount } from "@/lib/notification-data";
 import { resolveTenant } from "@/lib/tenant";
 import type { InstitutionRole } from "@/types/auth";
 import type { DashboardSession } from "@/types/dashboard";
@@ -36,7 +35,7 @@ export async function InstitutionShell({
       userName={session.user.name}
       roleChip={roleChip(role)}
       academicYear={session.academicYear}
-      unread={getUnreadCount(session.roles)}
+      unread={0}
     >
       {children({ session, role })}
     </DashboardShell>

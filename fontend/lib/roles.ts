@@ -20,12 +20,14 @@ const ROLE_MAP: Record<Role, RoleMeta> = {
   SUPPORT_STAFF: { label: "Support Staff", redirect: "/platform/support/dashboard", external: true },
   SALES_EXECUTIVE: { label: "Sales Executive", redirect: "/platform/sales/dashboard", external: true },
   FINANCE_MANAGER: { label: "Finance Manager", redirect: "/platform/finance", external: true },
+  OWNER: { label: "Owner", redirect: "/platform/dashboard", external: true },
 
   // Institution leadership
   INSTITUTION_ADMIN: { label: "Institution Admin", redirect: "/admin/dashboard" },
   PRINCIPAL: { label: "Principal", redirect: "/principal/dashboard" },
-  // Distinct slug: VP gets a delegated, read-only variant of the principal view (§5.3)
-  VICE_PRINCIPAL: { label: "Vice Principal", redirect: "/vice-principal/dashboard" },
+  // Dedicated, delegated production surface. The documented `/vp/*` routes
+  // are distinct from the Principal's final-approval console.
+  VICE_PRINCIPAL: { label: "Vice Principal", redirect: "/vp/dashboard" },
   HOD: { label: "HOD", redirect: "/hod/dashboard" },
 
   // Academic
@@ -55,6 +57,7 @@ const PRIORITY: Role[] = [
   "SUPPORT_STAFF",
   "FINANCE_MANAGER",
   "SALES_EXECUTIVE",
+  "OWNER",
   "INSTITUTION_ADMIN",
   "PRINCIPAL",
   "VICE_PRINCIPAL",

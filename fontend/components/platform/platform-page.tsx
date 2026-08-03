@@ -28,7 +28,7 @@ export function PlatformPage({
   const permitted = allow.includes(role);
 
   return (
-    <PlatformShell role={role} userName={firstName(role)}>
+    <PlatformShell role={role} userName={previewName(role)}>
       {permitted ? (
         children({ role })
       ) : (
@@ -47,6 +47,7 @@ const PLATFORM_ROLES: PlatformRole[] = [
   "SUPPORT_STAFF",
   "SALES_EXECUTIVE",
   "FINANCE_MANAGER",
+  "OWNER",
 ];
 
 export function parsePlatformRole(value?: string | null): PlatformRole {
@@ -54,12 +55,19 @@ export function parsePlatformRole(value?: string | null): PlatformRole {
   return PLATFORM_ROLES.find((r) => r === upper) ?? "SUPER_ADMIN";
 }
 
-/** Demo display name, mirroring the institution session's `DEMO_NAMES`. */
-function firstName(role: PlatformRole): string {
+/**
+ * Placeholder name for `?role=` previews only.
+ *
+ * This is a server component and cannot read the session, so it hands the
+ * shell a fallback; `PlatformShell` overrides it with the real signed-in
+ * account whenever one exists. Mirrors the institution session's `DEMO_NAMES`.
+ */
+function previewName(role: PlatformRole): string {
   return {
     SUPER_ADMIN: "Vikram",
     SUPPORT_STAFF: "Nandini",
     SALES_EXECUTIVE: "Rohit",
     FINANCE_MANAGER: "Sanjay",
+    OWNER: "Rahul",
   }[role];
 }

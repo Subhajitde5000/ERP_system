@@ -23,10 +23,19 @@ slowapi==0.1.9
 # Redis (async)
 redis[hiredis]==5.2.1
 
+# Email
+# google provider  → SMTP transport
+aiosmtplib==3.0.2
+# klaviyo provider → Events API over HTTP (also used by the test client)
+httpx==0.28.1
+
 # Utilities
 python-multipart==0.0.12
+# Windows requires tzdata for Python's zoneinfo module (no system tz database)
+tzdata>=2024.1
 
 # Testing
 pytest==8.3.4
 pytest-asyncio==0.24.0
-httpx==0.28.1
+# Embedded Postgres for the real integration suites (tests skip when absent)
+pgserver==0.1.4

@@ -2,6 +2,7 @@
 ERP Backend — Main FastAPI Application Entrypoint
 """
 
+import re
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -11,7 +12,25 @@ from slowapi.util import get_remote_address
 
 from app.config import get_settings
 from app.middleware.request_id import RequestIDMiddleware
-from app.routers import platform_auth_router, tenant_auth_router
+from app.routers import (
+    platform_auth_router,
+    platform_admin_router,
+    platform_support_router,
+    public_signup_router,
+    owner_router,
+    institution_router,
+    service_requests_router,
+    setup_router,
+    tenant_auth_router,
+    email_router,
+    principal_router,
+    vice_principal_router,
+    hod_router,
+    coordinator_router,
+    exam_controller_router,
+    teacher_router,
+    student_router,
+)
 from app.schemas.common import ErrorDetail
 
 settings = get_settings()
@@ -31,15 +50,20 @@ app = FastAPI(
 
 # Attach limiter to app state so the decorator can find it
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, lambda request, exc: _rate_limit_exceeded_handler(request, exc))
 
 # ── Middleware Stack ─────────────────────────────────────────────────────────
 # Order matters: RequestID first so every subsequent log entry has an ID.
 app.add_middleware(RequestIDMiddleware)
 
+# Support subdomains for both localhost (Method 2) and production/custom root domains
+escaped_root = re.escape(settings.PUBLIC_ROOT_DOMAIN or "xyz.com")
+cors_regex = rf"https?://([a-z0-9-]+\.)*({escaped_root}|localhost|127\.0\.0\.1)(:[0-9]+)?"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
+    allow_origin_regex=cors_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -69,4 +93,19 @@ async def health_check():
 # ── Router Mounts ─────────────────────────────────────────────────────────────
 api_prefix = "/api/v1"
 app.include_router(platform_auth_router, prefix=api_prefix)
+app.include_router(platform_admin_router, prefix=api_prefix)
+app.include_router(platform_support_router, prefix=api_prefix)
 app.include_router(tenant_auth_router, prefix=api_prefix)
+app.include_router(service_requests_router, prefix=api_prefix)
+app.include_router(public_signup_router, prefix=api_prefix)
+app.include_router(owner_router, prefix=api_prefix)
+app.include_router(institution_router, prefix=api_prefix)
+app.include_router(setup_router, prefix=api_prefix)
+app.include_router(email_router, prefix=api_prefix)
+app.include_router(principal_router, prefix=api_prefix)
+app.include_router(vice_principal_router, prefix=api_prefix)
+app.include_router(hod_router, prefix=api_prefix)
+app.include_router(coordinator_router, prefix=api_prefix)
+app.include_router(exam_controller_router, prefix=api_prefix)
+app.include_router(teacher_router, prefix=api_prefix)
+app.include_router(student_router, prefix=api_prefix)
