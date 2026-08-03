@@ -539,16 +539,17 @@ class InstitutionService:
             if department_id is not None
             else RoleAssignment.scope_id.is_(None)
         )
-        exists = await db.execute(
-            select(RoleAssignment.id).where(
-                RoleAssignment.user_id == user_id,
-                RoleAssignment.role_id == role.id,
-                RoleAssignment.tenant_id == tenant_id,
-                RoleAssignment.is_active == True,  # noqa: E712
-                scope_filter,
+        exists = (
+            await db.execute(
+                select(RoleAssignment).where(
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.role_id == role.id,
+                    RoleAssignment.tenant_id == tenant_id,
+                    scope_filter,
+                )
             )
-        )
-        if exists.scalar_one_or_none() is None:
+        ).scalar_one_or_none()
+        if exists is None:
             assignment = RoleAssignment(
                 id=uuid.uuid4(),
                 user_id=user_id,
@@ -569,6 +570,25 @@ class InstitutionService:
                 action="ASSIGN_ROLE",
                 entity="RoleAssignment",
                 entity_id=assignment.id,
+                tenant_id=tenant_id,
+                new_value={
+                    "user_id": str(user_id),
+                    "role_name": role.name,
+                    "department_id": str(department_id) if department_id else None,
+                },
+            )
+        elif not exists.is_active:
+            exists.is_active = True
+            exists.assigned_by = by.id
+            exists.assigned_at = datetime.now(timezone.utc)
+            await db.flush()
+            AuditService.record(
+                db,
+                actor=by,
+                actor_role="INSTITUTION_ADMIN",
+                action="ASSIGN_ROLE",
+                entity="RoleAssignment",
+                entity_id=exists.id,
                 tenant_id=tenant_id,
                 new_value={
                     "user_id": str(user_id),
@@ -1002,12 +1022,11 @@ class InstitutionService:
             raise HTTPException(status.HTTP_409_CONFLICT, detail="HOD role is not configured")
         existing = (
             await db.execute(
-                select(RoleAssignment.id).where(
+                select(RoleAssignment).where(
                     RoleAssignment.user_id == hod_id,
                     RoleAssignment.role_id == role.id,
                     RoleAssignment.tenant_id == tenant_id,
                     RoleAssignment.scope_id == department_id,
-                    RoleAssignment.is_active.is_(True),
                 )
             )
         ).scalar_one_or_none()
@@ -1033,6 +1052,22 @@ class InstitutionService:
                     action="ASSIGN_HOD_SCOPE",
                     entity="RoleAssignment",
                     entity_id=assignment.id,
+                    tenant_id=tenant_id,
+                    new_value={"hod_id": str(hod_id), "department_id": str(department_id)},
+                )
+        elif not existing.is_active:
+            existing.is_active = True
+            existing.assigned_by = actor.id if actor else None
+            existing.assigned_at = datetime.now(timezone.utc)
+            await db.flush()
+            if actor is not None:
+                AuditService.record(
+                    db,
+                    actor=actor,
+                    actor_role="INSTITUTION_ADMIN",
+                    action="ASSIGN_HOD_SCOPE",
+                    entity="RoleAssignment",
+                    entity_id=existing.id,
                     tenant_id=tenant_id,
                     new_value={"hod_id": str(hod_id), "department_id": str(department_id)},
                 )
@@ -1080,7 +1115,7 @@ class InstitutionService:
             .join(Role, Role.id == RoleAssignment.role_id)
             .where(RoleAssignment.user_id == user.id, RoleAssignment.tenant_id == tenant_id, RoleAssignment.is_active == True)  # noqa: E712
         )
-        roles = [r for r in roles_res.scalars().all()]
+        roles = list(set(roles_res.scalars().all()))
         dept_res = await db.execute(
             select(RoleAssignment.scope_id).where(
                 RoleAssignment.user_id == user.id, RoleAssignment.tenant_id == tenant_id,
