@@ -671,9 +671,6 @@ export const fetchTeacherContent = (filters: {
 export const createTeacherContent = (payload: TeacherContentIn) =>
   call<TeacherContentRow>("/content", jsonInit("POST", payload));
 
-export const fetchTeacherContentItem = (contentId: string) =>
-  call<TeacherContentRow>(`/content/${contentId}`);
-
 export const updateTeacherContent = (contentId: string, payload: TeacherContentUpdate) =>
   call<TeacherContentRow>(`/content/${contentId}`, jsonInit("PATCH", payload));
 

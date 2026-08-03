@@ -546,15 +546,6 @@ async def create_content(
     return APIResponse(success=True, data=await TeacherService.create_content(db, teacher, payload), message="Content uploaded")
 
 
-@router.get("/content/{content_id}", response_model=APIResponseTeacherContent)
-async def content_detail(
-    content_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    teacher: Annotated[User, Depends(get_current_tenant_user_teacher)],
-):
-    return APIResponse(success=True, data=await TeacherService.content_detail(db, teacher, content_id), message="Content loaded")
-
-
 @router.patch("/content/{content_id}", response_model=APIResponseTeacherContent)
 async def update_content(
     content_id: uuid.UUID,

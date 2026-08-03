@@ -790,14 +790,15 @@ class TeacherService:
     async def lock_attendance_session(
         db: AsyncSession, teacher: User, session_id: uuid.UUID
     ) -> TeacherAttendanceSessionDetail:
-        detail = await TeacherService.attendance_session_detail(db, teacher, session_id)
         session = (
             await db.execute(
                 select(AttendanceSession)
                 .where(AttendanceSession.id == session_id, AttendanceSession.tenant_id == teacher.tenant_id)
                 .with_for_update()
             )
-        ).scalar_one()
+        ).scalar_one_or_none()
+        if session is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Attendance session not found")
         if session.teacher_id != teacher.id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the marking teacher can lock this session")
         if not session.is_locked:
@@ -814,7 +815,9 @@ class TeacherService:
                 tenant_id=teacher.tenant_id,
                 new_value={"date": str(session.date), "period_label": session.period_label},
             )
-        return detail
+        # Read the response AFTER the mutation so is_locked/locked_at reflect
+        # reality — returning the pre-lock snapshot told the UI the lock failed.
+        return await TeacherService.attendance_session_detail(db, teacher, session_id)
 
     # ── C-TC-06 student leave review ────────────────────────────────────────
 
@@ -3090,7 +3093,9 @@ class TeacherService:
                 .with_for_update()
             )
         ).scalar_one()
-        if (thread.scope_type or "").upper() != "SUBJECT" or thread.scope_id not in scope.subject_ids:
+        # Same rule the thread page advertises via can_moderate: the author of
+        # an in-scope thread or any teacher of the owning subject may accept.
+        if not TeacherService._can_moderate(scope, thread, teacher):
             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You can accept answers only in your own subjects")
         await db.execute(
             update(DiscussionReply)

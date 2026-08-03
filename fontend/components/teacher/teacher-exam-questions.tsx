@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Card, EmptyState, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
@@ -11,9 +11,12 @@ import {
   addExamQuestion,
   deleteExamQuestion,
   fetchTeacherExam,
+  updateExamQuestion,
   type TeacherQuestionIn,
   type TeacherQuestionOptionIn,
+  type TeacherQuestionOut,
   type TeacherQuestionType,
+  type TeacherQuestionUpdate,
 } from "@/lib/teacher";
 import { AsyncState, statusLabel } from "@/components/principal/principal-ui";
 
@@ -35,6 +38,7 @@ export function TeacherExamQuestionsPage() {
   const params = useParams<{ id: string }>();
   const examId = params.id;
   const resource = useResource(() => fetchTeacherExam(examId), [examId]);
+  const [editing, setEditing] = useState<TeacherQuestionOut | null>(null);
   const data = resource.data;
 
   return (
@@ -87,11 +91,26 @@ export function TeacherExamQuestionsPage() {
                         {question.explanation ? <p className="mt-2 text-xs italic text-muted-foreground">Explanation: {question.explanation}</p> : null}
                       </div>
                       {data.status === "DRAFT" ? (
-                        <RemoveQuestionButton
-                          examId={examId}
-                          questionId={question.id}
-                          onRemoved={(detail) => resource.setData({ ...data, ...detail })}
-                        />
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditing(question);
+                              document.getElementById("question-composer")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }}
+                            className="inline-flex h-8 items-center gap-1 rounded-field border border-border px-2.5 text-xs font-semibold text-primary hover:border-accent hover:text-accent"
+                          >
+                            <Pencil className="h-3.5 w-3.5" /> Edit
+                          </button>
+                          <RemoveQuestionButton
+                            examId={examId}
+                            questionId={question.id}
+                            onRemoved={(detail) => {
+                              if (editing?.id === question.id) setEditing(null);
+                              resource.setData({ ...data, ...detail });
+                            }}
+                          />
+                        </div>
                       ) : null}
                     </div>
                   </Card>
@@ -105,7 +124,10 @@ export function TeacherExamQuestionsPage() {
             {data.status === "DRAFT" ? (
               <QuestionComposer
                 examId={examId}
-                onAdded={async () => {
+                editing={editing}
+                onCancelEdit={() => setEditing(null)}
+                onSaved={async () => {
+                  setEditing(null);
                   await resource.reload();
                 }}
               />
@@ -154,7 +176,17 @@ function RemoveQuestionButton({
   );
 }
 
-function QuestionComposer({ examId, onAdded }: { examId: string; onAdded: () => Promise<void> }) {
+function QuestionComposer({
+  examId,
+  editing,
+  onCancelEdit,
+  onSaved,
+}: {
+  examId: string;
+  editing: TeacherQuestionOut | null;
+  onCancelEdit: () => void;
+  onSaved: () => Promise<void>;
+}) {
   const [questionType, setQuestionType] = useState<TeacherQuestionType>("MCQ");
   const [text, setText] = useState("");
   const [marks, setMarks] = useState("2");
@@ -167,14 +199,37 @@ function QuestionComposer({ examId, onAdded }: { examId: string; onAdded: () => 
 
   const objective = OBJECTIVE.includes(questionType);
 
-  function reset() {
+  const resetToAddMode = useCallback(() => {
+    setQuestionType("MCQ");
     setText("");
     setMarks("2");
     setNegativeMarks("0");
     setDifficulty("");
     setExplanation("");
     setOptions([newOption(true), newOption(), newOption(), newOption()]);
-  }
+    setError(null);
+  }, []);
+
+  /* Entering/leaving edit mode (or switching rows) re-seeds the form. */
+  useEffect(() => {
+    if (!editing) {
+      resetToAddMode();
+      return;
+    }
+    setQuestionType(editing.question_type as TeacherQuestionType);
+    setText(editing.text);
+    setMarks(String(editing.marks));
+    setNegativeMarks(String(editing.negative_marks ?? 0));
+    setDifficulty(editing.difficulty ?? "");
+    setExplanation(editing.explanation ?? "");
+    setOptions(
+      editing.options.map((option) => {
+        optionKey += 1;
+        return { key: optionKey, text: option.text, is_correct: option.is_correct, sort_order: option.sort_order };
+      }),
+    );
+    setError(null);
+  }, [editing, resetToAddMode]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -212,11 +267,31 @@ function QuestionComposer({ examId, onAdded }: { examId: string; onAdded: () => 
         difficulty: (difficulty || null) as TeacherQuestionIn["difficulty"],
         options: payloadOptions,
       };
-      await addExamQuestion(examId, payload);
-      reset();
-      await onAdded();
+      if (editing) {
+        // question_type is immutable once created — the server validates the
+        // new options against the existing type, so it is never sent.
+        const changes: TeacherQuestionUpdate = {
+          text: payload.text,
+          marks: payload.marks,
+          negative_marks: payload.negative_marks,
+          explanation: payload.explanation,
+          difficulty: payload.difficulty,
+          options: payload.options,
+        };
+        await updateExamQuestion(examId, editing.id, changes);
+      } else {
+        await addExamQuestion(examId, payload);
+        resetToAddMode();
+      }
+      await onSaved();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not add this question.");
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : editing
+            ? "Could not save this question."
+            : "Could not add this question.",
+      );
     } finally {
       setBusy(false);
     }
@@ -224,7 +299,10 @@ function QuestionComposer({ examId, onAdded }: { examId: string; onAdded: () => 
 
   return (
     <Card>
-      <h2 className="font-display text-base font-bold text-primary">Add a question</h2>
+      <div id="question-composer" className="scroll-mt-24">
+        <h2 className="font-display text-base font-bold text-primary">
+          {editing ? "Edit question" : "Add a question"}
+        </h2>
       <form onSubmit={submit} className="mt-4 space-y-4">
         <div className="grid gap-4 sm:grid-cols-4">
           <div className="sm:col-span-2">
@@ -232,6 +310,7 @@ function QuestionComposer({ examId, onAdded }: { examId: string; onAdded: () => 
             <select
               id="q-type"
               className={inputClass}
+              disabled={!!editing}
               value={questionType}
               onChange={(event) => {
                 const next = event.target.value as TeacherQuestionType;
@@ -331,10 +410,24 @@ function QuestionComposer({ examId, onAdded }: { examId: string; onAdded: () => 
           </div>
         </div>
         {error ? <p role="alert" className="text-sm text-destructive-text">{error}</p> : null}
-        <button type="submit" disabled={busy} className="inline-flex h-11 items-center gap-2 rounded-field bg-accent px-5 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover disabled:opacity-60">
-          <Plus className="h-4 w-4" /> {busy ? "Adding…" : "Add question"}
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button type="submit" disabled={busy} className="inline-flex h-11 items-center gap-2 rounded-field bg-accent px-5 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover disabled:opacity-60">
+            {editing ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {busy ? (editing ? "Saving…" : "Adding…") : editing ? "Save changes" : "Add question"}
+          </button>
+          {editing ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onCancelEdit}
+              className="inline-flex h-11 items-center rounded-field border border-border px-5 text-sm font-semibold text-primary hover:border-accent hover:text-accent disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          ) : null}
+        </div>
       </form>
+      </div>
     </Card>
   );
 }
