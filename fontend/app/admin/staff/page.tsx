@@ -184,8 +184,8 @@ export default function StaffPage() {
                     <p className="truncate text-xs text-muted-foreground">{s.email ?? "—"}{s.department_name ? ` · ${s.department_name}` : ""}</p>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {s.roles.map((r) => (
-                      <span key={r} className="rounded-full bg-accent-light px-2.5 py-1 text-[11px] font-semibold text-accent">{r.replace(/_/g, " ")}</span>
+                    {s.roles.map((r, idx) => (
+                      <span key={`${r}-${idx}`} className="rounded-full bg-accent-light px-2.5 py-1 text-[11px] font-semibold text-accent">{r.replace(/_/g, " ")}</span>
                     ))}
                   </div>
                 </div>
