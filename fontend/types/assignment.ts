@@ -152,46 +152,6 @@ export interface SubmissionRow {
 }
 
 /**
- * One submission on its own page — C-TC-16.
- * "View one submission, files, add feedback, set score"
- *
- * The row is the same `SubmissionRow` the review table (C-TC-15) already
- * renders; what this adds is the **context** a reviewer needs when they
- * arrive by deep link rather than from the assignment they were just
- * looking at — which assignment this is, what it is marked out of, and where
- * the student sits in the queue.
- *
- * `previousVersions` exists because `submissions` is UNIQUE on
- * `(assignment_id, milestone_id, student_id, version)` (§7.3) — a
- * resubmission is a *new row*, not an edit. A reviewer looking at v2 needs to
- * see what they asked for on v1, or the feedback loop is invisible.
- */
-export interface SubmissionDetail {
-  submission: SubmissionRow;
-  /** The assignment it belongs to, for the header and the score cap */
-  assignment: AssignmentSummary;
-  /** Set only for a MILESTONE assignment — which stage this covers (§7.3) */
-  milestone: Milestone | null;
-  /** Earlier versions of the same student's work, newest first */
-  previousVersions: {
-    version: number;
-    status: SubmissionStatus;
-    submittedAt: string | null;
-    score: number | null;
-    feedback: string | null;
-    reviewedByName: string | null;
-  }[];
-  /** Position in the reviewable queue, for "next to review" navigation */
-  queue: {
-    /** 1-based position among submissions still awaiting a decision */
-    position: number;
-    total: number;
-    /** Submission id of the next one needing review, null when this is last */
-    nextId: string | null;
-  };
-}
-
-/**
  * Completion roll-up for one assignment — PAGE 22 gives the Teacher a
  * "submission table" and the HOD an "overview of submissions, completion
  * rate". Both read these numbers, derived from the submission rows.

@@ -5,7 +5,6 @@ import type {
   DepartmentAssignmentSummary,
   Milestone,
   StudentAssignment,
-  SubmissionDetail,
   SubmissionRow,
   SubmissionStatus,
   TeacherLoad,
@@ -689,112 +688,6 @@ export function getAssignmentDetail(
   }
 
   return detail;
-}
-
-/* ── C-TC-16 Submission Detail ──────────────────────────────────────────── */
-
-/**
- * One submission, resolved from its id.
- *
- * `submissionId` is `sub-{assignmentId}-{studentId}` (see `buildSubmissions`),
- * so the assignment is recoverable from the id without a second lookup table.
- * Parsed defensively rather than split on "-": an assignment id containing a
- * hyphen would break a naive split, and ids come from the URL.
- *
- * ── The fence ─────────────────────────────────────────────────────────────
- * This returns `undefined` unless the caller may review. §4.5 scopes a
- * Teacher to "own subjects", and a submission carries a named student's work,
- * marks and feedback — a Student or Parent reaching this id must get nothing,
- * not a hidden section. The route 404s on `undefined`, so an unauthorised id
- * is indistinguishable from a non-existent one.
- */
-export function getSubmissionDetail(
-  submissionId: string,
-  opts: { canReview: boolean },
-): SubmissionDetail | undefined {
-  if (!opts.canReview) return undefined;
-
-  // The student segment is matched but not captured: the row is found by the
-  // whole id below, so binding it separately would be a second source of
-  // truth for the same thing.
-  const match = /^sub-(.+)-s\d+$/.exec(submissionId);
-  if (!match) return undefined;
-  const [, assignmentId] = match;
-
-  const assignment = getAssignment(assignmentId!);
-  if (!assignment) return undefined;
-
-  const rows = buildSubmissions(assignment);
-  const submission = rows.find((r) => r.submissionId === submissionId);
-  if (!submission) return undefined;
-
-  // Reviewable queue, in the same order the review table lists it, so
-  // "next" here and the next row there are the same submission.
-  const pending = rows.filter(
-    (r) => r.status === "SUBMITTED" || r.status === "UNDER_REVIEW",
-  );
-  const index = pending.findIndex((r) => r.submissionId === submissionId);
-
-  return {
-    submission,
-    assignment,
-    // Milestone submissions target one stage; `milestone_id` is NULL
-    // otherwise (§7.3), and the fixture's rows are assignment-level.
-    milestone:
-      submission.milestoneId === null
-        ? null
-        : (MILESTONES.find((m) => m.id === submission.milestoneId) ?? null),
-    previousVersions: buildPreviousVersions(submission, assignment),
-    queue: {
-      // A reviewed submission is not in the queue — report 0 rather than the
-      // -1 `findIndex` returns, which would render as "0 of 3".
-      position: index === -1 ? 0 : index + 1,
-      total: pending.length,
-      nextId:
-        index === -1 || index + 1 >= pending.length
-          ? null
-          : (pending[index + 1]!.submissionId ?? null),
-    },
-  };
-}
-
-/**
- * Earlier versions of the same student's work.
- *
- * §7.3 makes a resubmission a new row (`version` increments, the unique key
- * includes it), so a v2 submission implies a v1 that was rejected or sent
- * back. The fixture only stores the current version, so the earlier one is
- * reconstructed from *why* it was superseded — which is exactly the
- * information the reviewer needs and the only thing the current row records
- * about it.
- *
- * TODO(Dev-B): `GET /assignment/submissions/:id/versions` should return the
- * real rows once resubmission is wired; this reconstruction goes away then.
- */
-function buildPreviousVersions(
-  submission: SubmissionRow,
-  assignment: AssignmentSummary,
-): SubmissionDetail["previousVersions"] {
-  if (submission.version <= 1) return [];
-
-  return Array.from({ length: submission.version - 1 }, (_, i) => {
-    const version = submission.version - 1 - i;
-    return {
-      version,
-      // The version before the current one is the one that was sent back
-      status: "RESUBMIT_REQUESTED" as SubmissionStatus,
-      // `at()` takes an offset from T0, not from now — an earlier version is
-      // three days before the current submission.
-      submittedAt: submission.submittedAt
-        ? new Date(
-            Date.parse(submission.submittedAt) - (i + 1) * 3 * DAYS,
-          ).toISOString()
-        : null,
-      score: null,
-      feedback: FEEDBACK.RESUBMIT_REQUESTED ?? null,
-      reviewedByName: assignment.teacherName,
-    };
-  });
 }
 
 /**
