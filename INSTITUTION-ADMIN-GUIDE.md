@@ -42,6 +42,7 @@ If you forgot your password, use the **Forgot password?** link on the login page
 | **Academic Years** | Add the years your institution runs (e.g. 2026–27). |
 | **Departments** | Add departments (e.g. Computer Science, Commerce). |
 | **Staff** | Add teachers and other staff; give them roles. |
+| **Students** | Add students and enrol them into classes. |
 | **Modules** | Turn extra features on or off. |
 | **Settings** | Change timezone and currency. |
 | **Profile** | Update your institution's name, address, logo, contact. |
@@ -114,14 +115,15 @@ open the Vice Principal console.
 
 ## Step 4 — Add Students
 
-Students are added by the institution. (A student-friendly page is coming; for
-now your platform team can add them, or use the steps below.)
+Students are added by the institution from the **Students** page.
 
 1. Make sure you have an **Academic Year** and a **Class** ready first.
-2. A student is created with a **roll number** (unique for your institution) and,
-   if you like, an email.
+2. Click **Add student** and create the student with a **roll number** (unique
+   for your institution) and, if you like, an email.
 3. When you add a student you can also **enrol** them straight into a class for
-   the current year.
+   the current year. To enrol an existing student later, click **Enrol** next
+   to their name.
+4. All current enrolments are listed at the bottom of the **Students** page.
 
 > Two students cannot share the same roll number in your institution.
 
