@@ -152,7 +152,8 @@ export async function requestJson<T>(
   camelCase = false,
 ): Promise<T> {
   const buildHeaders = (t?: string | null): Record<string, string> => ({
-    "Content-Type": "application/json",
+    // FormData sets its own multipart boundary — a manual Content-Type would break it.
+    ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
     ...(t ? { Authorization: `Bearer ${t}` } : {}),
     ...(init.headers as Record<string, string> | undefined),
   });
