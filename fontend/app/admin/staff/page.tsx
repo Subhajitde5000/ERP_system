@@ -13,11 +13,7 @@ import {
   type Department,
   type StaffMember,
 } from "@/lib/institution";
-
-const INVITABLE_ROLES = [
-  "TEACHER", "PRINCIPAL", "VICE_PRINCIPAL", "HOD", "MENTOR",
-  "ACCOUNTANT", "LIBRARIAN", "HR_MANAGER", "ADMISSION_OFFICER",
-];
+import { roleLabel, STAFF_INVITABLE_ROLES } from "@/lib/roles";
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[] | null>(null);
@@ -135,8 +131,8 @@ export default function StaffPage() {
             <div>
               <label className={labelClass}>Role</label>
               <select className={inputClass} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value, departmentId: "" })}>
-                {INVITABLE_ROLES.map((r) => (
-                  <option key={r} value={r}>{r.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())}</option>
+                {STAFF_INVITABLE_ROLES.map((r) => (
+                  <option key={r} value={r}>{roleLabel(r)}</option>
                 ))}
               </select>
             </div>
@@ -191,9 +187,9 @@ export default function StaffPage() {
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                   <span className="text-xs text-muted-foreground">Add role:</span>
-                  {INVITABLE_ROLES.filter((r) => r !== "VICE_PRINCIPAL" && !s.roles.includes(r)).slice(0, 5).map((r) => (
+                  {STAFF_INVITABLE_ROLES.filter((r) => r !== "VICE_PRINCIPAL" && !s.roles.includes(r)).slice(0, 5).map((r) => (
                     <button key={r} type="button" onClick={() => grantRole(s, r)} className="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-[#475569] transition hover:border-accent hover:text-accent">
-                      + {r.replace(/_/g, " ").toLowerCase()}
+                      + {roleLabel(r).toLowerCase()}
                     </button>
                   ))}
                 </div>

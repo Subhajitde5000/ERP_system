@@ -66,9 +66,12 @@ async def real_backend():
                                  ("examination", "Examination", True)]:
             s.add(Module(key=key, name=name, is_core=core, sort_order=1, price_monthly=1500 if not core else 0))
         for name, scope in [("INSTITUTION_ADMIN", ScopeLevel.INSTITUTION), ("STUDENT", ScopeLevel.SELF),
-                             ("TEACHER", ScopeLevel.INSTITUTION)]:
+                             ("TEACHER", ScopeLevel.INSTITUTION),
+                             ("ACADEMIC_COORDINATOR", ScopeLevel.INSTITUTION), ("EXAM_CONTROLLER", ScopeLevel.INSTITUTION)]:
             s.add(Role(id=uuid.uuid4(), name=name, label=name.title(), scope_level=scope,
                        is_platform=False, is_optional=False))
+        s.add(Role(id=uuid.uuid4(), name="SUPER_ADMIN", label="Super Admin",
+                   scope_level=ScopeLevel.PLATFORM, is_platform=True, is_optional=False))
         await s.flush()
 
         tenant = Tenant(id=uuid.uuid4(), name="Green College", slug="green",
@@ -237,6 +240,26 @@ async def test_staff_invite_student_enroll(real_backend):
     dup = await client.post("/api/v1/institution/staff", headers=h, json={
         "name": "Priya", "email": "priya@green.edu", "role": "TEACHER"})
     assert dup.status_code == 409
+
+    # academic coordinator + exam controller are invitable staff roles
+    for role in ("ACADEMIC_COORDINATOR", "EXAM_CONTROLLER"):
+        coord = await client.post("/api/v1/institution/staff", headers=h, json={
+            "name": f"Coordinator {role}", "email": f"{role.lower()}@green.edu", "role": role})
+        assert coord.status_code == 201, coord.text
+        assert coord.json()["data"]["roles"] == [role]
+
+    # platform roles and non-staff audiences are never grantable
+    for role in ("SUPER_ADMIN", "STUDENT", "INSTITUTION_ADMIN"):
+        forbidden = await client.post("/api/v1/institution/staff", headers=h, json={
+            "name": "Hacker", "email": f"hacker-{role.lower()}@green.edu", "role": role})
+        assert forbidden.status_code == 403, forbidden.text
+    bad_grant = await client.put(f"/api/v1/institution/staff/{ir.json()['data']['id']}/roles", headers=h,
+                                 json={"role_name": "SUPER_ADMIN"})
+    assert bad_grant.status_code == 403, bad_grant.text
+    ok_grant = await client.put(f"/api/v1/institution/staff/{ir.json()['data']['id']}/roles", headers=h,
+                                json={"role_name": "ACADEMIC_COORDINATOR"})
+    assert ok_grant.status_code == 200, ok_grant.text
+    assert "ACADEMIC_COORDINATOR" in ok_grant.json()["data"]["roles"]
 
     # create student enrolled into the class
     sc = await client.post("/api/v1/institution/students", headers=h, json={

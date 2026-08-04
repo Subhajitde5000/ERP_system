@@ -70,6 +70,11 @@ ONBOARDING_DONE_KEY = "onboarding.completed"
 BULK_MAX_FILE_BYTES = 2 * 1024 * 1024
 BULK_MAX_ROWS = 10_000
 
+# Roles an Institution Admin may NOT invite or grant: platform roles
+# (SUPER_ADMIN & co) are out of scope, INSTITUTION_ADMIN is the console owner,
+# and STUDENT/PARENT have their own non-staff flows.
+NON_INVITABLE_ROLES = frozenset({"INSTITUTION_ADMIN", "STUDENT", "PARENT"})
+
 
 class InstitutionService:
     # ── helpers ──────────────────────────────────────────────────────────────
@@ -476,6 +481,7 @@ class InstitutionService:
         role = await InstitutionService._role_by_name(db, payload.role)
         if role is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unknown role '{payload.role}'")
+        InstitutionService._assert_assignable_role(role)
         if payload.department_id is not None:
             await InstitutionService._assert_dept(db, tenant.id, payload.department_id)
         if role.name == "VICE_PRINCIPAL" and payload.department_id is None:
@@ -534,6 +540,7 @@ class InstitutionService:
         role = await InstitutionService._role_by_name(db, role_name)
         if role is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unknown role '{role_name}'")
+        InstitutionService._assert_assignable_role(role)
         if department_id is not None:
             await InstitutionService._assert_dept(db, tenant_id, department_id)
         if role.name == "VICE_PRINCIPAL" and department_id is None:
@@ -1200,6 +1207,20 @@ class InstitutionService:
     async def _role_by_name(db, name: str) -> Role | None:
         res = await db.execute(select(Role).where(Role.name == name.upper()))
         return res.scalar_one_or_none()
+
+    @staticmethod
+    def _assert_assignable_role(role: Role) -> None:
+        """Reject platform roles and non-staff audiences on grant paths.
+
+        The invite dropdown derives from the same rule, but the API must
+        enforce it itself — otherwise a direct call could self-escalate to
+        SUPER_ADMIN.
+        """
+        if role.is_platform or role.name in NON_INVITABLE_ROLES:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail=f"Role '{role.name}' cannot be assigned from the institution console",
+            )
 
     @staticmethod
     async def _load_user(db, tenant_id, user_id) -> User:
