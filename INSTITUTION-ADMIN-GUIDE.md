@@ -115,15 +115,23 @@ open the Vice Principal console.
 
 ## Step 4 — Add Students
 
-Students are added by the institution from the **Students** page.
+Students are added by the institution from the **Students** page — one by one,
+or all at once with a CSV upload.
 
 1. Make sure you have an **Academic Year** and a **Class** ready first.
-2. Click **Add student** and create the student with a **roll number** (unique
-   for your institution) and, if you like, an email.
-3. When you add a student you can also **enrol** them straight into a class for
+2. **One by one:** click **Add student** and create the student with a
+   **roll number** (unique for your institution) and, if you like, an email.
+3. **Bulk upload:** click **Bulk upload**, download the CSV template, fill in
+   your students and upload the file. The page then reports how many students
+   were imported and lists any rows that failed (e.g. duplicate roll numbers)
+   with their row numbers, so you can fix and re-upload just those.
+   - Headers: `name`, `roll_no` (required), `email`, `gender`,
+     `date_of_birth`, `class_code` (optional).
+   - Use the class **code** (e.g. `PHY-1`) to enrol students automatically.
+4. When you add a student you can also **enrol** them straight into a class for
    the current year. To enrol an existing student later, click **Enrol** next
    to their name.
-4. All current enrolments are listed at the bottom of the **Students** page.
+5. All current enrolments are listed at the bottom of the **Students** page.
 
 > Two students cannot share the same roll number in your institution.
 

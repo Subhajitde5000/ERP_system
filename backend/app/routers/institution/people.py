@@ -3,7 +3,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -11,6 +11,7 @@ from app.dependencies.auth import get_current_tenant_user_admin
 from app.models.user import User
 from app.schemas.common import APIResponse
 from app.schemas.institution import (
+    APIResponseBulk,
     APIResponseEnrollment,
     APIResponseEnrollments,
     APIResponseStaff,
@@ -22,7 +23,7 @@ from app.schemas.institution import (
     StaffInvite,
     StudentCreate,
 )
-from app.services.institution_service import InstitutionService
+from app.services.institution_service import BULK_MAX_FILE_BYTES, InstitutionService
 
 router = APIRouter()
 
@@ -119,6 +120,24 @@ async def create_student(
     tenant = await _tenant(db, admin)
     data = await InstitutionService.create_student(db, tenant, payload)
     return APIResponse(success=True, data=data, message="Student created")
+
+
+@router.post("/students/bulk", response_model=APIResponseBulk)
+async def bulk_create_students(
+    file: Annotated[UploadFile, File(description="CSV with headers: name, roll_no, email, gender, date_of_birth, class_code")],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+):
+    content = await file.read(BULK_MAX_FILE_BYTES + 1)
+    if len(content) > BULK_MAX_FILE_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large — max 2 MB")
+    tenant = await _tenant(db, admin)
+    result = await InstitutionService.bulk_create_students(db, tenant, content)
+    return APIResponse(
+        success=True,
+        data=result,
+        message=f"Bulk import finished: {result.created} created, {len(result.errors)} failed",
+    )
 
 
 # ── Enrollments ──────────────────────────────────────────────────────────────

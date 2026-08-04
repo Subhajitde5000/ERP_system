@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Plus, UserPlus, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Download, Plus, Upload, UserPlus, X } from "lucide-react";
 
 import {
   Card,
@@ -18,6 +18,8 @@ import {
   fetchClasses,
   fetchEnrollments,
   fetchStudents,
+  uploadStudents,
+  type BulkUploadResult,
   type ClassRow,
   type Enrollment,
   type Student,
@@ -28,6 +30,12 @@ const GENDERS = ["MALE", "FEMALE", "OTHER"] as const;
 
 const titleCase = (value: string) =>
   value.charAt(0) + value.slice(1).toLowerCase();
+
+const TEMPLATE_CSV = [
+  "name,roll_no,email,gender,date_of_birth,class_code",
+  "Aryan Rao,PHY001,aryan@college.edu,MALE,2006-04-12,PHY-1",
+  "Meera Iyer,PHY002,meera@college.edu,FEMALE,2006-11-03,PHY-1",
+].join("\n");
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[] | null>(null);
@@ -45,6 +53,12 @@ export default function StudentsPage() {
   });
   const [enrollingId, setEnrollingId] = useState<string | null>(null);
   const [enrollForm, setEnrollForm] = useState({ class_id: "", roll_number: "" });
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
+  const [bulkResult, setBulkResult] = useState<BulkUploadResult | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const bulkInputRef = useRef<HTMLInputElement>(null);
 
   const activeClasses = classes.filter((c) => c.is_active);
 
@@ -111,21 +125,133 @@ export default function StudentsPage() {
     }
   }
 
+  function downloadTemplate() {
+    const url = URL.createObjectURL(new Blob([TEMPLATE_CSV], { type: "text/csv" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "students-template.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function upload() {
+    if (!bulkFile) return;
+    setBulkBusy(true);
+    setBulkError(null);
+    setBulkResult(null);
+    try {
+      const result = await uploadStudents(bulkFile);
+      setBulkResult(result);
+      if (bulkInputRef.current) bulkInputRef.current.value = "";
+      setBulkFile(null);
+      await load();
+    } catch (err) {
+      setBulkError(err instanceof Error ? err.message : "Could not upload the file.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
         title="Students"
-        subtitle="Create students and enrol them into classes for the current academic year."
+        subtitle="Add students one by one, or upload a CSV to import them in bulk."
         action={
-          <button
-            type="button"
-            onClick={() => setShowForm((v) => !v)}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-field bg-accent px-4 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" /> Add student
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setShowBulk((v) => !v)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-field border border-accent-border bg-white px-4 text-sm font-semibold text-accent transition hover:bg-accent-light"
+            >
+              <Upload className="h-4 w-4" aria-hidden="true" /> Bulk upload
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowForm((v) => !v)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-field bg-accent px-4 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" /> Add student
+            </button>
+          </div>
         }
       />
+
+      {showBulk ? (
+        <Card className="mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-primary">Import students from CSV</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Headers: <code className="rounded bg-muted px-1 py-0.5">name</code>,{" "}
+                <code className="rounded bg-muted px-1 py-0.5">roll_no</code> (required) —{" "}
+                <code className="rounded bg-muted px-1 py-0.5">email</code>,{" "}
+                <code className="rounded bg-muted px-1 py-0.5">gender</code>,{" "}
+                <code className="rounded bg-muted px-1 py-0.5">date_of_birth</code>,{" "}
+                <code className="rounded bg-muted px-1 py-0.5">class_code</code> (optional).
+                Use the class <em>code</em> (e.g. PHY-1) to enrol students automatically.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={downloadTemplate}
+              className="inline-flex h-9 items-center gap-2 rounded border border-border bg-white px-3 text-xs font-semibold text-primary transition hover:bg-muted"
+            >
+              <Download className="h-3.5 w-3.5" aria-hidden="true" /> Download template
+            </button>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <input
+              ref={bulkInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(e) => setBulkFile(e.target.files?.[0] ?? null)}
+              className="block w-full max-w-sm text-xs text-muted-foreground file:mr-3 file:rounded file:border-0 file:bg-accent-light file:px-3 file:py-2 file:text-xs file:font-semibold file:text-accent"
+            />
+            <button
+              type="button"
+              disabled={bulkBusy || !bulkFile}
+              onClick={upload}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-field bg-accent px-4 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Upload className="h-4 w-4" aria-hidden="true" /> {bulkBusy ? "Importing…" : "Import"}
+            </button>
+          </div>
+
+          {bulkError ? <div className="mt-4"><ErrorState message={bulkError} /></div> : null}
+
+          {bulkResult ? (
+            <div className="mt-4 space-y-3">
+              <div className="rounded-field border border-border bg-muted/50 p-3 text-sm">
+                <span className="font-bold text-primary">{bulkResult.created} of {bulkResult.total} students imported</span>
+                {bulkResult.errors.length ? <span className="text-destructive-text"> · {bulkResult.errors.length} row{bulkResult.errors.length === 1 ? "" : "s"} failed</span> : null}
+                {bulkResult.warnings.length ? <span className="text-amber-600"> · {bulkResult.warnings.length} warning{bulkResult.warnings.length === 1 ? "" : "s"}</span> : null}
+                {bulkResult.created === bulkResult.total ? <span className="ml-2 text-emerald-600">✓</span> : null}
+              </div>
+              {bulkResult.errors.length ? (
+                <div className="rounded-field border border-destructive-border bg-destructive-light/40 p-3">
+                  <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-destructive-text">Rows that were not imported</p>
+                  <ul className="max-h-44 space-y-1 overflow-y-auto text-xs text-primary">
+                    {bulkResult.errors.map((issue) => (
+                      <li key={`e-${issue.row}`}>Row {issue.row}: <span className="text-destructive-text">{issue.message}</span></li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {bulkResult.warnings.length ? (
+                <div className="rounded-field border border-amber-300 bg-amber-50 p-3">
+                  <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-amber-700">Imported, but not enrolled</p>
+                  <ul className="max-h-44 space-y-1 overflow-y-auto text-xs text-primary">
+                    {bulkResult.warnings.map((issue) => (
+                      <li key={`w-${issue.row}`}>Row {issue.row}: {issue.message}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
 
       {showForm ? (
         <Card className="mb-6">

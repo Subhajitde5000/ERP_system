@@ -126,6 +126,18 @@ export interface StudentCreate {
   class_id?: string;
 }
 
+export interface BulkUploadRowIssue {
+  row: number;
+  message: string;
+}
+
+export interface BulkUploadResult {
+  total: number;
+  created: number;
+  errors: BulkUploadRowIssue[];
+  warnings: BulkUploadRowIssue[];
+}
+
 export interface ModuleRow {
   key: string;
   name: string;
@@ -209,6 +221,11 @@ export const revokeStaffRole = (userId: string, roleName: string, departmentId?:
   );
 
 export const fetchStudents = () => call<Student[]>("/students");
+export const uploadStudents = (file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return call<BulkUploadResult>("/students/bulk", { method: "POST", body: form });
+};
 export const createStudent = (payload: StudentCreate) =>
   call<Student>("/students", {
     method: "POST",

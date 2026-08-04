@@ -257,6 +257,65 @@ async def test_staff_invite_student_enroll(real_backend):
     assert any(e["class_name"] == "PHY-1" for e in en.json()["data"])
 
 
+async def test_students_bulk_upload(real_backend):
+    client, _ = real_backend
+    h = await _login(client)
+
+    dept = (await client.post("/api/v1/institution/departments", headers=h,
+             json={"name": "Chemistry", "code": "CHM"})).json()["data"]
+    yr = (await client.post("/api/v1/institution/academic-years", headers=h,
+           json={"name": "2029-30", "start_date": "2029-06-01", "end_date": "2030-05-31"})).json()["data"]
+    cls = (await client.post("/api/v1/institution/classes", headers=h,
+            json={"name": "CHM-1", "code": "CHM-1", "department_id": dept["id"],
+                  "academic_year_id": yr["id"], "max_strength": 40})).json()["data"]
+
+    csv_body = (
+        "name,roll_no,email,gender,date_of_birth,class_code\n"
+        "Ravi Kumar,CHM001,ravi@green.edu,MALE,2006-01-15,CHM-1\n"
+        "Sana Ali,CHM002,sana@green.edu,FEMALE,2006-05-20,CHM-1\n"
+        ",CHM003,,,,\n"
+        "Ravi Kumar,CHM001,,,,\n"
+    )
+    res = await client.post("/api/v1/institution/students/bulk", headers=h,
+                            files={"file": ("students.csv", csv_body.encode(), "text/csv")})
+    assert res.status_code == 200, res.text
+    data = res.json()["data"]
+    assert data["total"] == 4
+    assert data["created"] == 2
+    assert {e["row"] for e in data["errors"]} == {4, 5}  # row 1 = header, row 2 = first student
+    assert any("name" in e["message"] for e in data["errors"])
+    assert any("Duplicate roll number in this file" in e["message"] for e in data["errors"])
+
+    lst = await client.get("/api/v1/institution/students", headers=h)
+    rolls = {s["roll_no"] for s in lst.json()["data"]}
+    assert {"CHM001", "CHM002"} <= rolls
+    by_roll = {s["roll_no"]: s for s in lst.json()["data"]}
+    assert by_roll["CHM001"]["enrollment"]["class_name"] == "CHM-1"
+
+    # re-uploading an existing roll number → DB duplicate reported per row
+    csv2 = "name,roll_no\nRavi Kumar,CHM001\nTom Jose,CHM004\n"
+    res2 = await client.post("/api/v1/institution/students/bulk", headers=h,
+                             files={"file": ("s2.csv", csv2.encode(), "text/csv")})
+    assert res2.status_code == 200, res2.text
+    data2 = res2.json()["data"]
+    assert data2["created"] == 1
+    assert any(e["row"] == 2 and "already exists" in e["message"] for e in data2["errors"])
+
+    # unknown class code → student still created, warning reported
+    csv3 = "name,roll_no,class_code\nIshaan Sen,CHM005,NOPE-9\n"
+    res3 = await client.post("/api/v1/institution/students/bulk", headers=h,
+                             files={"file": ("s3.csv", csv3.encode(), "text/csv")})
+    assert res3.status_code == 200, res3.text
+    data3 = res3.json()["data"]
+    assert data3["created"] == 1
+    assert data3["warnings"][0]["message"].startswith("Created, but not enrolled")
+
+    # missing headers → 422
+    bad = await client.post("/api/v1/institution/students/bulk", headers=h,
+                            files={"file": ("bad.csv", b"foo,bar\n1,2", "text/csv")})
+    assert bad.status_code == 422
+
+
 # ── Modules (plan-gated) ─────────────────────────────────────────────────────
 
 async def test_modules_plan_gating(real_backend):
