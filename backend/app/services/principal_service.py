@@ -382,7 +382,11 @@ class PrincipalService:
             ).order_by(Department.name, SchoolClass.name)
         )
         department_rows = await db.execute(
-            common.group_by(Department.id, Department.name).order_by(Department.name)
+            common.with_only_columns(
+                Department.id.label("department_id"),
+                Department.name.label("department_name"),
+                *aggregate_columns,
+            ).group_by(Department.id, Department.name).order_by(Department.name)
         )
 
         def output(row, identifier: uuid.UUID, name: str) -> PrincipalResultGroup:
