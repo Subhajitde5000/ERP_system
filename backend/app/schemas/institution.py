@@ -208,6 +208,19 @@ class StudentOut(BaseModel):
     enrollment: dict[str, Any] | None = None
 
 
+class BulkUploadRowIssue(BaseModel):
+    """One problem found in a CSV row during bulk student import."""
+    row: int
+    message: str
+
+
+class BulkUploadResult(BaseModel):
+    total: int
+    created: int
+    errors: list[BulkUploadRowIssue] = Field(default_factory=list)
+    warnings: list[BulkUploadRowIssue] = Field(default_factory=list)
+
+
 class EnrollmentCreate(BaseModel):
     student_id: uuid.UUID
     class_id: uuid.UUID
@@ -301,6 +314,7 @@ APIResponseStaff = APIResponse[list[StaffOut]]
 APIResponseStaffOne = APIResponse[StaffOut]
 APIResponseStudents = APIResponse[list[StudentOut]]
 APIResponseStudent = APIResponse[StudentOut]
+APIResponseBulk = APIResponse[BulkUploadResult]
 APIResponseEnrollments = APIResponse[list[EnrollmentOut]]
 APIResponseEnrollment = APIResponse[EnrollmentOut]
 APIResponseModules = APIResponse[list[ModuleOut]]

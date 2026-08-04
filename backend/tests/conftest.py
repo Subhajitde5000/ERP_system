@@ -24,6 +24,31 @@ def force_console_mailer():
     settings.EMAIL_PROVIDER = original
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limiters():
+    """
+    Keep rate limits from making the suite order-dependent.
+
+    Every request in the suite comes from the same "testserver" IP, and the
+    login endpoints are limited (e.g. 10/minute) — a test that adds one more
+    login can push a later test over the limit and fail it for the wrong
+    reason. Reset all slowapi limiters before and after each test.
+    """
+    import sys
+
+    from slowapi.extension import Limiter
+
+    def reset() -> None:
+        for module in list(sys.modules.values()):
+            limiter = getattr(module, "limiter", None)
+            if isinstance(limiter, Limiter):
+                limiter.reset()
+
+    reset()
+    yield
+    reset()
+
+
 @pytest_asyncio.fixture
 async def client():
     mock_db = AsyncMock()

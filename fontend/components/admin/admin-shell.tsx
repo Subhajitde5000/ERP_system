@@ -3,6 +3,7 @@
 import {
   Building2,
   CalendarRange,
+  GraduationCap,
   LayoutDashboard,
   Puzzle,
   Settings,
@@ -21,6 +22,7 @@ const NAVIGATION: InstitutionConsoleNavItem[] = [
   { label: "Academic Years", href: "/admin/academic-years", icon: CalendarRange },
   { label: "Departments", href: "/admin/departments", icon: Building2 },
   { label: "Staff", href: "/admin/staff", icon: Users },
+  { label: "Students", href: "/admin/students", icon: GraduationCap },
   { label: "Modules", href: "/admin/modules", icon: Puzzle },
   { label: "Settings", href: "/admin/settings", icon: Settings },
   { label: "Profile", href: "/admin/profile", icon: UserRound },

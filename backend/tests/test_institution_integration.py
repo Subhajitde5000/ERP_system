@@ -66,9 +66,13 @@ async def real_backend():
                                  ("examination", "Examination", True)]:
             s.add(Module(key=key, name=name, is_core=core, sort_order=1, price_monthly=1500 if not core else 0))
         for name, scope in [("INSTITUTION_ADMIN", ScopeLevel.INSTITUTION), ("STUDENT", ScopeLevel.SELF),
-                             ("TEACHER", ScopeLevel.INSTITUTION)]:
+                             ("TEACHER", ScopeLevel.INSTITUTION),
+                             ("ACADEMIC_COORDINATOR", ScopeLevel.INSTITUTION), ("EXAM_CONTROLLER", ScopeLevel.INSTITUTION),
+                             ("HOD", ScopeLevel.DEPARTMENT), ("VICE_PRINCIPAL", ScopeLevel.INSTITUTION)]:
             s.add(Role(id=uuid.uuid4(), name=name, label=name.title(), scope_level=scope,
                        is_platform=False, is_optional=False))
+        s.add(Role(id=uuid.uuid4(), name="SUPER_ADMIN", label="Super Admin",
+                   scope_level=ScopeLevel.PLATFORM, is_platform=True, is_optional=False))
         await s.flush()
 
         tenant = Tenant(id=uuid.uuid4(), name="Green College", slug="green",
@@ -238,6 +242,26 @@ async def test_staff_invite_student_enroll(real_backend):
         "name": "Priya", "email": "priya@green.edu", "role": "TEACHER"})
     assert dup.status_code == 409
 
+    # academic coordinator + exam controller are invitable staff roles
+    for role in ("ACADEMIC_COORDINATOR", "EXAM_CONTROLLER"):
+        coord = await client.post("/api/v1/institution/staff", headers=h, json={
+            "name": f"Coordinator {role}", "email": f"{role.lower()}@green.edu", "role": role})
+        assert coord.status_code == 201, coord.text
+        assert coord.json()["data"]["roles"] == [role]
+
+    # platform roles and non-staff audiences are never grantable
+    for role in ("SUPER_ADMIN", "STUDENT", "INSTITUTION_ADMIN"):
+        forbidden = await client.post("/api/v1/institution/staff", headers=h, json={
+            "name": "Hacker", "email": f"hacker-{role.lower()}@green.edu", "role": role})
+        assert forbidden.status_code == 403, forbidden.text
+    bad_grant = await client.put(f"/api/v1/institution/staff/{ir.json()['data']['id']}/roles", headers=h,
+                                 json={"role_name": "SUPER_ADMIN"})
+    assert bad_grant.status_code == 403, bad_grant.text
+    ok_grant = await client.put(f"/api/v1/institution/staff/{ir.json()['data']['id']}/roles", headers=h,
+                                json={"role_name": "ACADEMIC_COORDINATOR"})
+    assert ok_grant.status_code == 200, ok_grant.text
+    assert "ACADEMIC_COORDINATOR" in ok_grant.json()["data"]["roles"]
+
     # create student enrolled into the class
     sc = await client.post("/api/v1/institution/students", headers=h, json={
         "name": "Aryan Rao", "roll_no": "PHY001", "class_id": cls["id"]})
@@ -255,6 +279,110 @@ async def test_staff_invite_student_enroll(real_backend):
     # enrollments list
     en = await client.get("/api/v1/institution/enrollments", headers=h)
     assert any(e["class_name"] == "PHY-1" for e in en.json()["data"])
+
+
+async def test_staff_bulk_upload(real_backend):
+    client, _ = real_backend
+    h = await _login(client)
+
+    dept = (await client.post("/api/v1/institution/departments", headers=h,
+             json={"name": "Computer Science", "code": "CS"})).json()["data"]
+
+    csv_body = (
+        "name,email,phone,role,department_code\n"
+        "Neha Gupta,neha@green.edu,+911,TEACHER,CS\n"
+        "Arun Das,arun@green.edu,,ACADEMIC_COORDINATOR,\n"
+        ",x@green.edu,,TEACHER,\n"
+        "Neha Gupta,neha@green.edu,,TEACHER,\n"
+        "Bad Role,bad@green.edu,,SUPER_ADMIN,\n"
+        "No Scope,noscope@green.edu,,VICE_PRINCIPAL,\n"
+        "Warn Me,warn@green.edu,,HOD,ZZZ\n"
+    )
+    res = await client.post("/api/v1/institution/staff/bulk", headers=h,
+                            files={"file": ("staff.csv", csv_body.encode(), "text/csv")})
+    assert res.status_code == 200, res.text
+    data = res.json()["data"]
+    assert data["total"] == 7
+    assert data["created"] == 3  # rows 2, 3 and 7 (HOD warned but created)
+    assert {e["row"] for e in data["errors"]} == {4, 5, 6, 7}  # header is row 1
+    assert any("name" in e["message"] for e in data["errors"])
+    assert any("Duplicate email" in e["message"] for e in data["errors"])
+    assert any("cannot be assigned" in e["message"] for e in data["errors"])
+    assert any("Vice Principal" in e["message"] for e in data["errors"])
+    assert data["warnings"][0]["message"].startswith("Created, but not assigned")
+    assert "department code 'ZZZ' not found" in data["warnings"][0]["message"]
+
+    lst = await client.get("/api/v1/institution/staff", headers=h)
+    by_email = {s["email"]: s for s in lst.json()["data"]}
+    assert by_email["neha@green.edu"]["roles"] == ["TEACHER"]
+    assert by_email["neha@green.edu"]["department_name"] == "Computer Science"
+    assert by_email["arun@green.edu"]["roles"] == ["ACADEMIC_COORDINATOR"]
+    assert "warn@green.edu" in by_email
+    assert "bad@green.edu" not in by_email
+
+    # missing headers → 422
+    bad = await client.post("/api/v1/institution/staff/bulk", headers=h,
+                            files={"file": ("bad.csv", b"foo,bar\n1,2", "text/csv")})
+    assert bad.status_code == 422
+
+
+async def test_students_bulk_upload(real_backend):
+    client, _ = real_backend
+    h = await _login(client)
+
+    dept = (await client.post("/api/v1/institution/departments", headers=h,
+             json={"name": "Chemistry", "code": "CHM"})).json()["data"]
+    yr = (await client.post("/api/v1/institution/academic-years", headers=h,
+           json={"name": "2029-30", "start_date": "2029-06-01", "end_date": "2030-05-31"})).json()["data"]
+    cls = (await client.post("/api/v1/institution/classes", headers=h,
+            json={"name": "CHM-1", "code": "CHM-1", "department_id": dept["id"],
+                  "academic_year_id": yr["id"], "max_strength": 40})).json()["data"]
+
+    csv_body = (
+        "name,roll_no,email,gender,date_of_birth,class_code\n"
+        "Ravi Kumar,CHM001,ravi@green.edu,MALE,2006-01-15,CHM-1\n"
+        "Sana Ali,CHM002,sana@green.edu,FEMALE,2006-05-20,CHM-1\n"
+        ",CHM003,,,,\n"
+        "Ravi Kumar,CHM001,,,,\n"
+    )
+    res = await client.post("/api/v1/institution/students/bulk", headers=h,
+                            files={"file": ("students.csv", csv_body.encode(), "text/csv")})
+    assert res.status_code == 200, res.text
+    data = res.json()["data"]
+    assert data["total"] == 4
+    assert data["created"] == 2
+    assert {e["row"] for e in data["errors"]} == {4, 5}  # row 1 = header, row 2 = first student
+    assert any("name" in e["message"] for e in data["errors"])
+    assert any("Duplicate roll number in this file" in e["message"] for e in data["errors"])
+
+    lst = await client.get("/api/v1/institution/students", headers=h)
+    rolls = {s["roll_no"] for s in lst.json()["data"]}
+    assert {"CHM001", "CHM002"} <= rolls
+    by_roll = {s["roll_no"]: s for s in lst.json()["data"]}
+    assert by_roll["CHM001"]["enrollment"]["class_name"] == "CHM-1"
+
+    # re-uploading an existing roll number → DB duplicate reported per row
+    csv2 = "name,roll_no\nRavi Kumar,CHM001\nTom Jose,CHM004\n"
+    res2 = await client.post("/api/v1/institution/students/bulk", headers=h,
+                             files={"file": ("s2.csv", csv2.encode(), "text/csv")})
+    assert res2.status_code == 200, res2.text
+    data2 = res2.json()["data"]
+    assert data2["created"] == 1
+    assert any(e["row"] == 2 and "already exists" in e["message"] for e in data2["errors"])
+
+    # unknown class code → student still created, warning reported
+    csv3 = "name,roll_no,class_code\nIshaan Sen,CHM005,NOPE-9\n"
+    res3 = await client.post("/api/v1/institution/students/bulk", headers=h,
+                             files={"file": ("s3.csv", csv3.encode(), "text/csv")})
+    assert res3.status_code == 200, res3.text
+    data3 = res3.json()["data"]
+    assert data3["created"] == 1
+    assert data3["warnings"][0]["message"].startswith("Created, but not enrolled")
+
+    # missing headers → 422
+    bad = await client.post("/api/v1/institution/students/bulk", headers=h,
+                            files={"file": ("bad.csv", b"foo,bar\n1,2", "text/csv")})
+    assert bad.status_code == 422
 
 
 # ── Modules (plan-gated) ─────────────────────────────────────────────────────

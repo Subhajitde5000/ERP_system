@@ -70,6 +70,74 @@ export interface StaffMember {
   department_name: string | null;
 }
 
+export interface StudentEnrollment {
+  id: string;
+  class_id: string;
+  class_name: string;
+  roll_number: string | null;
+}
+
+export interface Student {
+  id: string;
+  name: string;
+  email: string | null;
+  roll_no: string | null;
+  gender: string | null;
+  is_active: boolean;
+  enrollment: StudentEnrollment | null;
+}
+
+export interface ClassRow {
+  id: string;
+  name: string;
+  code: string;
+  department_id: string;
+  department_name: string | null;
+  academic_year_id: string;
+  academic_year_name: string | null;
+  max_strength: number;
+  room_no: string | null;
+  class_teacher_id: string | null;
+  class_teacher_name: string | null;
+  is_active: boolean;
+  enrolled_count: number;
+  subject_count: number;
+}
+
+export interface Enrollment {
+  id: string;
+  student_id: string;
+  student_name: string;
+  class_id: string;
+  class_name: string;
+  academic_year_id: string;
+  academic_year_name: string;
+  roll_number: string | null;
+  status: string;
+  enrollment_date: string;
+}
+
+export interface StudentCreate {
+  name: string;
+  roll_no: string;
+  email?: string;
+  gender?: "MALE" | "FEMALE" | "OTHER";
+  date_of_birth?: string;
+  class_id?: string;
+}
+
+export interface BulkUploadRowIssue {
+  row: number;
+  message: string;
+}
+
+export interface BulkUploadResult {
+  total: number;
+  created: number;
+  errors: BulkUploadRowIssue[];
+  warnings: BulkUploadRowIssue[];
+}
+
 export interface ModuleRow {
   key: string;
   name: string;
@@ -122,6 +190,11 @@ export const updateDepartment = (id: string, payload: { hod_id?: string | null; 
   call<Department>(`/departments/${id}`, { method: "PUT", body: JSON.stringify(payload) });
 
 export const fetchStaff = () => call<StaffMember[]>("/staff");
+export const uploadStaff = (file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return call<BulkUploadResult>("/staff/bulk", { method: "POST", body: form });
+};
 export const inviteStaff = (payload: {
   name: string;
   email: string;
@@ -151,6 +224,41 @@ export const revokeStaffRole = (userId: string, roleName: string, departmentId?:
     }`,
     { method: "DELETE" },
   );
+
+export const fetchStudents = () => call<Student[]>("/students");
+export const uploadStudents = (file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return call<BulkUploadResult>("/students/bulk", { method: "POST", body: form });
+};
+export const createStudent = (payload: StudentCreate) =>
+  call<Student>("/students", {
+    method: "POST",
+    body: JSON.stringify({
+      name: payload.name,
+      roll_no: payload.roll_no,
+      email: payload.email || undefined,
+      gender: payload.gender || undefined,
+      date_of_birth: payload.date_of_birth || undefined,
+      class_id: payload.class_id || undefined,
+    }),
+  });
+
+export const fetchClasses = () => call<ClassRow[]>("/classes");
+export const fetchEnrollments = () => call<Enrollment[]>("/enrollments");
+export const createEnrollment = (payload: {
+  student_id: string;
+  class_id: string;
+  roll_number?: string;
+}) =>
+  call<Enrollment>("/enrollments", {
+    method: "POST",
+    body: JSON.stringify({
+      student_id: payload.student_id,
+      class_id: payload.class_id,
+      roll_number: payload.roll_number || undefined,
+    }),
+  });
 
 export const fetchModules = () => call<ModuleRow[]>("/modules");
 export const toggleModule = (key: string, enabled: boolean) =>

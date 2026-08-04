@@ -122,6 +122,17 @@ export const INSTITUTION_ROLES = PRIORITY.filter(
   (r) => !(ROLE_MAP[r]?.external ?? false),
 ) as InstitutionRole[];
 
+/**
+ * Staff roles an Institution Admin may invite or grant — the institution
+ * roles minus the console owner (INSTITUTION_ADMIN) and the two non-staff
+ * audiences (STUDENT, PARENT; students have their own creation flow).
+ * Derived from INSTITUTION_ROLES so the dropdown can never drift from the
+ * role map again (e.g. ACADEMIC_COORDINATOR was once missing).
+ */
+export const STAFF_INVITABLE_ROLES = INSTITUTION_ROLES.filter(
+  (r) => r !== "INSTITUTION_ADMIN" && r !== "STUDENT" && r !== "PARENT",
+);
+
 export function isInstitutionRole(role: string): role is InstitutionRole {
   return (INSTITUTION_ROLES as string[]).includes(role);
 }
