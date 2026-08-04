@@ -362,10 +362,14 @@ class CoordinatorService:
         ]
 
         subject_rows = await db.execute(
-            select(Subject, Department.name)
+            select(Subject, Department.id, Department.name)
+            .outerjoin(
+                SchoolClass,
+                and_(SchoolClass.id == Subject.class_id, SchoolClass.tenant_id == tenant_id),
+            )
             .outerjoin(
                 Department,
-                and_(Department.id == Subject.department_id, Department.tenant_id == tenant_id),
+                and_(Department.id == SchoolClass.department_id, Department.tenant_id == tenant_id),
             )
             .where(Subject.tenant_id == tenant_id)
             .order_by(Subject.code)
@@ -375,10 +379,10 @@ class CoordinatorService:
                 id=subject.id,
                 code=subject.code,
                 name=subject.name,
-                department_id=subject.department_id,
+                department_id=dept_id,
                 department_name=department_name,
             )
-            for subject, department_name in subject_rows.all()
+            for subject, dept_id, department_name in subject_rows.all()
         ]
 
         teacher_rows = await db.execute(

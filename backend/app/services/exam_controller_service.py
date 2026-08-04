@@ -600,7 +600,8 @@ class ExamControllerService:
 
         subjects = await db.execute(
             select(Subject, Department.id, Department.name)
-            .outerjoin(Department, and_(Department.id == Subject.department_id, Department.tenant_id == tenant_id))
+            .outerjoin(SchoolClass, and_(SchoolClass.id == Subject.class_id, SchoolClass.tenant_id == tenant_id))
+            .outerjoin(Department, and_(Department.id == SchoolClass.department_id, Department.tenant_id == tenant_id))
             .where(Subject.tenant_id == tenant_id)
             .order_by(Subject.code)
         )
