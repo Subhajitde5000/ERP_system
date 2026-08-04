@@ -190,6 +190,11 @@ export const updateDepartment = (id: string, payload: { hod_id?: string | null; 
   call<Department>(`/departments/${id}`, { method: "PUT", body: JSON.stringify(payload) });
 
 export const fetchStaff = () => call<StaffMember[]>("/staff");
+export const uploadStaff = (file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return call<BulkUploadResult>("/staff/bulk", { method: "POST", body: form });
+};
 export const inviteStaff = (payload: {
   name: string;
   email: string;

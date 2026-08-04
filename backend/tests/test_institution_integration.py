@@ -67,7 +67,8 @@ async def real_backend():
             s.add(Module(key=key, name=name, is_core=core, sort_order=1, price_monthly=1500 if not core else 0))
         for name, scope in [("INSTITUTION_ADMIN", ScopeLevel.INSTITUTION), ("STUDENT", ScopeLevel.SELF),
                              ("TEACHER", ScopeLevel.INSTITUTION),
-                             ("ACADEMIC_COORDINATOR", ScopeLevel.INSTITUTION), ("EXAM_CONTROLLER", ScopeLevel.INSTITUTION)]:
+                             ("ACADEMIC_COORDINATOR", ScopeLevel.INSTITUTION), ("EXAM_CONTROLLER", ScopeLevel.INSTITUTION),
+                             ("HOD", ScopeLevel.DEPARTMENT), ("VICE_PRINCIPAL", ScopeLevel.INSTITUTION)]:
             s.add(Role(id=uuid.uuid4(), name=name, label=name.title(), scope_level=scope,
                        is_platform=False, is_optional=False))
         s.add(Role(id=uuid.uuid4(), name="SUPER_ADMIN", label="Super Admin",
@@ -278,6 +279,51 @@ async def test_staff_invite_student_enroll(real_backend):
     # enrollments list
     en = await client.get("/api/v1/institution/enrollments", headers=h)
     assert any(e["class_name"] == "PHY-1" for e in en.json()["data"])
+
+
+async def test_staff_bulk_upload(real_backend):
+    client, _ = real_backend
+    h = await _login(client)
+
+    dept = (await client.post("/api/v1/institution/departments", headers=h,
+             json={"name": "Computer Science", "code": "CS"})).json()["data"]
+
+    csv_body = (
+        "name,email,phone,role,department_code\n"
+        "Neha Gupta,neha@green.edu,+911,TEACHER,CS\n"
+        "Arun Das,arun@green.edu,,ACADEMIC_COORDINATOR,\n"
+        ",x@green.edu,,TEACHER,\n"
+        "Neha Gupta,neha@green.edu,,TEACHER,\n"
+        "Bad Role,bad@green.edu,,SUPER_ADMIN,\n"
+        "No Scope,noscope@green.edu,,VICE_PRINCIPAL,\n"
+        "Warn Me,warn@green.edu,,HOD,ZZZ\n"
+    )
+    res = await client.post("/api/v1/institution/staff/bulk", headers=h,
+                            files={"file": ("staff.csv", csv_body.encode(), "text/csv")})
+    assert res.status_code == 200, res.text
+    data = res.json()["data"]
+    assert data["total"] == 7
+    assert data["created"] == 3  # rows 2, 3 and 7 (HOD warned but created)
+    assert {e["row"] for e in data["errors"]} == {4, 5, 6, 7}  # header is row 1
+    assert any("name" in e["message"] for e in data["errors"])
+    assert any("Duplicate email" in e["message"] for e in data["errors"])
+    assert any("cannot be assigned" in e["message"] for e in data["errors"])
+    assert any("Vice Principal" in e["message"] for e in data["errors"])
+    assert data["warnings"][0]["message"].startswith("Created, but not assigned")
+    assert "department code 'ZZZ' not found" in data["warnings"][0]["message"]
+
+    lst = await client.get("/api/v1/institution/staff", headers=h)
+    by_email = {s["email"]: s for s in lst.json()["data"]}
+    assert by_email["neha@green.edu"]["roles"] == ["TEACHER"]
+    assert by_email["neha@green.edu"]["department_name"] == "Computer Science"
+    assert by_email["arun@green.edu"]["roles"] == ["ACADEMIC_COORDINATOR"]
+    assert "warn@green.edu" in by_email
+    assert "bad@green.edu" not in by_email
+
+    # missing headers → 422
+    bad = await client.post("/api/v1/institution/staff/bulk", headers=h,
+                            files={"file": ("bad.csv", b"foo,bar\n1,2", "text/csv")})
+    assert bad.status_code == 422
 
 
 async def test_students_bulk_upload(real_backend):

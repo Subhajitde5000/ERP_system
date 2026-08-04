@@ -95,6 +95,14 @@ and see only their own classes, teachers, students and academic work.
    for delegated departments; leaving this blank is intentionally blocked.
 4. Click **Send invite**.
 
+**Adding many staff at once:** click **Bulk upload**, download the CSV
+template, fill in your team and upload the file. Headers: `name`, `email`,
+`role` (required), `phone`, `department_code` (optional — the department code,
+e.g. `CS`, scopes roles like HOD and is required for Vice Principal). The page
+reports how many were imported and lists any failed rows with their row
+numbers, so you can fix and re-upload just those. Every imported member
+receives the same set-password invite email.
+
 What happens next:
 - The person gets an **email with a "set your password" link**.
 - They set their own password and can sign in.

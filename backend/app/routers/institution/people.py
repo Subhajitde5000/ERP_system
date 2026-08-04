@@ -53,6 +53,24 @@ async def invite_staff(
     return APIResponse(success=True, data=data, message="Staff invited — set-password link emailed")
 
 
+@router.post("/staff/bulk", response_model=APIResponseBulk)
+async def bulk_create_staff(
+    file: Annotated[UploadFile, File(description="CSV with headers: name, email, role, phone, department_code")],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+):
+    content = await file.read(BULK_MAX_FILE_BYTES + 1)
+    if len(content) > BULK_MAX_FILE_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large — max 2 MB")
+    tenant = await _tenant(db, admin)
+    result = await InstitutionService.bulk_create_staff(db, tenant, content)
+    return APIResponse(
+        success=True,
+        data=result,
+        message=f"Bulk import finished: {result.created} created, {len(result.errors)} failed",
+    )
+
+
 @router.put("/staff/{user_id}/roles", response_model=APIResponseStaffOne)
 async def assign_role(
     user_id: uuid.UUID,

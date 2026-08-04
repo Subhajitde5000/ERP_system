@@ -684,6 +684,121 @@ class InstitutionService:
         await db.flush()
         return await InstitutionService._staff_out(db, tenant_id, user)
 
+    @staticmethod
+    async def bulk_create_staff(db: AsyncSession, tenant: Tenant, content: bytes) -> BulkUploadResult:
+        """Import staff from a CSV upload.
+
+        Expected headers: ``name, email, role`` (required) and ``phone,
+        department_code`` (optional; the department code, e.g. ``CS``).
+        Every row runs in its own savepoint, so one bad row is reported and
+        skipped without rolling back the staff already imported. Each created
+        member gets the standard set-password invite email.
+        """
+        try:
+            text = content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The file must be UTF-8 CSV (Excel: save as 'CSV UTF-8')")
+
+        reader = csv.DictReader(io.StringIO(text))
+        missing = {"name", "email", "role"} - {h.strip().lower() for h in (reader.fieldnames or []) if h}
+        if missing:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"The CSV must have headers: {', '.join(sorted(missing))} (optional: phone, department_code)",
+            )
+        rows = [r for r in reader if any((v or "").strip() for v in r.values())]
+        if len(rows) > BULK_MAX_ROWS:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Too many rows — max {BULK_MAX_ROWS} per file")
+
+        existing_emails = {
+            e.lower()
+            for e in (await db.scalars(
+                select(User.email).where(User.tenant_id == tenant.id, User.email.is_not(None))
+            )).all()
+        }
+        departments = {d.code: d for d in (await db.scalars(select(Department).where(Department.tenant_id == tenant.id))).all()}
+
+        created, seen, errors, warnings = 0, set(), [], []
+        for row_no, raw in enumerate(rows, start=2):
+            row = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
+            email = row.get("email", "").lower()
+            if email in seen:
+                errors.append(BulkUploadRowIssue(row=row_no, message="Duplicate email in this file"))
+                continue
+            if email in existing_emails:
+                errors.append(BulkUploadRowIssue(row=row_no, message="A user with this email already exists"))
+                continue
+            try:
+                async with db.begin_nested():
+                    warning = await InstitutionService._bulk_staff_row(db, tenant, row, departments)
+                created += 1
+                seen.add(email)
+                existing_emails.add(email)
+                if warning:
+                    warnings.append(BulkUploadRowIssue(row=row_no, message=warning))
+            except HTTPException as exc:
+                errors.append(BulkUploadRowIssue(row=row_no, message=str(exc.detail)))
+            except Exception:
+                errors.append(BulkUploadRowIssue(row=row_no, message="Unexpected error — row skipped"))
+
+        return BulkUploadResult(total=len(rows), created=created, errors=errors, warnings=warnings)
+
+    @staticmethod
+    async def _bulk_staff_row(db, tenant, row: dict, departments: dict) -> str | None:
+        """Create one staff member from a parsed CSV row; raise HTTPException on bad data.
+
+        Returns a warning message when the member was created but could not be
+        scoped to the requested department code (never blocks the import).
+        """
+        name = row.get("name", "")
+        email = row.get("email", "").lower()
+        role_name = row.get("role", "").upper()
+        if len(name) < 2:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="name is required (at least 2 characters)")
+        if "@" not in email:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="email is required and must be a valid address")
+        role = await InstitutionService._role_by_name(db, role_name)
+        if role is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unknown role '{role_name}'")
+        InstitutionService._assert_assignable_role(role)
+
+        department = None
+        if row.get("department_code"):
+            department = departments.get(row["department_code"])
+            if department is None:
+                if role.name == "VICE_PRINCIPAL":
+                    raise HTTPException(
+                        status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Department code '{row['department_code']}' not found (required for Vice Principal)",
+                    )
+        if role.name == "VICE_PRINCIPAL" and department is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="A Vice Principal must be assigned at least one delegated department",
+            )
+
+        raw_token = generate_secure_token(32)
+        user = User(
+            id=uuid.uuid4(), tenant_id=tenant.id, name=name, email=email,
+            phone=row.get("phone") or None, password_hash=None, is_active=True,
+            password_reset_token=hash_token(raw_token),
+            password_reset_expires=datetime.now(timezone.utc) + timedelta(days=7),
+        )
+        db.add(user)
+        await db.flush()
+        assignment = RoleAssignment(
+            id=uuid.uuid4(), user_id=user.id, role_id=role.id, tenant_id=tenant.id,
+            scope_id=department.id if department else None,
+            scope_type="DEPARTMENT" if department else None,
+            assigned_at=datetime.now(timezone.utc), is_active=True,
+        )
+        db.add(assignment)
+        await db.flush()
+        await InstitutionService._queue_invite_email(db, tenant, user, raw_token)
+        if department is None and row.get("department_code"):
+            return f"Created, but not assigned: department code '{row['department_code']}' not found"
+        return None
+
     # ── People: students ─────────────────────────────────────────────────────
 
     @staticmethod
