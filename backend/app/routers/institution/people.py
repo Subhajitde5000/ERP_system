@@ -7,7 +7,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies.auth import get_current_tenant_user_admin
+from app.dependencies.auth import (
+    get_current_tenant_user_admin,
+    get_current_tenant_user_student_records_manager,
+)
 from app.models.user import User
 from app.schemas.common import APIResponse
 from app.schemas.institution import (
@@ -105,18 +108,18 @@ async def set_staff_active(
 @router.get("/students", response_model=APIResponseStudents)
 async def list_students(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    return APIResponse(success=True, data=await InstitutionService.list_students(db, admin.tenant_id), message="Students loaded")
+    return APIResponse(success=True, data=await InstitutionService.list_students(db, manager.tenant_id), message="Students loaded")
 
 
 @router.post("/students", response_model=APIResponseStudent, status_code=201)
 async def create_student(
     payload: StudentCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    tenant = await _tenant(db, admin)
+    tenant = await _tenant(db, manager)
     data = await InstitutionService.create_student(db, tenant, payload)
     return APIResponse(success=True, data=data, message="Student created")
 
@@ -126,16 +129,16 @@ async def create_student(
 @router.get("/enrollments", response_model=APIResponseEnrollments)
 async def list_enrollments(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    return APIResponse(success=True, data=await InstitutionService.list_enrollments(db, admin.tenant_id), message="Enrollments loaded")
+    return APIResponse(success=True, data=await InstitutionService.list_enrollments(db, manager.tenant_id), message="Enrollments loaded")
 
 
 @router.post("/enrollments", response_model=APIResponseEnrollment, status_code=201)
 async def create_enrollment(
     payload: EnrollmentCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    data = await InstitutionService.create_enrollment(db, admin.tenant_id, payload)
+    data = await InstitutionService.create_enrollment(db, manager.tenant_id, payload)
     return APIResponse(success=True, data=data, message="Student enrolled")
