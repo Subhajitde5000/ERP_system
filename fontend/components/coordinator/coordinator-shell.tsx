@@ -8,6 +8,7 @@ import {
   Megaphone,
   RefreshCw,
   Repeat,
+  Users,
 } from "lucide-react";
 
 import {
@@ -18,6 +19,8 @@ import {
 /** C-AC-01 … C-AC-08 navigation for an institution-wide coordinator. */
 const NAVIGATION: InstitutionConsoleNavItem[] = [
   { label: "Dashboard", href: "/coordinator/dashboard", icon: LayoutDashboard },
+  { label: "Student records", href: "/coordinator/students", icon: Users },
+  { label: "Import students", href: "/coordinator/import", icon: Users },
   { label: "Timetable builder", href: "/coordinator/timetable", icon: CalendarDays },
   { label: "Conflict checker", href: "/coordinator/timetable/conflicts", icon: AlertTriangle },
   { label: "Substitutions", href: "/coordinator/substitutions", icon: Repeat },

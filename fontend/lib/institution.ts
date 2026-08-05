@@ -70,6 +70,25 @@ export interface StaffMember {
   department_name: string | null;
 }
 
+export interface StudentRecord {
+  id: string;
+  name: string;
+  email: string | null;
+  roll_no: string | null;
+  gender: string | null;
+  is_active: boolean;
+  enrollment: { class_name?: string; academic_year_name?: string } | null;
+}
+
+export interface ClassRecord {
+  id: string;
+  name: string;
+  code: string;
+  academic_year_name: string | null;
+  department_name: string | null;
+  is_active: boolean;
+}
+
 export interface ModuleRow {
   key: string;
   name: string;
@@ -151,6 +170,11 @@ export const revokeStaffRole = (userId: string, roleName: string, departmentId?:
     }`,
     { method: "DELETE" },
   );
+
+export const fetchStudents = () => call<StudentRecord[]>("/students");
+export const fetchClasses = () => call<ClassRecord[]>("/classes");
+export const createStudent = (payload: { name: string; roll_no: string; email?: string; gender?: string; class_id?: string }) =>
+  call<StudentRecord>("/students", { method: "POST", body: JSON.stringify(payload) });
 
 export const fetchModules = () => call<ModuleRow[]>("/modules");
 export const toggleModule = (key: string, enabled: boolean) =>

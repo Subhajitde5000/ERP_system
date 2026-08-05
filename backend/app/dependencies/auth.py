@@ -218,6 +218,25 @@ async def get_current_tenant_user_hod(
     )
 
 
+async def get_current_tenant_user_student_records_manager(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Allow only the academic-record owners to manage student records.
+
+    Teachers, HODs, and admission staff deliberately do not inherit this
+    capability. Admission workflows end when a record is approved; the
+    Academic Coordinator owns the resulting academic record, with Institution
+    Admin retained as the operational fallback.
+    """
+    return await _require_current_tenant_roles(
+        current_user,
+        db,
+        {"ACADEMIC_COORDINATOR", "INSTITUTION_ADMIN"},
+        "Academic Coordinator or Institution Admin privileges are required",
+    )
+
+
 async def get_current_tenant_user_coordinator(
     current_user: Annotated[User, Depends(get_current_tenant_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
