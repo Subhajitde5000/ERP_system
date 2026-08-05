@@ -42,6 +42,7 @@ If you forgot your password, use the **Forgot password?** link on the login page
 | **Academic Years** | Add the years your institution runs (e.g. 2026–27). |
 | **Departments** | Add departments (e.g. Computer Science, Commerce). |
 | **Staff** | Add teachers and other staff; give them roles. |
+| **Students** | Add students and enrol them into classes. |
 | **Modules** | Turn extra features on or off. |
 | **Settings** | Change timezone and currency. |
 | **Profile** | Update your institution's name, address, logo, contact. |
@@ -94,6 +95,14 @@ and see only their own classes, teachers, students and academic work.
    for delegated departments; leaving this blank is intentionally blocked.
 4. Click **Send invite**.
 
+**Adding many staff at once:** click **Bulk upload**, download the CSV
+template, fill in your team and upload the file. Headers: `name`, `email`,
+`role` (required), `phone`, `department_code` (optional — the department code,
+e.g. `CS`, scopes roles like HOD and is required for Vice Principal). The page
+reports how many were imported and lists any failed rows with their row
+numbers, so you can fix and re-upload just those. Every imported member
+receives the same set-password invite email.
+
 What happens next:
 - The person gets an **email with a "set your password" link**.
 - They set their own password and can sign in.
@@ -114,14 +123,23 @@ open the Vice Principal console.
 
 ## Step 4 — Add Students
 
-Students are added by the institution. (A student-friendly page is coming; for
-now your platform team can add them, or use the steps below.)
+Students are added by the institution from the **Students** page — one by one,
+or all at once with a CSV upload.
 
 1. Make sure you have an **Academic Year** and a **Class** ready first.
-2. A student is created with a **roll number** (unique for your institution) and,
-   if you like, an email.
-3. When you add a student you can also **enrol** them straight into a class for
-   the current year.
+2. **One by one:** click **Add student** and create the student with a
+   **roll number** (unique for your institution) and, if you like, an email.
+3. **Bulk upload:** click **Bulk upload**, download the CSV template, fill in
+   your students and upload the file. The page then reports how many students
+   were imported and lists any rows that failed (e.g. duplicate roll numbers)
+   with their row numbers, so you can fix and re-upload just those.
+   - Headers: `name`, `roll_no` (required), `email`, `gender`,
+     `date_of_birth`, `class_code` (optional).
+   - Use the class **code** (e.g. `PHY-1`) to enrol students automatically.
+4. When you add a student you can also **enrol** them straight into a class for
+   the current year. To enrol an existing student later, click **Enrol** next
+   to their name.
+5. All current enrolments are listed at the bottom of the **Students** page.
 
 > Two students cannot share the same roll number in your institution.
 
