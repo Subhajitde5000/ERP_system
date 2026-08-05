@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.models.academic import AcademicYear, Department, SchoolClass, Subject
+from app.models.enrollment import TeacherSubject
 from app.models.coordinator import (
     AcademicEvent,
     AcademicEventScope,
@@ -159,6 +160,40 @@ class CoordinatorService:
         if subject is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Subject not found")
         return subject
+
+    @staticmethod
+    async def _assert_slot_available(
+        db: AsyncSession, tenant_id: uuid.UUID, *, day: int, period: int, starts: date, ends: date | None,
+        teacher_id: uuid.UUID | None, room_no: str | None, exclude_slot_id: uuid.UUID | None = None,
+    ) -> None:
+        """Reject a teacher or room double-booking while timetable changes are saved."""
+        overlap = [TimetableSlot.tenant_id == tenant_id, TimetableSlot.day_of_week == day,
+                   TimetableSlot.period_number == period, TimetableSlot.effective_from <= (ends or date.max),
+                   or_(TimetableSlot.effective_to.is_(None), TimetableSlot.effective_to >= starts)]
+        if exclude_slot_id is not None:
+            overlap.append(TimetableSlot.id != exclude_slot_id)
+        for resource, value, message in ((TimetableSlot.teacher_id, teacher_id, "Teacher is already scheduled for this period."), (TimetableSlot.room_no, room_no, "Room is already scheduled for this period.")):
+            if value is None or value == "":
+                continue
+            found = await db.execute(select(TimetableSlot.id).where(*overlap, resource == value).limit(1))
+            if found.scalar_one_or_none() is not None:
+                raise HTTPException(status.HTTP_409_CONFLICT, detail=message)
+
+    @staticmethod
+    async def _ensure_teaching_assignment(
+        db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID, subject_id: uuid.UUID, teacher_id: uuid.UUID
+    ) -> None:
+        """Timetable slots must come from a real class → subject → teacher assignment."""
+        subject = await CoordinatorService._ensure_subject(db, tenant_id, subject_id)
+        if subject.class_id != class_id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The selected subject does not belong to this class.")
+        assignment = await db.execute(select(TeacherSubject.id).where(
+            TeacherSubject.tenant_id == tenant_id,
+            TeacherSubject.subject_id == subject_id,
+            TeacherSubject.teacher_id == teacher_id,
+        ).limit(1))
+        if assignment.scalar_one_or_none() is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Assign this teacher to the subject before placing it on the timetable.")
 
     @staticmethod
     async def _ensure_teacher(
@@ -519,6 +554,15 @@ class CoordinatorService:
             await CoordinatorService._ensure_subject(db, tenant_id, payload.subject_id)
         if payload.teacher_id is not None:
             await CoordinatorService._ensure_teacher(db, tenant_id, payload.teacher_id)
+        if payload.slot_type == "CLASS" and (payload.subject_id is None or payload.teacher_id is None):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A class slot needs both a subject and its assigned teacher.")
+        if payload.subject_id is not None and payload.teacher_id is not None:
+            await CoordinatorService._ensure_teaching_assignment(db, tenant_id, payload.class_id, payload.subject_id, payload.teacher_id)
+        await CoordinatorService._assert_slot_available(
+            db, tenant_id, day=payload.day_of_week, period=payload.period_number,
+            starts=payload.effective_from, ends=payload.effective_to,
+            teacher_id=payload.teacher_id, room_no=payload.room_no,
+        )
 
         # The schema's unique key is
         # (class_id, day_of_week, period_number, effective_from).  The
@@ -639,6 +683,15 @@ class CoordinatorService:
             slot.slot_type = payload.slot_type
         if payload.effective_to is not None:
             slot.effective_to = payload.effective_to
+        if slot.slot_type == "CLASS" and (slot.subject_id is None or slot.teacher_id is None):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A class slot needs both a subject and its assigned teacher.")
+        if slot.subject_id is not None and slot.teacher_id is not None:
+            await CoordinatorService._ensure_teaching_assignment(db, tenant_id, slot.class_id, slot.subject_id, slot.teacher_id)
+        await CoordinatorService._assert_slot_available(
+            db, tenant_id, day=slot.day_of_week, period=slot.period_number,
+            starts=slot.effective_from, ends=slot.effective_to, teacher_id=slot.teacher_id,
+            room_no=slot.room_no, exclude_slot_id=slot.id,
+        )
         await db.flush()
         AuditService.record(
             db,

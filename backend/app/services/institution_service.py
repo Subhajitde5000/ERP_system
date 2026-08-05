@@ -13,8 +13,10 @@ the new user is created with no password and a one-time reset token, and a
 anyone's password.
 """
 
+import csv
+import io
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -24,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings as get_app_settings
 from app.models.academic import AcademicYear, Department, SchoolClass, Subject
 from app.models.billing import Subscription, TenantModule, TenantSetting
+from app.models.principal import StaffProfile
 from app.models.catalog import Module, Plan
 from app.models.enrollment import Enrollment, TeacherSubject
 from app.models.role import Role, RoleAssignment
@@ -33,6 +36,8 @@ from app.schemas.institution import (
     AcademicYearCreate,
     AcademicYearOut,
     AcademicYearUpdate,
+    BulkUploadResult,
+    BulkUploadRowIssue,
     ClassCreate,
     ClassOut,
     ClassUpdate,
@@ -49,6 +54,7 @@ from app.schemas.institution import (
     SettingsUpdate,
     StaffInvite,
     StaffOut,
+    StaffUpdate,
     StudentCreate,
     StudentOut,
     SubjectCreate,
@@ -62,6 +68,17 @@ from app.utils.security import generate_secure_token, hash_password, hash_token
 ONBOARDING_KEY = "onboarding"
 ONBOARDING_DONE_KEY = "onboarding.completed"
 
+# Bulk student import limits — 2 MB / 10 000 rows keeps one upload bounded.
+BULK_MAX_FILE_BYTES = 2 * 1024 * 1024
+BULK_MAX_ROWS = 10_000
+
+# Default password for newly added staff members
+DEFAULT_STAFF_PASSWORD = "password1234!"
+
+# Roles an Institution Admin may NOT invite or grant: platform roles
+# (SUPER_ADMIN & co) are out of scope, INSTITUTION_ADMIN is the console owner,
+# and STUDENT/PARENT have their own non-staff flows.
+NON_INVITABLE_ROLES = frozenset({"INSTITUTION_ADMIN", "STUDENT", "PARENT"})
 
 class InstitutionService:
     # ── helpers ──────────────────────────────────────────────────────────────
@@ -468,6 +485,7 @@ class InstitutionService:
         role = await InstitutionService._role_by_name(db, payload.role)
         if role is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unknown role '{payload.role}'")
+        InstitutionService._assert_assignable_role(role)
         if payload.department_id is not None:
             await InstitutionService._assert_dept(db, tenant.id, payload.department_id)
         if role.name == "VICE_PRINCIPAL" and payload.department_id is None:
@@ -479,7 +497,7 @@ class InstitutionService:
         raw_token = generate_secure_token(32)
         user = User(
             id=uuid.uuid4(), tenant_id=tenant.id, name=payload.name, email=email, phone=payload.phone,
-            password_hash=None, is_active=True,
+            password_hash=hash_password(DEFAULT_STAFF_PASSWORD), is_active=True,
             password_reset_token=hash_token(raw_token),
             password_reset_expires=datetime.now(timezone.utc) + timedelta(days=7),
         )
@@ -526,6 +544,7 @@ class InstitutionService:
         role = await InstitutionService._role_by_name(db, role_name)
         if role is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unknown role '{role_name}'")
+        InstitutionService._assert_assignable_role(role)
         if department_id is not None:
             await InstitutionService._assert_dept(db, tenant_id, department_id)
         if role.name == "VICE_PRINCIPAL" and department_id is None:
@@ -669,6 +688,211 @@ class InstitutionService:
         await db.flush()
         return await InstitutionService._staff_out(db, tenant_id, user)
 
+    @staticmethod
+    async def update_staff(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        payload: StaffUpdate,
+        *,
+        actor: User | None = None,
+    ) -> StaffOut:
+        user = await InstitutionService._load_user(db, tenant_id, user_id)
+        if payload.name is not None:
+            user.name = payload.name.strip()
+        if payload.phone is not None:
+            user.phone = payload.phone.strip() if payload.phone else None
+        if payload.email is not None and payload.email.lower() != (user.email or "").lower():
+            new_email = payload.email.lower().strip()
+            existing = await db.execute(
+                select(User).where(User.tenant_id == tenant_id, User.email == new_email, User.id != user_id)
+            )
+            if existing.scalar_one_or_none() is not None:
+                raise HTTPException(status.HTTP_409_CONFLICT, detail="A user with this email already exists")
+            user.email = new_email
+
+        if payload.department_id is not None:
+            await InstitutionService._assert_dept(db, tenant_id, payload.department_id)
+            sp_res = await db.execute(
+                select(StaffProfile).where(StaffProfile.user_id == user_id, StaffProfile.tenant_id == tenant_id)
+            )
+            sp = sp_res.scalar_one_or_none()
+            if sp:
+                sp.department_id = payload.department_id
+            else:
+                sp = StaffProfile(
+                    id=uuid.uuid4(),
+                    user_id=user_id,
+                    tenant_id=tenant_id,
+                    employee_code=f"EMP-{user_id.hex[:6].upper()}",
+                    designation="Staff Member",
+                    department_id=payload.department_id,
+                    employment_type="FULL_TIME",
+                    date_of_joining=date.today(),
+                    is_active=True,
+                )
+                db.add(sp)
+
+        await db.flush()
+        if actor is not None:
+            AuditService.record(
+                db,
+                actor=actor,
+                actor_role="INSTITUTION_ADMIN",
+                action="UPDATE_STAFF",
+                entity="User",
+                entity_id=user.id,
+                tenant_id=tenant_id,
+                new_value={
+                    "name": user.name,
+                    "email": user.email,
+                    "phone": user.phone,
+                    "department_id": str(payload.department_id) if payload.department_id else None,
+                },
+            )
+        return await InstitutionService._staff_out(db, tenant_id, user)
+
+    @staticmethod
+    async def delete_staff(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        actor: User | None = None,
+    ) -> None:
+        user = await InstitutionService._load_user(db, tenant_id, user_id)
+        if actor is not None and actor.id == user_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Cannot delete your own account")
+        user.is_active = False
+        user.deleted_at = datetime.now(timezone.utc)
+        await db.flush()
+        if actor is not None:
+            AuditService.record(
+                db,
+                actor=actor,
+                actor_role="INSTITUTION_ADMIN",
+                action="DELETE_STAFF",
+                entity="User",
+                entity_id=user.id,
+                tenant_id=tenant_id,
+            )
+
+
+    @staticmethod
+    async def bulk_create_staff(db: AsyncSession, tenant: Tenant, content: bytes) -> BulkUploadResult:
+        """Import staff from a CSV upload.
+
+        Expected headers: ``name, email, role`` (required) and ``phone,
+        department_code`` (optional; the department code, e.g. ``CS``).
+        Every row runs in its own savepoint, so one bad row is reported and
+        skipped without rolling back the staff already imported. Each created
+        member gets the standard set-password invite email.
+        """
+        try:
+            text = content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The file must be UTF-8 CSV (Excel: save as 'CSV UTF-8')")
+
+        reader = csv.DictReader(io.StringIO(text))
+        missing = {"name", "email", "role"} - {h.strip().lower() for h in (reader.fieldnames or []) if h}
+        if missing:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"The CSV must have headers: {', '.join(sorted(missing))} (optional: phone, department_code)",
+            )
+        rows = [r for r in reader if any((v or "").strip() for v in r.values())]
+        if len(rows) > BULK_MAX_ROWS:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Too many rows — max {BULK_MAX_ROWS} per file")
+
+        existing_emails = {
+            e.lower()
+            for e in (await db.scalars(
+                select(User.email).where(User.tenant_id == tenant.id, User.email.is_not(None))
+            )).all()
+        }
+        departments = {d.code: d for d in (await db.scalars(select(Department).where(Department.tenant_id == tenant.id))).all()}
+
+        created, seen, errors, warnings = 0, set(), [], []
+        for row_no, raw in enumerate(rows, start=2):
+            row = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
+            email = row.get("email", "").lower()
+            if email in seen:
+                errors.append(BulkUploadRowIssue(row=row_no, message="Duplicate email in this file"))
+                continue
+            if email in existing_emails:
+                errors.append(BulkUploadRowIssue(row=row_no, message="A user with this email already exists"))
+                continue
+            try:
+                async with db.begin_nested():
+                    warning = await InstitutionService._bulk_staff_row(db, tenant, row, departments)
+                created += 1
+                seen.add(email)
+                existing_emails.add(email)
+                if warning:
+                    warnings.append(BulkUploadRowIssue(row=row_no, message=warning))
+            except HTTPException as exc:
+                errors.append(BulkUploadRowIssue(row=row_no, message=str(exc.detail)))
+            except Exception:
+                errors.append(BulkUploadRowIssue(row=row_no, message="Unexpected error — row skipped"))
+
+        return BulkUploadResult(total=len(rows), created=created, errors=errors, warnings=warnings)
+
+    @staticmethod
+    async def _bulk_staff_row(db, tenant, row: dict, departments: dict) -> str | None:
+        """Create one staff member from a parsed CSV row; raise HTTPException on bad data.
+
+        Returns a warning message when the member was created but could not be
+        scoped to the requested department code (never blocks the import).
+        """
+        name = row.get("name", "")
+        email = row.get("email", "").lower()
+        role_name = row.get("role", "").upper()
+        if len(name) < 2:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="name is required (at least 2 characters)")
+        if "@" not in email:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="email is required and must be a valid address")
+        role = await InstitutionService._role_by_name(db, role_name)
+        if role is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unknown role '{role_name}'")
+        InstitutionService._assert_assignable_role(role)
+
+        department = None
+        if row.get("department_code"):
+            department = departments.get(row["department_code"])
+            if department is None:
+                if role.name == "VICE_PRINCIPAL":
+                    raise HTTPException(
+                        status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Department code '{row['department_code']}' not found (required for Vice Principal)",
+                    )
+        if role.name == "VICE_PRINCIPAL" and department is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="A Vice Principal must be assigned at least one delegated department",
+            )
+
+        raw_token = generate_secure_token(32)
+        user = User(
+            id=uuid.uuid4(), tenant_id=tenant.id, name=name, email=email,
+            phone=row.get("phone") or None, password_hash=hash_password(DEFAULT_STAFF_PASSWORD), is_active=True,
+            password_reset_token=hash_token(raw_token),
+            password_reset_expires=datetime.now(timezone.utc) + timedelta(days=7),
+        )
+        db.add(user)
+        await db.flush()
+        assignment = RoleAssignment(
+            id=uuid.uuid4(), user_id=user.id, role_id=role.id, tenant_id=tenant.id,
+            scope_id=department.id if department else None,
+            scope_type="DEPARTMENT" if department else None,
+            assigned_at=datetime.now(timezone.utc), is_active=True,
+        )
+        db.add(assignment)
+        await db.flush()
+        await InstitutionService._queue_invite_email(db, tenant, user, raw_token)
+        if department is None and row.get("department_code"):
+            return f"Created, but not assigned: department code '{row['department_code']}' not found"
+        return None
+
     # ── People: students ─────────────────────────────────────────────────────
 
     @staticmethod
@@ -727,6 +951,122 @@ class InstitutionService:
             id=user.id, name=user.name, email=user.email, roll_no=user.student_roll_no,
             gender=user.gender.value if user.gender else None, is_active=user.is_active, enrollment=enrollment,
         )
+
+    @staticmethod
+    async def bulk_create_students(db: AsyncSession, tenant: Tenant, content: bytes) -> BulkUploadResult:
+        """Import students from a CSV upload.
+
+        Expected headers: ``name, roll_no`` (required) and ``email, gender,
+        date_of_birth, class_code`` (optional). Every row is processed inside
+        its own savepoint, so one bad row is reported and skipped without
+        rolling back the students that were already imported.
+        """
+        try:
+            text = content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The file must be UTF-8 CSV (Excel: save as 'CSV UTF-8')")
+
+        reader = csv.DictReader(io.StringIO(text))
+        missing = {"name", "roll_no"} - {h.strip().lower() for h in (reader.fieldnames or []) if h}
+        if missing:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"The CSV must have headers: {', '.join(sorted(missing))} (optional: email, gender, date_of_birth, class_code)",
+            )
+        rows = [r for r in reader if any((v or "").strip() for v in r.values())]
+        if len(rows) > BULK_MAX_ROWS:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Too many rows — max {BULK_MAX_ROWS} per file")
+
+        existing_rolls = set(
+            (await db.scalars(
+                select(User.student_roll_no).where(User.tenant_id == tenant.id, User.student_roll_no.is_not(None))
+            )).all()
+        )
+        classes = {c.code: c for c in (await db.scalars(select(SchoolClass).where(SchoolClass.tenant_id == tenant.id))).all()}
+        year = await InstitutionService._current_year(db, tenant.id)
+        role = await InstitutionService._role_by_name(db, "STUDENT")
+
+        created, seen, errors, warnings = 0, set(), [], []
+        for row_no, raw in enumerate(rows, start=2):
+            row = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
+            roll_no = row.get("roll_no", "")
+            if roll_no and roll_no in seen:
+                errors.append(BulkUploadRowIssue(row=row_no, message="Duplicate roll number in this file"))
+                continue
+            if roll_no and roll_no in existing_rolls:
+                errors.append(BulkUploadRowIssue(row=row_no, message="A student with this roll number already exists"))
+                continue
+            try:
+                async with db.begin_nested():
+                    warning = await InstitutionService._bulk_student_row(db, tenant, role, row, classes, year)
+                created += 1
+                seen.add(roll_no)
+                existing_rolls.add(roll_no)
+                if warning:
+                    warnings.append(BulkUploadRowIssue(row=row_no, message=warning))
+            except HTTPException as exc:
+                errors.append(BulkUploadRowIssue(row=row_no, message=str(exc.detail)))
+            except Exception:
+                errors.append(BulkUploadRowIssue(row=row_no, message="Unexpected error — row skipped"))
+
+        return BulkUploadResult(total=len(rows), created=created, errors=errors, warnings=warnings)
+
+    @staticmethod
+    async def _bulk_student_row(db, tenant, role, row: dict, classes: dict, year) -> str | None:
+        """Create one student from a parsed CSV row; raise HTTPException on bad data.
+
+        Returns a warning message when the student was created but could not be
+        enrolled (unknown class code / no current academic year).
+        """
+        name = row.get("name", "")
+        roll_no = row.get("roll_no", "")
+        if len(name) < 2:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="name is required (at least 2 characters)")
+        if not roll_no:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="roll_no is required")
+
+        gender = None
+        if row.get("gender"):
+            gender = row["gender"].upper()
+            if gender not in {"MALE", "FEMALE", "OTHER"}:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="gender must be MALE, FEMALE or OTHER")
+
+        dob = None
+        if row.get("date_of_birth"):
+            try:
+                dob = date.fromisoformat(row["date_of_birth"])
+            except ValueError:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="date_of_birth must be YYYY-MM-DD")
+
+        email = row.get("email") or None
+        if email and "@" not in email:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="email is not a valid address")
+        email = email.lower() if email else None
+
+        from app.models.user import Gender
+        user = User(
+            id=uuid.uuid4(), tenant_id=tenant.id, name=name, email=email,
+            student_roll_no=roll_no, gender=Gender(gender) if gender else None,
+            date_of_birth=dob, password_hash=None, is_active=True,
+        )
+        db.add(user)
+        await db.flush()
+        if role is not None:
+            db.add(RoleAssignment(
+                id=uuid.uuid4(), user_id=user.id, role_id=role.id, tenant_id=tenant.id,
+                assigned_at=datetime.now(timezone.utc), is_active=True,
+            ))
+            await db.flush()
+
+        class_code = row.get("class_code", "")
+        if class_code:
+            cls = classes.get(class_code)
+            if cls is None:
+                return f"Created, but not enrolled: class code '{class_code}' not found"
+            if year is None:
+                return "Created, but not enrolled: no current academic year"
+            await InstitutionService._enroll(db, tenant.id, user.id, cls.id, year.id, roll_no)
+        return None
 
     # ── Enrollments ──────────────────────────────────────────────────────────
 
@@ -1078,6 +1418,20 @@ class InstitutionService:
         return res.scalar_one_or_none()
 
     @staticmethod
+    def _assert_assignable_role(role: Role) -> None:
+        """Reject platform roles and non-staff audiences on grant paths.
+
+        The invite dropdown derives from the same rule, but the API must
+        enforce it itself — otherwise a direct call could self-escalate to
+        SUPER_ADMIN.
+        """
+        if role.is_platform or role.name in NON_INVITABLE_ROLES:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail=f"Role '{role.name}' cannot be assigned from the institution console",
+            )
+
+    @staticmethod
     async def _load_user(db, tenant_id, user_id) -> User:
         res = await db.execute(select(User).where(User.id == user_id, User.tenant_id == tenant_id, User.deleted_at == None))  # noqa: E712
         user = res.scalar_one_or_none()
@@ -1123,6 +1477,13 @@ class InstitutionService:
             ).limit(1)
         )
         dept_id = dept_res.scalar_one_or_none()
+        if dept_id is None:
+            sp_res = await db.execute(
+                select(StaffProfile.department_id).where(
+                    StaffProfile.user_id == user.id, StaffProfile.tenant_id == tenant_id
+                )
+            )
+            dept_id = sp_res.scalar_one_or_none()
         dept_name = None
         if dept_id:
             dn = await db.execute(select(Department.name).where(Department.id == dept_id))

@@ -16,7 +16,7 @@ import { Card, ErrorState, Loading, PageHeader } from "@/components/admin/ui";
 import { fetchDashboard, type DashboardSummary } from "@/lib/institution";
 
 const CARDS: { key: string; label: string; icon: typeof Users; href: string }[] = [
-  { key: "students", label: "Students", icon: GraduationCap, href: "/admin/staff" },
+  { key: "students", label: "Students", icon: GraduationCap, href: "/admin/students" },
   { key: "staff", label: "Staff", icon: Users, href: "/admin/staff" },
   { key: "departments", label: "Departments", icon: Building2, href: "/admin/departments" },
   { key: "classes", label: "Classes", icon: BookCopy, href: "/admin/departments" },

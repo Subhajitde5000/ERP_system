@@ -3,14 +3,18 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies.auth import get_current_tenant_user_admin
+from app.dependencies.auth import (
+    get_current_tenant_user_admin,
+    get_current_tenant_user_student_records_manager,
+)
 from app.models.user import User
 from app.schemas.common import APIResponse
 from app.schemas.institution import (
+    APIResponseBulk,
     APIResponseEnrollment,
     APIResponseEnrollments,
     APIResponseStaff,
@@ -20,9 +24,10 @@ from app.schemas.institution import (
     AssignRoleRequest,
     EnrollmentCreate,
     StaffInvite,
+    StaffUpdate,
     StudentCreate,
 )
-from app.services.institution_service import InstitutionService
+from app.services.institution_service import BULK_MAX_FILE_BYTES, InstitutionService
 
 router = APIRouter()
 
@@ -49,7 +54,25 @@ async def invite_staff(
 ):
     tenant = await _tenant(db, admin)
     data = await InstitutionService.invite_staff(db, tenant, payload, actor=admin)
-    return APIResponse(success=True, data=data, message="Staff invited — set-password link emailed")
+    return APIResponse(success=True, data=data, message="Staff added — default password is password1234! (set-password link emailed)")
+
+
+@router.post("/staff/bulk", response_model=APIResponseBulk)
+async def bulk_create_staff(
+    file: Annotated[UploadFile, File(description="CSV with headers: name, email, role, phone, department_code")],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+):
+    content = await file.read(BULK_MAX_FILE_BYTES + 1)
+    if len(content) > BULK_MAX_FILE_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large — max 2 MB")
+    tenant = await _tenant(db, admin)
+    result = await InstitutionService.bulk_create_staff(db, tenant, content)
+    return APIResponse(
+        success=True,
+        data=result,
+        message=f"Bulk import finished: {result.created} created, {len(result.errors)} failed",
+    )
 
 
 @router.put("/staff/{user_id}/roles", response_model=APIResponseStaffOne)
@@ -100,25 +123,65 @@ async def set_staff_active(
     return APIResponse(success=True, data=data, message="Staff status updated")
 
 
+@router.put("/staff/{user_id}", response_model=APIResponseStaffOne)
+async def update_staff(
+    user_id: uuid.UUID,
+    payload: StaffUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+):
+    data = await InstitutionService.update_staff(db, admin.tenant_id, user_id, payload, actor=admin)
+    return APIResponse(success=True, data=data, message="Staff member updated")
+
+
+@router.delete("/staff/{user_id}", response_model=APIResponse[None])
+async def delete_staff(
+    user_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+):
+    await InstitutionService.delete_staff(db, admin.tenant_id, user_id, actor=admin)
+    return APIResponse(success=True, data=None, message="Staff member deleted")
+
+
+
 # ── Students ─────────────────────────────────────────────────────────────────
 
 @router.get("/students", response_model=APIResponseStudents)
 async def list_students(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    return APIResponse(success=True, data=await InstitutionService.list_students(db, admin.tenant_id), message="Students loaded")
+    return APIResponse(success=True, data=await InstitutionService.list_students(db, manager.tenant_id), message="Students loaded")
 
 
 @router.post("/students", response_model=APIResponseStudent, status_code=201)
 async def create_student(
     payload: StudentCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    tenant = await _tenant(db, admin)
+    tenant = await _tenant(db, manager)
     data = await InstitutionService.create_student(db, tenant, payload)
     return APIResponse(success=True, data=data, message="Student created")
+
+
+@router.post("/students/bulk", response_model=APIResponseBulk)
+async def bulk_create_students(
+    file: Annotated[UploadFile, File(description="CSV with headers: name, roll_no, email, gender, date_of_birth, class_code")],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+):
+    content = await file.read(BULK_MAX_FILE_BYTES + 1)
+    if len(content) > BULK_MAX_FILE_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large — max 2 MB")
+    tenant = await _tenant(db, admin)
+    result = await InstitutionService.bulk_create_students(db, tenant, content)
+    return APIResponse(
+        success=True,
+        data=result,
+        message=f"Bulk import finished: {result.created} created, {len(result.errors)} failed",
+    )
 
 
 # ── Enrollments ──────────────────────────────────────────────────────────────
@@ -126,16 +189,16 @@ async def create_student(
 @router.get("/enrollments", response_model=APIResponseEnrollments)
 async def list_enrollments(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    return APIResponse(success=True, data=await InstitutionService.list_enrollments(db, admin.tenant_id), message="Enrollments loaded")
+    return APIResponse(success=True, data=await InstitutionService.list_enrollments(db, manager.tenant_id), message="Enrollments loaded")
 
 
 @router.post("/enrollments", response_model=APIResponseEnrollment, status_code=201)
 async def create_enrollment(
     payload: EnrollmentCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    data = await InstitutionService.create_enrollment(db, admin.tenant_id, payload)
+    data = await InstitutionService.create_enrollment(db, manager.tenant_id, payload)
     return APIResponse(success=True, data=data, message="Student enrolled")

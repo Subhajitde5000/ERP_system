@@ -162,6 +162,14 @@ class StaffInvite(BaseModel):
     department_id: uuid.UUID | None = None
 
 
+class StaffUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=255)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=20)
+    department_id: uuid.UUID | None = None
+
+
+
 class RoleAssignmentOut(BaseModel):
     role_id: uuid.UUID
     role_name: str
@@ -206,6 +214,19 @@ class StudentOut(BaseModel):
     gender: str | None = None
     is_active: bool
     enrollment: dict[str, Any] | None = None
+
+
+class BulkUploadRowIssue(BaseModel):
+    """One problem found in a CSV row during bulk student import."""
+    row: int
+    message: str
+
+
+class BulkUploadResult(BaseModel):
+    total: int
+    created: int
+    errors: list[BulkUploadRowIssue] = Field(default_factory=list)
+    warnings: list[BulkUploadRowIssue] = Field(default_factory=list)
 
 
 class EnrollmentCreate(BaseModel):
@@ -301,6 +322,7 @@ APIResponseStaff = APIResponse[list[StaffOut]]
 APIResponseStaffOne = APIResponse[StaffOut]
 APIResponseStudents = APIResponse[list[StudentOut]]
 APIResponseStudent = APIResponse[StudentOut]
+APIResponseBulk = APIResponse[BulkUploadResult]
 APIResponseEnrollments = APIResponse[list[EnrollmentOut]]
 APIResponseEnrollment = APIResponse[EnrollmentOut]
 APIResponseModules = APIResponse[list[ModuleOut]]

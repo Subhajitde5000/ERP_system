@@ -70,6 +70,25 @@ export interface StaffMember {
   department_name: string | null;
 }
 
+export interface StudentRecord {
+  id: string;
+  name: string;
+  email: string | null;
+  roll_no: string | null;
+  gender: string | null;
+  is_active: boolean;
+  enrollment: { class_name?: string; academic_year_name?: string } | null;
+}
+
+export interface ClassRecord {
+  id: string;
+  name: string;
+  code: string;
+  academic_year_name: string | null;
+  department_name: string | null;
+  is_active: boolean;
+}
+
 export interface ModuleRow {
   key: string;
   name: string;
@@ -122,6 +141,11 @@ export const updateDepartment = (id: string, payload: { hod_id?: string | null; 
   call<Department>(`/departments/${id}`, { method: "PUT", body: JSON.stringify(payload) });
 
 export const fetchStaff = () => call<StaffMember[]>("/staff");
+export const uploadStaff = (file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return call<BulkUploadResult>("/staff/bulk", { method: "POST", body: form });
+};
 export const inviteStaff = (payload: {
   name: string;
   email: string;
@@ -151,6 +175,28 @@ export const revokeStaffRole = (userId: string, roleName: string, departmentId?:
     }`,
     { method: "DELETE" },
   );
+export const updateStaff = (
+  userId: string,
+  payload: { name?: string; email?: string; phone?: string; departmentId?: string }
+) =>
+  call<StaffMember>(`/staff/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone,
+      department_id: payload.departmentId,
+    }),
+  });
+export const deleteStaff = (userId: string) =>
+  call<null>(`/staff/${userId}`, { method: "DELETE" });
+export const setStaffActive = (userId: string, active: boolean) =>
+  call<StaffMember>(`/staff/${userId}/active?active=${active}`, { method: "PUT" });
+
+export const fetchStudents = () => call<StudentRecord[]>("/students");
+export const fetchClasses = () => call<ClassRecord[]>("/classes");
+export const createStudent = (payload: { name: string; roll_no: string; email?: string; gender?: string; class_id?: string }) =>
+  call<StudentRecord>("/students", { method: "POST", body: JSON.stringify(payload) });
 
 export const fetchModules = () => call<ModuleRow[]>("/modules");
 export const toggleModule = (key: string, enabled: boolean) =>
