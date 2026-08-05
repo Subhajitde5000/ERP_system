@@ -237,6 +237,13 @@ async def test_staff_invite_student_enroll(real_backend):
     assert ir.status_code == 201, ir.text
     assert ir.json()["data"]["roles"] == ["TEACHER"]
 
+    # verify newly added staff can log in using default password password1234!
+    staff_login = await client.post("/api/v1/tenant/auth/login", json={
+        "slug": "green", "identifier": "priya@green.edu", "password": "password1234!"})
+    assert staff_login.status_code == 200, staff_login.text
+    assert "tokens" in staff_login.json()["data"]
+    assert "access_token" in staff_login.json()["data"]["tokens"]
+
     # duplicate invite rejected
     dup = await client.post("/api/v1/institution/staff", headers=h, json={
         "name": "Priya", "email": "priya@green.edu", "role": "TEACHER"})
@@ -261,6 +268,25 @@ async def test_staff_invite_student_enroll(real_backend):
                                 json={"role_name": "ACADEMIC_COORDINATOR"})
     assert ok_grant.status_code == 200, ok_grant.text
     assert "ACADEMIC_COORDINATOR" in ok_grant.json()["data"]["roles"]
+
+    # edit staff details
+    staff_id = ir.json()["data"]["id"]
+    up_res = await client.put(f"/api/v1/institution/staff/{staff_id}", headers=h, json={
+        "name": "Prof. Anita Sharma Updated",
+        "phone": "+91 99999 88888",
+    })
+    assert up_res.status_code == 200, up_res.text
+    assert up_res.json()["data"]["name"] == "Prof. Anita Sharma Updated"
+    assert up_res.json()["data"]["phone"] == "+91 99999 88888"
+
+    # toggle staff active status
+    act_res = await client.put(f"/api/v1/institution/staff/{staff_id}/active?active=false", headers=h)
+    assert act_res.status_code == 200, act_res.text
+    assert act_res.json()["data"]["is_active"] is False
+
+    # delete staff
+    del_res = await client.delete(f"/api/v1/institution/staff/{staff_id}", headers=h)
+    assert del_res.status_code == 200, del_res.text
 
     # create student enrolled into the class
     sc = await client.post("/api/v1/institution/students", headers=h, json={

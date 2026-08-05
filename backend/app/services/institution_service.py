@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings as get_app_settings
 from app.models.academic import AcademicYear, Department, SchoolClass, Subject
 from app.models.billing import Subscription, TenantModule, TenantSetting
+from app.models.principal import StaffProfile
 from app.models.catalog import Module, Plan
 from app.models.enrollment import Enrollment, TeacherSubject
 from app.models.role import Role, RoleAssignment
@@ -53,6 +54,7 @@ from app.schemas.institution import (
     SettingsUpdate,
     StaffInvite,
     StaffOut,
+    StaffUpdate,
     StudentCreate,
     StudentOut,
     SubjectCreate,
@@ -70,11 +72,13 @@ ONBOARDING_DONE_KEY = "onboarding.completed"
 BULK_MAX_FILE_BYTES = 2 * 1024 * 1024
 BULK_MAX_ROWS = 10_000
 
+# Default password for newly added staff members
+DEFAULT_STAFF_PASSWORD = "password1234!"
+
 # Roles an Institution Admin may NOT invite or grant: platform roles
 # (SUPER_ADMIN & co) are out of scope, INSTITUTION_ADMIN is the console owner,
 # and STUDENT/PARENT have their own non-staff flows.
 NON_INVITABLE_ROLES = frozenset({"INSTITUTION_ADMIN", "STUDENT", "PARENT"})
-
 
 class InstitutionService:
     # ── helpers ──────────────────────────────────────────────────────────────
@@ -493,7 +497,7 @@ class InstitutionService:
         raw_token = generate_secure_token(32)
         user = User(
             id=uuid.uuid4(), tenant_id=tenant.id, name=payload.name, email=email, phone=payload.phone,
-            password_hash=None, is_active=True,
+            password_hash=hash_password(DEFAULT_STAFF_PASSWORD), is_active=True,
             password_reset_token=hash_token(raw_token),
             password_reset_expires=datetime.now(timezone.utc) + timedelta(days=7),
         )
@@ -685,6 +689,96 @@ class InstitutionService:
         return await InstitutionService._staff_out(db, tenant_id, user)
 
     @staticmethod
+    async def update_staff(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        payload: StaffUpdate,
+        *,
+        actor: User | None = None,
+    ) -> StaffOut:
+        user = await InstitutionService._load_user(db, tenant_id, user_id)
+        if payload.name is not None:
+            user.name = payload.name.strip()
+        if payload.phone is not None:
+            user.phone = payload.phone.strip() if payload.phone else None
+        if payload.email is not None and payload.email.lower() != (user.email or "").lower():
+            new_email = payload.email.lower().strip()
+            existing = await db.execute(
+                select(User).where(User.tenant_id == tenant_id, User.email == new_email, User.id != user_id)
+            )
+            if existing.scalar_one_or_none() is not None:
+                raise HTTPException(status.HTTP_409_CONFLICT, detail="A user with this email already exists")
+            user.email = new_email
+
+        if payload.department_id is not None:
+            await InstitutionService._assert_dept(db, tenant_id, payload.department_id)
+            sp_res = await db.execute(
+                select(StaffProfile).where(StaffProfile.user_id == user_id, StaffProfile.tenant_id == tenant_id)
+            )
+            sp = sp_res.scalar_one_or_none()
+            if sp:
+                sp.department_id = payload.department_id
+            else:
+                sp = StaffProfile(
+                    id=uuid.uuid4(),
+                    user_id=user_id,
+                    tenant_id=tenant_id,
+                    employee_code=f"EMP-{user_id.hex[:6].upper()}",
+                    designation="Staff Member",
+                    department_id=payload.department_id,
+                    employment_type="FULL_TIME",
+                    date_of_joining=date.today(),
+                    is_active=True,
+                )
+                db.add(sp)
+
+        await db.flush()
+        if actor is not None:
+            AuditService.record(
+                db,
+                actor=actor,
+                actor_role="INSTITUTION_ADMIN",
+                action="UPDATE_STAFF",
+                entity="User",
+                entity_id=user.id,
+                tenant_id=tenant_id,
+                new_value={
+                    "name": user.name,
+                    "email": user.email,
+                    "phone": user.phone,
+                    "department_id": str(payload.department_id) if payload.department_id else None,
+                },
+            )
+        return await InstitutionService._staff_out(db, tenant_id, user)
+
+    @staticmethod
+    async def delete_staff(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        actor: User | None = None,
+    ) -> None:
+        user = await InstitutionService._load_user(db, tenant_id, user_id)
+        if actor is not None and actor.id == user_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Cannot delete your own account")
+        user.is_active = False
+        user.deleted_at = datetime.now(timezone.utc)
+        await db.flush()
+        if actor is not None:
+            AuditService.record(
+                db,
+                actor=actor,
+                actor_role="INSTITUTION_ADMIN",
+                action="DELETE_STAFF",
+                entity="User",
+                entity_id=user.id,
+                tenant_id=tenant_id,
+            )
+
+
+    @staticmethod
     async def bulk_create_staff(db: AsyncSession, tenant: Tenant, content: bytes) -> BulkUploadResult:
         """Import staff from a CSV upload.
 
@@ -780,7 +874,7 @@ class InstitutionService:
         raw_token = generate_secure_token(32)
         user = User(
             id=uuid.uuid4(), tenant_id=tenant.id, name=name, email=email,
-            phone=row.get("phone") or None, password_hash=None, is_active=True,
+            phone=row.get("phone") or None, password_hash=hash_password(DEFAULT_STAFF_PASSWORD), is_active=True,
             password_reset_token=hash_token(raw_token),
             password_reset_expires=datetime.now(timezone.utc) + timedelta(days=7),
         )
@@ -1383,6 +1477,13 @@ class InstitutionService:
             ).limit(1)
         )
         dept_id = dept_res.scalar_one_or_none()
+        if dept_id is None:
+            sp_res = await db.execute(
+                select(StaffProfile.department_id).where(
+                    StaffProfile.user_id == user.id, StaffProfile.tenant_id == tenant_id
+                )
+            )
+            dept_id = sp_res.scalar_one_or_none()
         dept_name = None
         if dept_id:
             dn = await db.execute(select(Department.name).where(Department.id == dept_id))

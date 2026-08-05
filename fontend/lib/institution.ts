@@ -175,6 +175,23 @@ export const revokeStaffRole = (userId: string, roleName: string, departmentId?:
     }`,
     { method: "DELETE" },
   );
+export const updateStaff = (
+  userId: string,
+  payload: { name?: string; email?: string; phone?: string; departmentId?: string }
+) =>
+  call<StaffMember>(`/staff/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone,
+      department_id: payload.departmentId,
+    }),
+  });
+export const deleteStaff = (userId: string) =>
+  call<null>(`/staff/${userId}`, { method: "DELETE" });
+export const setStaffActive = (userId: string, active: boolean) =>
+  call<StaffMember>(`/staff/${userId}/active?active=${active}`, { method: "PUT" });
 
 export const fetchStudents = () => call<StudentRecord[]>("/students");
 export const fetchClasses = () => call<ClassRecord[]>("/classes");

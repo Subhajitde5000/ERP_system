@@ -162,6 +162,14 @@ class StaffInvite(BaseModel):
     department_id: uuid.UUID | None = None
 
 
+class StaffUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=255)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=20)
+    department_id: uuid.UUID | None = None
+
+
+
 class RoleAssignmentOut(BaseModel):
     role_id: uuid.UUID
     role_name: str

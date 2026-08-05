@@ -24,6 +24,7 @@ from app.schemas.institution import (
     AssignRoleRequest,
     EnrollmentCreate,
     StaffInvite,
+    StaffUpdate,
     StudentCreate,
 )
 from app.services.institution_service import BULK_MAX_FILE_BYTES, InstitutionService
@@ -53,7 +54,7 @@ async def invite_staff(
 ):
     tenant = await _tenant(db, admin)
     data = await InstitutionService.invite_staff(db, tenant, payload, actor=admin)
-    return APIResponse(success=True, data=data, message="Staff invited — set-password link emailed")
+    return APIResponse(success=True, data=data, message="Staff added — default password is password1234! (set-password link emailed)")
 
 
 @router.post("/staff/bulk", response_model=APIResponseBulk)
@@ -120,6 +121,28 @@ async def set_staff_active(
 ):
     data = await InstitutionService.set_user_active(db, admin.tenant_id, user_id, active)
     return APIResponse(success=True, data=data, message="Staff status updated")
+
+
+@router.put("/staff/{user_id}", response_model=APIResponseStaffOne)
+async def update_staff(
+    user_id: uuid.UUID,
+    payload: StaffUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+):
+    data = await InstitutionService.update_staff(db, admin.tenant_id, user_id, payload, actor=admin)
+    return APIResponse(success=True, data=data, message="Staff member updated")
+
+
+@router.delete("/staff/{user_id}", response_model=APIResponse[None])
+async def delete_staff(
+    user_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+):
+    await InstitutionService.delete_staff(db, admin.tenant_id, user_id, actor=admin)
+    return APIResponse(success=True, data=None, message="Staff member deleted")
+
 
 
 # ── Students ─────────────────────────────────────────────────────────────────
