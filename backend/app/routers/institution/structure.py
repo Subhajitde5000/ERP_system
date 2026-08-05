@@ -12,7 +12,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies.auth import get_current_tenant_user_admin
+from app.dependencies.auth import (
+    get_current_tenant_user_admin,
+    get_current_tenant_user_student_records_manager,
+)
 from app.models.user import User
 from app.schemas.common import APIResponse
 from app.schemas.institution import (
@@ -132,9 +135,9 @@ async def delete_department(
 @router.get("/classes", response_model=APIResponseClasses)
 async def list_classes(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    return APIResponse(success=True, data=await InstitutionService.list_classes(db, admin.tenant_id), message="Classes")
+    return APIResponse(success=True, data=await InstitutionService.list_classes(db, manager.tenant_id), message="Classes")
 
 
 @router.post("/classes", response_model=APIResponseClass, status_code=201)
