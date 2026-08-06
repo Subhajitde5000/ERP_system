@@ -3,7 +3,6 @@
 import {
   Building2,
   CalendarRange,
-  FileUp,
   LayoutDashboard,
   Puzzle,
   Settings,
@@ -23,7 +22,6 @@ const NAVIGATION: InstitutionConsoleNavItem[] = [
   { label: "Departments", href: "/admin/departments", icon: Building2 },
   { label: "Staff", href: "/admin/staff", icon: Users },
   { label: "Students", href: "/admin/students", icon: Users },
-  { label: "Import people", href: "/admin/import", icon: FileUp },
   { label: "Modules", href: "/admin/modules", icon: Puzzle },
   { label: "Settings", href: "/admin/settings", icon: Settings },
   { label: "Profile", href: "/admin/profile", icon: UserRound },

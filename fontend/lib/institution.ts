@@ -122,6 +122,18 @@ export interface InstitutionProfile {
   subscription_status: string | null;
 }
 
+export interface BulkUploadRowIssue {
+  row: number;
+  message: string;
+}
+
+export interface BulkUploadResult {
+  total: number;
+  created: number;
+  errors: BulkUploadRowIssue[];
+  warnings: BulkUploadRowIssue[];
+}
+
 // ── Calls ────────────────────────────────────────────────────────────────────
 
 export const fetchDashboard = () => call<DashboardSummary>("/dashboard");
