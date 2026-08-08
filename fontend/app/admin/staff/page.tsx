@@ -30,6 +30,7 @@ import {
   updateStaff,
   uploadStaff,
   type BulkUploadResult,
+  type BulkUploadRowIssue,
   type Department,
   type StaffMember,
 } from "@/lib/institution";
@@ -322,7 +323,7 @@ export default function StaffPage() {
                 <div className="rounded-field border border-destructive-border bg-destructive-light/40 p-3">
                   <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-destructive-text">Rows that were not imported</p>
                   <ul className="max-h-44 space-y-1 overflow-y-auto text-xs text-primary">
-                    {bulkResult.errors.map((issue) => (
+                    {bulkResult.errors.map((issue: BulkUploadRowIssue) => (
                       <li key={`e-${issue.row}`}>Row {issue.row}: <span className="text-destructive-text">{issue.message}</span></li>
                     ))}
                   </ul>
@@ -332,7 +333,7 @@ export default function StaffPage() {
                 <div className="rounded-field border border-amber-300 bg-amber-50 p-3">
                   <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-amber-700">Imported, but not scoped to a department</p>
                   <ul className="max-h-44 space-y-1 overflow-y-auto text-xs text-primary">
-                    {bulkResult.warnings.map((issue) => (
+                    {bulkResult.warnings.map((issue: BulkUploadRowIssue) => (
                       <li key={`w-${issue.row}`}>Row {issue.row}: {issue.message}</li>
                     ))}
                   </ul>

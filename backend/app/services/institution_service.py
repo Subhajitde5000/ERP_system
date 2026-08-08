@@ -24,7 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings as get_app_settings
-from app.models.academic import AcademicYear, Department, SchoolClass, Subject
+from app.models.academic import AcademicYear, Department, SchoolClass, Subject, ClassGrade, ClassProgram
 from app.models.billing import Subscription, TenantModule, TenantSetting
 from app.models.principal import StaffProfile
 from app.models.catalog import Module, Plan
@@ -39,7 +39,11 @@ from app.schemas.institution import (
     BulkUploadResult,
     BulkUploadRowIssue,
     ClassCreate,
+    ClassGradeCreate,
+    ClassGradeOut,
     ClassOut,
+    ClassProgramCreate,
+    ClassProgramOut,
     ClassUpdate,
     DashboardSummary,
     DepartmentCreate,
@@ -50,6 +54,7 @@ from app.schemas.institution import (
     InstitutionProfileOut,
     InstitutionProfileUpdate,
     ModuleOut,
+    SectionOut,
     SettingsOut,
     SettingsUpdate,
     StaffInvite,
@@ -355,6 +360,7 @@ class InstitutionService:
                 room_no=c.room_no, class_teacher_id=c.class_teacher_id,
                 class_teacher_name=teacher_names.get(c.class_teacher_id), is_active=c.is_active,
                 enrolled_count=enrolled.get(c.id, 0), subject_count=subject_counts.get(c.id, 0),
+                grade_id=c.grade_id, program_id=c.program_id, section_label=c.section_label,
             )
             for c in classes
         ]
@@ -455,6 +461,334 @@ class InstitutionService:
         if subj is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Subject not found")
         await db.delete(subj)
+
+    # ── Class Grades (School wizard) ────────────────────────────────────
+
+    @staticmethod
+    async def list_grades(
+        db: AsyncSession, tenant_id: uuid.UUID,
+        academic_year_id: uuid.UUID | None = None,
+    ) -> list[ClassGradeOut]:
+        """Return all school grade groups with their sections."""
+        stmt = select(ClassGrade).where(ClassGrade.tenant_id == tenant_id)
+        if academic_year_id:
+            stmt = stmt.where(ClassGrade.academic_year_id == academic_year_id)
+        stmt = stmt.order_by(ClassGrade.grade_number, ClassGrade.stream)
+        grades = list((await db.execute(stmt)).scalars().all())
+
+        year_names = await InstitutionService._entity_names(db, AcademicYear, [g.academic_year_id for g in grades])
+        dept_names = await InstitutionService._entity_names(db, Department, [g.academic_year_id for g in grades])
+
+        # Load all sections that belong to any of these grades in one query
+        grade_ids = [g.id for g in grades]
+        teacher_name_cache: dict[uuid.UUID, str] = {}
+        enrolled_counts = await InstitutionService._count_enrolled_by_class(db, tenant_id)
+        subject_counts = await InstitutionService._count_subjects_by_class(db, tenant_id)
+
+        results: list[ClassGradeOut] = []
+        for grade in grades:
+            sec_res = await db.execute(
+                select(SchoolClass).where(
+                    SchoolClass.grade_id == grade.id,
+                    SchoolClass.tenant_id == tenant_id,
+                ).order_by(SchoolClass.section_label)
+            )
+            sections_orm = list(sec_res.scalars().all())
+
+            # Batch-collect teacher names we haven't seen yet
+            missing = [s.class_teacher_id for s in sections_orm if s.class_teacher_id and s.class_teacher_id not in teacher_name_cache]
+            if missing:
+                new_names = await InstitutionService._user_names(db, missing)
+                teacher_name_cache.update(new_names)
+
+            # Resolve the dept_name from the sections (they share the same department)
+            dept_id = sections_orm[0].department_id if sections_orm else None
+            dept_name = None
+            if dept_id:
+                dn = await db.execute(select(Department.name).where(Department.id == dept_id))
+                dept_name = dn.scalar_one_or_none()
+
+            results.append(ClassGradeOut(
+                id=grade.id,
+                academic_year_id=grade.academic_year_id,
+                academic_year_name=year_names.get(grade.academic_year_id),
+                department_id=dept_id or uuid.UUID(int=0),
+                department_name=dept_name,
+                name=grade.name,
+                grade_number=grade.grade_number,
+                stream=grade.stream,
+                is_active=grade.is_active,
+                sections=[
+                    SectionOut(
+                        id=s.id, name=s.name, code=s.code,
+                        section_label=s.section_label,
+                        class_teacher_id=s.class_teacher_id,
+                        class_teacher_name=teacher_name_cache.get(s.class_teacher_id) if s.class_teacher_id else None,
+                        enrolled_count=enrolled_counts.get(s.id, 0),
+                        subject_count=subject_counts.get(s.id, 0),
+                        room_no=s.room_no,
+                        is_active=s.is_active,
+                    )
+                    for s in sections_orm
+                ],
+            ))
+        return results
+
+    @staticmethod
+    async def create_grade_with_sections(
+        db: AsyncSession, tenant_id: uuid.UUID, payload: ClassGradeCreate,
+    ) -> ClassGradeOut:
+        """School wizard: create one ClassGrade row + one SchoolClass per section."""
+        await InstitutionService._assert_dept(db, tenant_id, payload.department_id)
+        await InstitutionService._assert_year(db, tenant_id, payload.academic_year_id)
+        if payload.class_teacher_id is not None:
+            await InstitutionService._assert_user_in_tenant(db, tenant_id, payload.class_teacher_id)
+        if not payload.sections:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="At least one section is required")
+        # Deduplicate and uppercase section labels
+        seen: set[str] = set()
+        unique_sections: list[str] = []
+        for s in payload.sections:
+            label = s.strip().upper()
+            if not label:
+                continue
+            if label in seen:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Duplicate section label: {label}")
+            seen.add(label)
+            unique_sections.append(label)
+
+        # Build display name and stream label
+        grade_name = f"Class {payload.grade_number}"
+        stream_suffix = f" - {payload.stream}" if payload.stream else ""
+
+        grade = ClassGrade(
+            id=uuid.uuid4(), tenant_id=tenant_id,
+            academic_year_id=payload.academic_year_id,
+            name=grade_name,
+            grade_number=payload.grade_number,
+            stream=payload.stream,
+            is_active=True,
+        )
+        db.add(grade)
+        await InstitutionService._flush_unique(
+            db, f"Grade {payload.grade_number}{stream_suffix} already exists for this year"
+        )
+
+        # Create one SchoolClass (Academic Group) per section
+        for section_label in unique_sections:
+            # Code pattern: e.g. "11-A", "11-SCI-A" (if stream)
+            stream_code = ""
+            if payload.stream:
+                stream_code = f"-{payload.stream[:3].upper()}"
+            class_code = f"{payload.grade_number}{stream_code}-{section_label}"
+            class_name = f"Class {payload.grade_number}{stream_suffix} - Section {section_label}"
+            cls = SchoolClass(
+                id=uuid.uuid4(), tenant_id=tenant_id,
+                department_id=payload.department_id,
+                academic_year_id=payload.academic_year_id,
+                name=class_name,
+                code=class_code,
+                max_strength=payload.max_strength,
+                class_teacher_id=payload.class_teacher_id,
+                is_active=True,
+                grade_id=grade.id,
+                section_label=section_label,
+            )
+            db.add(cls)
+
+        await InstitutionService._flush_unique(db, "A section with this code already exists in this year")
+        rows = await InstitutionService.list_grades(db, tenant_id, payload.academic_year_id)
+        created = next((g for g in rows if g.id == grade.id), None)
+        if created is None:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Grade created but could not be fetched")
+        return created
+
+    @staticmethod
+    async def delete_grade(db: AsyncSession, tenant_id: uuid.UUID, grade_id: uuid.UUID) -> None:
+        """Delete a grade group. Only allowed when all its sections are empty."""
+        res = await db.execute(select(ClassGrade).where(ClassGrade.id == grade_id, ClassGrade.tenant_id == tenant_id))
+        grade = res.scalar_one_or_none()
+        if grade is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Grade not found")
+        # Check all sections are empty
+        sec_res = await db.execute(
+            select(SchoolClass).where(SchoolClass.grade_id == grade_id, SchoolClass.tenant_id == tenant_id)
+        )
+        sections = list(sec_res.scalars().all())
+        enrolled_counts = await InstitutionService._count_enrolled_by_class(db, tenant_id)
+        total_enrolled = sum(enrolled_counts.get(s.id, 0) for s in sections)
+        if total_enrolled > 0:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail=f"{total_enrolled} student(s) enrolled in sections of this grade. Transfer them first."
+            )
+        subject_counts = await InstitutionService._count_subjects_by_class(db, tenant_id)
+        total_subjects = sum(subject_counts.get(s.id, 0) for s in sections)
+        if total_subjects > 0:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail=f"{total_subjects} subject(s) attached. Delete them first."
+            )
+        for s in sections:
+            await db.delete(s)
+        await db.flush()
+        await db.delete(grade)
+
+    # ── Class Programs (College wizard) ────────────────────────────────
+
+    @staticmethod
+    async def list_programs(
+        db: AsyncSession, tenant_id: uuid.UUID,
+        department_id: uuid.UUID | None = None,
+        academic_year_id: uuid.UUID | None = None,
+    ) -> list[ClassProgramOut]:
+        """Return all college program+semester groups with their batches."""
+        stmt = select(ClassProgram).where(ClassProgram.tenant_id == tenant_id)
+        if department_id:
+            stmt = stmt.where(ClassProgram.department_id == department_id)
+        if academic_year_id:
+            stmt = stmt.where(ClassProgram.academic_year_id == academic_year_id)
+        stmt = stmt.order_by(ClassProgram.program_code, ClassProgram.semester_number)
+        programs = list((await db.execute(stmt)).scalars().all())
+
+        year_names = await InstitutionService._entity_names(db, AcademicYear, [p.academic_year_id for p in programs])
+        dept_names = await InstitutionService._entity_names(db, Department, [p.department_id for p in programs])
+        enrolled_counts = await InstitutionService._count_enrolled_by_class(db, tenant_id)
+        subject_counts = await InstitutionService._count_subjects_by_class(db, tenant_id)
+        teacher_name_cache: dict[uuid.UUID, str] = {}
+
+        results: list[ClassProgramOut] = []
+        for program in programs:
+            bat_res = await db.execute(
+                select(SchoolClass).where(
+                    SchoolClass.program_id == program.id,
+                    SchoolClass.tenant_id == tenant_id,
+                ).order_by(SchoolClass.section_label)
+            )
+            batches_orm = list(bat_res.scalars().all())
+
+            missing = [b.class_teacher_id for b in batches_orm if b.class_teacher_id and b.class_teacher_id not in teacher_name_cache]
+            if missing:
+                new_names = await InstitutionService._user_names(db, missing)
+                teacher_name_cache.update(new_names)
+
+            results.append(ClassProgramOut(
+                id=program.id,
+                academic_year_id=program.academic_year_id,
+                academic_year_name=year_names.get(program.academic_year_id),
+                department_id=program.department_id,
+                department_name=dept_names.get(program.department_id),
+                program_name=program.program_name,
+                program_code=program.program_code,
+                semester_number=program.semester_number,
+                is_active=program.is_active,
+                batches=[
+                    SectionOut(
+                        id=b.id, name=b.name, code=b.code,
+                        section_label=b.section_label,
+                        class_teacher_id=b.class_teacher_id,
+                        class_teacher_name=teacher_name_cache.get(b.class_teacher_id) if b.class_teacher_id else None,
+                        enrolled_count=enrolled_counts.get(b.id, 0),
+                        subject_count=subject_counts.get(b.id, 0),
+                        room_no=b.room_no,
+                        is_active=b.is_active,
+                    )
+                    for b in batches_orm
+                ],
+            ))
+        return results
+
+    @staticmethod
+    async def create_program_with_batches(
+        db: AsyncSession, tenant_id: uuid.UUID, payload: ClassProgramCreate,
+    ) -> ClassProgramOut:
+        """College wizard: create one ClassProgram row + one SchoolClass per batch."""
+        await InstitutionService._assert_dept(db, tenant_id, payload.department_id)
+        await InstitutionService._assert_year(db, tenant_id, payload.academic_year_id)
+        if payload.class_teacher_id is not None:
+            await InstitutionService._assert_user_in_tenant(db, tenant_id, payload.class_teacher_id)
+        if not payload.batches:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="At least one batch is required")
+
+        seen: set[str] = set()
+        unique_batches: list[str] = []
+        for b in payload.batches:
+            label = b.strip().upper()
+            if not label:
+                continue
+            if label in seen:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Duplicate batch label: {label}")
+            seen.add(label)
+            unique_batches.append(label)
+
+        program = ClassProgram(
+            id=uuid.uuid4(), tenant_id=tenant_id,
+            department_id=payload.department_id,
+            academic_year_id=payload.academic_year_id,
+            program_name=payload.program_name,
+            program_code=payload.program_code.upper(),
+            semester_number=payload.semester_number,
+            is_active=True,
+        )
+        db.add(program)
+        await InstitutionService._flush_unique(
+            db, f"{payload.program_code} Semester {payload.semester_number} already exists for this dept and year"
+        )
+
+        for batch_label in unique_batches:
+            # Code pattern: "BTCSE-3-A"
+            class_code = f"{payload.program_code.upper()}-{payload.semester_number}-{batch_label}"
+            class_name = f"{payload.program_name} Sem {payload.semester_number} - {batch_label}"
+            cls = SchoolClass(
+                id=uuid.uuid4(), tenant_id=tenant_id,
+                department_id=payload.department_id,
+                academic_year_id=payload.academic_year_id,
+                name=class_name,
+                code=class_code,
+                max_strength=payload.max_strength,
+                class_teacher_id=payload.class_teacher_id,
+                is_active=True,
+                program_id=program.id,
+                section_label=batch_label,
+            )
+            db.add(cls)
+
+        await InstitutionService._flush_unique(db, "A batch with this code already exists in this dept and year")
+        rows = await InstitutionService.list_programs(db, tenant_id, payload.department_id, payload.academic_year_id)
+        created = next((p for p in rows if p.id == program.id), None)
+        if created is None:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Program created but could not be fetched")
+        return created
+
+    @staticmethod
+    async def delete_program(db: AsyncSession, tenant_id: uuid.UUID, program_id: uuid.UUID) -> None:
+        """Delete a program group. Only allowed when all its batches are empty."""
+        res = await db.execute(select(ClassProgram).where(ClassProgram.id == program_id, ClassProgram.tenant_id == tenant_id))
+        program = res.scalar_one_or_none()
+        if program is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Program not found")
+        bat_res = await db.execute(
+            select(SchoolClass).where(SchoolClass.program_id == program_id, SchoolClass.tenant_id == tenant_id)
+        )
+        batches = list(bat_res.scalars().all())
+        enrolled_counts = await InstitutionService._count_enrolled_by_class(db, tenant_id)
+        total_enrolled = sum(enrolled_counts.get(b.id, 0) for b in batches)
+        if total_enrolled > 0:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail=f"{total_enrolled} student(s) enrolled in batches of this program. Transfer them first."
+            )
+        subject_counts = await InstitutionService._count_subjects_by_class(db, tenant_id)
+        total_subjects = sum(subject_counts.get(b.id, 0) for b in batches)
+        if total_subjects > 0:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail=f"{total_subjects} subject(s) attached. Delete them first."
+            )
+        for b in batches:
+            await db.delete(b)
+        await db.flush()
+        await db.delete(program)
 
     # ── People: staff ────────────────────────────────────────────────────────
 

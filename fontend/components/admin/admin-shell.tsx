@@ -1,9 +1,9 @@
 "use client";
 
 import {
+  BookOpen,
   Building2,
   CalendarRange,
-  FileUp,
   LayoutDashboard,
   Puzzle,
   Settings,
@@ -21,9 +21,9 @@ const NAVIGATION: InstitutionConsoleNavItem[] = [
   { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { label: "Academic Years", href: "/admin/academic-years", icon: CalendarRange },
   { label: "Departments", href: "/admin/departments", icon: Building2 },
+  { label: "Classes", href: "/admin/classes", icon: BookOpen },
   { label: "Staff", href: "/admin/staff", icon: Users },
   { label: "Students", href: "/admin/students", icon: Users },
-  { label: "Import people", href: "/admin/import", icon: FileUp },
   { label: "Modules", href: "/admin/modules", icon: Puzzle },
   { label: "Settings", href: "/admin/settings", icon: Settings },
   { label: "Profile", href: "/admin/profile", icon: UserRound },
