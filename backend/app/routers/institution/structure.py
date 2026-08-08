@@ -27,11 +27,17 @@ from app.schemas.institution import (
     APIResponseDashboard,
     APIResponseDepartment,
     APIResponseDepartments,
+    APIResponseGrade,
+    APIResponseGrades,
+    APIResponseProgram,
+    APIResponsePrograms,
     APIResponseSubject,
     APIResponseSubjects,
     APIResponseYear,
     APIResponseYears,
     ClassCreate,
+    ClassGradeCreate,
+    ClassProgramCreate,
     ClassUpdate,
     DepartmentCreate,
     DepartmentUpdate,
@@ -167,6 +173,83 @@ async def delete_class(
 ):
     await InstitutionService.delete_class(db, admin.tenant_id, class_id)
     return APIResponse(success=True, data=None, message="Class deleted")
+
+
+# ── Grades (School wizard) ────────────────────────────────────────────────────
+
+@router.get("/grades", response_model=APIResponseGrades)
+async def list_grades(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    academic_year_id: uuid.UUID | None = None,
+):
+    return APIResponse(
+        success=True,
+        data=await InstitutionService.list_grades(db, admin.tenant_id, academic_year_id),
+        message="Grade groups",
+    )
+
+
+@router.post("/grades", response_model=APIResponseGrade, status_code=201)
+async def create_grade(
+    payload: ClassGradeCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+):
+    return APIResponse(
+        success=True,
+        data=await InstitutionService.create_grade_with_sections(db, admin.tenant_id, payload),
+        message="Grade and sections created",
+    )
+
+
+@router.delete("/grades/{grade_id}", response_model=APIResponse[None])
+async def delete_grade(
+    grade_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+):
+    await InstitutionService.delete_grade(db, admin.tenant_id, grade_id)
+    return APIResponse(success=True, data=None, message="Grade deleted")
+
+
+# ── Programs (College wizard) ────────────────────────────────────────────────
+
+@router.get("/programs", response_model=APIResponsePrograms)
+async def list_programs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    department_id: uuid.UUID | None = None,
+    academic_year_id: uuid.UUID | None = None,
+):
+    return APIResponse(
+        success=True,
+        data=await InstitutionService.list_programs(db, admin.tenant_id, department_id, academic_year_id),
+        message="Program groups",
+    )
+
+
+@router.post("/programs", response_model=APIResponseProgram, status_code=201)
+async def create_program(
+    payload: ClassProgramCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+):
+    return APIResponse(
+        success=True,
+        data=await InstitutionService.create_program_with_batches(db, admin.tenant_id, payload),
+        message="Program and batches created",
+    )
+
+
+@router.delete("/programs/{program_id}", response_model=APIResponse[None])
+async def delete_program(
+    program_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+):
+    await InstitutionService.delete_program(db, admin.tenant_id, program_id)
+    return APIResponse(success=True, data=None, message="Program deleted")
 
 
 # ── Subjects ─────────────────────────────────────────────────────────────────

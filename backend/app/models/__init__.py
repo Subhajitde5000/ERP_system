@@ -28,7 +28,7 @@ from app.models.platform_setting import (
     PLATFORM_SETTING_INT_KEYS,
     PlatformSetting,
 )
-from app.models.academic import AcademicYear, Department, SchoolClass, Subject
+from app.models.academic import AcademicYear, Department, SchoolClass, Subject, ClassGrade, ClassProgram
 from app.models.enrollment import Enrollment, TeacherSubject
 from app.models.principal import (
     AttendanceSession,
@@ -129,6 +129,8 @@ __all__ = [
     "Department",
     "SchoolClass",
     "Subject",
+    "ClassGrade",
+    "ClassProgram",
     "AttendanceSession",
     "AttemptStatus",
     "Exam",

@@ -87,6 +87,51 @@ export interface ClassRecord {
   academic_year_name: string | null;
   department_name: string | null;
   is_active: boolean;
+  grade_id: string | null;
+  program_id: string | null;
+  section_label: string | null;
+}
+
+/** A single section/batch within a grade or program group. */
+export interface SectionRecord {
+  id: string;
+  name: string;
+  code: string;
+  section_label: string | null;
+  class_teacher_id: string | null;
+  class_teacher_name: string | null;
+  enrolled_count: number;
+  subject_count: number;
+  room_no: string | null;
+  is_active: boolean;
+}
+
+/** School: grade group + its sections. */
+export interface ClassGradeRecord {
+  id: string;
+  academic_year_id: string;
+  academic_year_name: string | null;
+  department_id: string;
+  department_name: string | null;
+  name: string;
+  grade_number: number;
+  stream: string | null;
+  is_active: boolean;
+  sections: SectionRecord[];
+}
+
+/** College: program+semester group + its batches. */
+export interface ClassProgramRecord {
+  id: string;
+  academic_year_id: string;
+  academic_year_name: string | null;
+  department_id: string;
+  department_name: string | null;
+  program_name: string;
+  program_code: string;
+  semester_number: number;
+  is_active: boolean;
+  batches: SectionRecord[];
 }
 
 export interface ModuleRow {
@@ -209,6 +254,48 @@ export const fetchStudents = () => call<StudentRecord[]>("/students");
 export const fetchClasses = () => call<ClassRecord[]>("/classes");
 export const createStudent = (payload: { name: string; roll_no: string; email?: string; gender?: string; class_id?: string }) =>
   call<StudentRecord>("/students", { method: "POST", body: JSON.stringify(payload) });
+
+// ── School grade wizard ─────────────────────────────────────────────────────
+
+export const fetchGrades = (academic_year_id?: string) =>
+  call<ClassGradeRecord[]>(`/grades${academic_year_id ? `?academic_year_id=${academic_year_id}` : ""}`);
+
+export const createGrade = (payload: {
+  academic_year_id: string;
+  department_id: string;
+  grade_number: number;
+  stream?: string;
+  sections: string[];
+  max_strength?: number;
+  class_teacher_id?: string;
+}) => call<ClassGradeRecord>("/grades", { method: "POST", body: JSON.stringify(payload) });
+
+export const deleteGrade = (grade_id: string) =>
+  call<null>(`/grades/${grade_id}`, { method: "DELETE" });
+
+// ── College program wizard ──────────────────────────────────────────────────
+
+export const fetchPrograms = (department_id?: string, academic_year_id?: string) => {
+  const params = new URLSearchParams();
+  if (department_id) params.set("department_id", department_id);
+  if (academic_year_id) params.set("academic_year_id", academic_year_id);
+  const qs = params.toString();
+  return call<ClassProgramRecord[]>(`/programs${qs ? `?${qs}` : ""}`);
+};
+
+export const createProgram = (payload: {
+  academic_year_id: string;
+  department_id: string;
+  program_name: string;
+  program_code: string;
+  semester_number: number;
+  batches: string[];
+  max_strength?: number;
+  class_teacher_id?: string;
+}) => call<ClassProgramRecord>("/programs", { method: "POST", body: JSON.stringify(payload) });
+
+export const deleteProgram = (program_id: string) =>
+  call<null>(`/programs/${program_id}`, { method: "DELETE" });
 
 export const fetchModules = () => call<ModuleRow[]>("/modules");
 export const toggleModule = (key: string, enabled: boolean) =>

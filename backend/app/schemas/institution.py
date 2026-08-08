@@ -80,7 +80,79 @@ class DepartmentOut(BaseModel):
     staff_count: int = 0
 
 
-# ── Classes ──────────────────────────────────────────────────────────────────
+# ── Class grades (school) + programs (college) ─────────────────────────────
+
+# School: one ClassGrade row groups the N sections of e.g. "Class 11 Science"
+class ClassGradeCreate(BaseModel):
+    """Wizard payload: create a school grade group + one section per letter."""
+    academic_year_id: uuid.UUID
+    # Section lives inside a department even for school (for FK integrity)
+    department_id: uuid.UUID
+    grade_number: int = Field(..., ge=1, le=12, description="Grade 1–12")
+    stream: str | None = Field(default=None, max_length=50, description="Science/Commerce/Arts or custom")
+    # Section labels: ["A","B","C"] — each becomes one SchoolClass (Academic Group)
+    sections: list[str] = Field(..., min_length=1, description="Section letters/labels, e.g. ['A','B','C']")
+    max_strength: int = Field(default=60, ge=1)
+    # Optional: assign the same class teacher to all sections, or leave empty
+    # (per-section assignment can be done from the class detail page)
+    class_teacher_id: uuid.UUID | None = None
+
+
+class SectionOut(BaseModel):
+    """A single academic group (section) within a grade or program."""
+    id: uuid.UUID
+    name: str
+    code: str
+    section_label: str | None = None
+    class_teacher_id: uuid.UUID | None = None
+    class_teacher_name: str | None = None
+    enrolled_count: int = 0
+    subject_count: int = 0
+    room_no: str | None = None
+    is_active: bool
+
+
+class ClassGradeOut(BaseModel):
+    id: uuid.UUID
+    academic_year_id: uuid.UUID
+    academic_year_name: str | None = None
+    department_id: uuid.UUID
+    department_name: str | None = None
+    name: str              # "Class 11"
+    grade_number: int
+    stream: str | None     # "Science" / None
+    is_active: bool
+    sections: list[SectionOut] = Field(default_factory=list)
+
+
+# College: one ClassProgram row groups the N batches of e.g. "B.Tech CSE Semester 3"
+class ClassProgramCreate(BaseModel):
+    """Wizard payload: create a college program+semester + one batch per label."""
+    academic_year_id: uuid.UUID
+    department_id: uuid.UUID
+    program_name: str = Field(..., min_length=2, max_length=200, description="B.Tech CSE")
+    program_code: str = Field(..., min_length=1, max_length=30, description="BTCSE")
+    semester_number: int = Field(..., ge=1, description="Semester number")
+    # Batch labels: ["A","B"] — each becomes one SchoolClass (Academic Group)
+    batches: list[str] = Field(..., min_length=1, description="Batch labels, e.g. ['A','B']")
+    max_strength: int = Field(default=60, ge=1)
+    class_teacher_id: uuid.UUID | None = None
+
+
+class ClassProgramOut(BaseModel):
+    id: uuid.UUID
+    academic_year_id: uuid.UUID
+    academic_year_name: str | None = None
+    department_id: uuid.UUID
+    department_name: str | None = None
+    program_name: str      # "B.Tech CSE"
+    program_code: str      # "BTCSE"
+    semester_number: int
+    is_active: bool
+    batches: list[SectionOut] = Field(default_factory=list)
+
+
+# ── Classes (Academic Groups) ───────────────────────────────────────────
 
 class ClassCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -115,6 +187,10 @@ class ClassOut(BaseModel):
     is_active: bool
     enrolled_count: int = 0
     subject_count: int = 0
+    # ── Hierarchy parent fields (None for flat / legacy classes) ───────────
+    grade_id: uuid.UUID | None = None
+    program_id: uuid.UUID | None = None
+    section_label: str | None = None
 
 
 # ── Subjects ─────────────────────────────────────────────────────────────────
@@ -314,6 +390,10 @@ APIResponseYears = APIResponse[list[AcademicYearOut]]
 APIResponseYear = APIResponse[AcademicYearOut]
 APIResponseDepartments = APIResponse[list[DepartmentOut]]
 APIResponseDepartment = APIResponse[DepartmentOut]
+APIResponseGrades = APIResponse[list[ClassGradeOut]]
+APIResponseGrade = APIResponse[ClassGradeOut]
+APIResponsePrograms = APIResponse[list[ClassProgramOut]]
+APIResponseProgram = APIResponse[ClassProgramOut]
 APIResponseClasses = APIResponse[list[ClassOut]]
 APIResponseClass = APIResponse[ClassOut]
 APIResponseSubjects = APIResponse[list[SubjectOut]]

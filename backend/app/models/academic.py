@@ -1,12 +1,13 @@
 """
 ORM Models — academic structure (created by the first-time setup wizard)
 
-Mirrors database.sql §4.7–4.10:
+Mirrors database.sql + class_hierarchy_migration.sql:
   academic_years  — e.g. "2026-27", exactly one current per tenant
   departments     — e.g. "Computer Science" (code "CS")
-  classes         — e.g. "B.Tech CSE · Sem 3" (code "CSE-3"); the DB schema
-                    has no separate `sections` table — sections are expressed
-                    as classes (e.g. "Class 10-A", "Class 10-B")
+  class_grades    — school grade group (Class 1–12 + optional stream) [NEW]
+  class_programs  — college program + semester group [NEW]
+  classes         — the final Academic Group (section / batch); FK-referenced by
+                    subjects, enrollments, attendance, exams, timetable
   subjects        — tied to a class; subject_type THEORY/PRACTICAL/ELECTIVE/PROJECT
 """
 
@@ -73,6 +74,78 @@ class Department(Base):
     )
 
 
+class ClassGrade(Base):
+    """School grade group: one row per (tenant, year, grade_number, stream).
+
+    Children: SchoolClass rows with grade_id pointing here — one per section letter.
+    E.g.  grade_number=11, stream='Science'  →  sections 11-Sci-A, 11-Sci-B.
+    """
+    __tablename__ = "class_grades"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "academic_year_id", "grade_number", "stream",
+            name="uq_class_grades",
+        ),
+        Index("idx_class_grades_tenant_id", "tenant_id"),
+        Index("idx_class_grades_academic_year_id", "academic_year_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    academic_year_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)  # "Class 11"
+    grade_number: Mapped[int] = mapped_column(Integer, nullable=False)  # 1-12
+    stream: Mapped[str | None] = mapped_column(String(50), nullable=True)  # Science/Commerce/Arts/custom
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ClassProgram(Base):
+    """College program + semester group.
+
+    Children: SchoolClass rows with program_id pointing here — one per batch.
+    E.g.  program_code='BTCSE', semester_number=3  →  batches CSE-3A, CSE-3B.
+    """
+    __tablename__ = "class_programs"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "department_id", "program_code", "semester_number", "academic_year_id",
+            name="uq_class_programs",
+        ),
+        Index("idx_class_programs_tenant_id", "tenant_id"),
+        Index("idx_class_programs_department_id", "department_id"),
+        Index("idx_class_programs_academic_year_id", "academic_year_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    department_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("departments.id"), nullable=False
+    )
+    academic_year_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+    )
+    program_name: Mapped[str] = mapped_column(String(200), nullable=False)  # "B.Tech CSE"
+    program_code: Mapped[str] = mapped_column(String(30), nullable=False)   # "BTCSE"
+    semester_number: Mapped[int] = mapped_column(Integer, nullable=False)   # 1, 2, 3…
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class SchoolClass(Base):
     __tablename__ = "classes"
     __table_args__ = (
@@ -109,6 +182,17 @@ class SchoolClass(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
+    # ── Hierarchy parents (set for classes created via the wizard) ──────────
+    # grade_id   → set for school sections (FK to class_grades)
+    # program_id → set for college batches (FK to class_programs)
+    # section_label → "A", "B", "Batch A" etc. — display label for the section
+    grade_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("class_grades.id", ondelete="SET NULL"), nullable=True
+    )
+    program_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("class_programs.id", ondelete="SET NULL"), nullable=True
+    )
+    section_label: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
 
 class Subject(Base):

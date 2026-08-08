@@ -19,7 +19,7 @@ const CARDS: { key: string; label: string; icon: typeof Users; href: string }[] 
   { key: "students", label: "Students", icon: GraduationCap, href: "/admin/students" },
   { key: "staff", label: "Staff", icon: Users, href: "/admin/staff" },
   { key: "departments", label: "Departments", icon: Building2, href: "/admin/departments" },
-  { key: "classes", label: "Classes", icon: BookCopy, href: "/admin/departments" },
+  { key: "classes", label: "Classes", icon: BookCopy, href: "/admin/classes" },
   { key: "subjects", label: "Subjects", icon: BookCopy, href: "/admin/academic-years" },
   { key: "academic_years", label: "Academic years", icon: CalendarRange, href: "/admin/academic-years" },
 ];

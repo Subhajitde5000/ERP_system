@@ -18,6 +18,58 @@ import type { InstitutionRole } from "./auth";
  * copied.
  */
 
+/* ── School / College hierarchy types ───────────────────────────────────── */
+
+/** One section within a grade or program group (maps to a `classes` row). */
+export interface SectionRow {
+  id: string;
+  name: string;
+  code: string;
+  sectionLabel: string | null;
+  classTeacherId: string | null;
+  classTeacherName: string | null;
+  enrolledCount: number;
+  subjectCount: number;
+  roomNo: string | null;
+  isActive: boolean;
+}
+
+/**
+ * School: one grade group (e.g. "Class 11 – Science") with its sections.
+ * Created via the wizard. Each section inside is an Academic Group.
+ */
+export interface ClassGradeRow {
+  id: string;
+  academicYearId: string;
+  academicYearName: string | null;
+  departmentId: string;
+  departmentName: string | null;
+  name: string;          // "Class 11"
+  gradeNumber: number;   // 11
+  stream: string | null; // "Science" | null
+  isActive: boolean;
+  sections: SectionRow[];
+}
+
+/**
+ * College: one program+semester group (e.g. "B.Tech CSE Semester 3") with its batches.
+ * Created via the wizard. Each batch inside is an Academic Group.
+ */
+export interface ClassProgramRow {
+  id: string;
+  academicYearId: string;
+  academicYearName: string | null;
+  departmentId: string;
+  departmentName: string | null;
+  programName: string;    // "B.Tech CSE"
+  programCode: string;    // "BTCSE"
+  semesterNumber: number; // 3
+  isActive: boolean;
+  batches: SectionRow[];
+}
+
+
+
 /* ── §6.2 departments ───────────────────────────────────────────────────── */
 
 export interface DepartmentRow {
@@ -77,6 +129,13 @@ export interface ClassRow {
   isActive: boolean;
   /** Derived: subjects attached to this class (§6.4) */
   subjectCount: number;
+  // ── Hierarchy parents (null for flat / legacy classes) ──────────────────────
+  /** Set when created via the school grade wizard */
+  gradeId: string | null;
+  /** Set when created via the college program wizard */
+  programId: string | null;
+  /** "A", "B", "Batch A" etc. */
+  sectionLabel: string | null;
 }
 
 /** C-IA-06 — "Students enrolled, subjects, class teacher, timetable". */
