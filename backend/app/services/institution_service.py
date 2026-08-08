@@ -312,9 +312,11 @@ class InstitutionService:
             if payload.hod_id is not None:
                 await InstitutionService._assert_user_in_tenant(db, tenant_id, payload.hod_id)
             dept.hod_id = payload.hod_id
-        for f in ("name", "description", "is_active"):
+        for f in ("name", "code", "description", "is_active"):
             v = getattr(payload, f)
             if v is not None:
+                if f == "code":
+                    v = v.upper()
                 setattr(dept, f, v)
         await db.flush()
         if previous_hod_id is not None and previous_hod_id != dept.hod_id:
@@ -336,7 +338,10 @@ class InstitutionService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Department not found")
         cls = await db.execute(select(SchoolClass.id).where(SchoolClass.department_id == dept_id).limit(1))
         if cls.scalar_one_or_none() is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, detail="Department still has classes; remove them first")
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="Cannot delete department: classes are still attached to this department. Move or delete them first.")
+        prog = await db.execute(select(ClassProgram.id).where(ClassProgram.department_id == dept_id).limit(1))
+        if prog.scalar_one_or_none() is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="Cannot delete department: academic programs are still attached to this department. Move or delete them first.")
         await db.delete(dept)
 
     # ── Classes ──────────────────────────────────────────────────────────────

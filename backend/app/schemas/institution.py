@@ -63,6 +63,7 @@ class DepartmentCreate(BaseModel):
 
 class DepartmentUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=255)
+    code: str | None = Field(default=None, min_length=1, max_length=20)
     description: str | None = None
     hod_id: uuid.UUID | None = None
     is_active: bool | None = None
