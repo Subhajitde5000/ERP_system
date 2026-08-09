@@ -152,7 +152,7 @@ export interface CoordinatorTimetableGrid {
 
 export interface CoordinatorSlotCreate {
   class_id: string;
-  academic_year_id: string;
+  academic_year_id?: string | null;
   day_of_week: number;
   period_number: number;
   start_time: string;
@@ -300,7 +300,7 @@ export interface CoordinatorEventPage {
 }
 
 export interface CoordinatorEventCreate {
-  academic_year_id: string;
+  academic_year_id?: string | null;
   title: string;
   description: string | null;
   event_type: CoordinatorEventType;

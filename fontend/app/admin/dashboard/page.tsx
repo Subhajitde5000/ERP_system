@@ -20,7 +20,7 @@ const CARDS: { key: string; label: string; icon: typeof Users; href: string }[] 
   { key: "staff", label: "Staff", icon: Users, href: "/admin/staff" },
   { key: "departments", label: "Departments", icon: Building2, href: "/admin/departments" },
   { key: "classes", label: "Classes", icon: BookCopy, href: "/admin/classes" },
-  { key: "subjects", label: "Subjects", icon: BookCopy, href: "/admin/academic-years" },
+  { key: "subjects", label: "Subjects", icon: BookCopy, href: "/admin/subjects" },
   { key: "academic_years", label: "Academic years", icon: CalendarRange, href: "/admin/academic-years" },
 ];
 

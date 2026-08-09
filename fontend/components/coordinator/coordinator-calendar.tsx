@@ -259,7 +259,7 @@ function EventEditorModal({
         ...form,
         // academic_year_id is resolved server-side; sending empty string is the
         // same as omitting the year.
-        academic_year_id: form.academic_year_id || "",
+        academic_year_id: form.academic_year_id || undefined,
       });
       await onSaved();
     } catch (caught) {

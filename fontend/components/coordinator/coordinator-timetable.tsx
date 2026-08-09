@@ -408,7 +408,7 @@ function SlotEditorModal({
         // to round-trip cleanly; the service ignores it.
         await createCoordinatorSlot({
           class_id: draft.class_id || grid.classes[0].id,
-          academic_year_id: "",
+          academic_year_id: undefined,
           day_of_week: draft.day_of_week,
           period_number: draft.period_number,
           start_time: draft.start_time,

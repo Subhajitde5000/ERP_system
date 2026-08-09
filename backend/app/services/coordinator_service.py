@@ -183,7 +183,9 @@ class CoordinatorService:
     async def _ensure_teaching_assignment(
         db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID, subject_id: uuid.UUID, teacher_id: uuid.UUID
     ) -> None:
-        """Timetable slots must come from a real class → subject → teacher assignment."""
+        """Timetable slots must come from a real class → subject → teacher assignment.
+        If the teacher is not yet linked to the subject, auto-create the assignment link.
+        """
         subject = await CoordinatorService._ensure_subject(db, tenant_id, subject_id)
         if subject.class_id != class_id:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The selected subject does not belong to this class.")
@@ -193,7 +195,17 @@ class CoordinatorService:
             TeacherSubject.teacher_id == teacher_id,
         ).limit(1))
         if assignment.scalar_one_or_none() is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Assign this teacher to the subject before placing it on the timetable.")
+            # Auto-assign teacher to subject when building timetable slot
+            link = TeacherSubject(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+                teacher_id=teacher_id,
+                role_in_subject="TEACHER",
+                assigned_at=datetime.now(timezone.utc),
+            )
+            db.add(link)
+            await db.flush()
 
     @staticmethod
     async def _ensure_teacher(
@@ -1097,14 +1109,19 @@ class CoordinatorService:
         coordinator: User,
         payload: CoordinatorEventCreate,
     ) -> CoordinatorEventRow:
-        year = (
-            await db.execute(
-                select(AcademicYear).where(
-                    AcademicYear.id == payload.academic_year_id,
-                    AcademicYear.tenant_id == tenant_id,
+        year = None
+        if payload.academic_year_id:
+            year = (
+                await db.execute(
+                    select(AcademicYear).where(
+                        AcademicYear.id == payload.academic_year_id,
+                        AcademicYear.tenant_id == tenant_id,
+                    )
                 )
-            )
-        ).scalar_one_or_none()
+            ).scalar_one_or_none()
+        else:
+            year = await CoordinatorService._canonical_current_year(db, tenant_id)
+
         if year is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Academic year not found")
         if payload.applies_to == AcademicEventScope.DEPARTMENT.value and payload.scope_id:

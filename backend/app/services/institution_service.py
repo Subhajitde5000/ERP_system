@@ -62,6 +62,7 @@ from app.schemas.institution import (
     StaffUpdate,
     StudentCreate,
     StudentOut,
+    StudentUpdate,
     SubjectCreate,
     SubjectOut,
     SubjectUpdate,
@@ -827,10 +828,10 @@ class InstitutionService:
         InstitutionService._assert_assignable_role(role)
         if payload.department_id is not None:
             await InstitutionService._assert_dept(db, tenant.id, payload.department_id)
-        if role.name == "VICE_PRINCIPAL" and payload.department_id is None:
+        if role.name in ("VICE_PRINCIPAL", "HOD") and payload.department_id is None:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="A Vice Principal must be assigned at least one delegated department",
+                detail=f"An {role.name} must be assigned a department",
             )
 
         raw_token = generate_secure_token(32)
@@ -849,6 +850,16 @@ class InstitutionService:
             assigned_at=datetime.now(timezone.utc), is_active=True,
         )
         db.add(assignment)
+
+        if role.name == "HOD" and payload.department_id is not None:
+            dept_res = await db.execute(select(Department).where(Department.id == payload.department_id, Department.tenant_id == tenant.id))
+            dept = dept_res.scalar_one_or_none()
+            if dept is not None:
+                previous_hod_id = dept.hod_id
+                dept.hod_id = user.id
+                if previous_hod_id is not None and previous_hod_id != user.id:
+                    await InstitutionService._deactivate_hod_department_scope(db, tenant.id, previous_hod_id, dept.id, actor=actor)
+
         await InstitutionService._queue_invite_email(db, tenant, user, raw_token)
         await db.flush()
         if actor is not None:
@@ -886,11 +897,20 @@ class InstitutionService:
         InstitutionService._assert_assignable_role(role)
         if department_id is not None:
             await InstitutionService._assert_dept(db, tenant_id, department_id)
-        if role.name == "VICE_PRINCIPAL" and department_id is None:
+        if role.name in ("VICE_PRINCIPAL", "HOD") and department_id is None:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="A Vice Principal must be assigned at least one delegated department",
+                detail=f"An {role.name} must be assigned a department",
             )
+
+        if role.name == "HOD" and department_id is not None:
+            dept_res = await db.execute(select(Department).where(Department.id == department_id, Department.tenant_id == tenant_id))
+            dept = dept_res.scalar_one_or_none()
+            if dept is not None:
+                previous_hod_id = dept.hod_id
+                dept.hod_id = user_id
+                if previous_hod_id is not None and previous_hod_id != user_id:
+                    await InstitutionService._deactivate_hod_department_scope(db, tenant_id, previous_hod_id, dept.id, actor=by)
 
         scope_filter = (
             RoleAssignment.scope_id == department_id
@@ -975,10 +995,10 @@ class InstitutionService:
         role = await InstitutionService._role_by_name(db, role_name)
         if role is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Role not found")
-        if role.name == "VICE_PRINCIPAL" and department_id is None:
+        if role.name in ("VICE_PRINCIPAL", "HOD") and department_id is None:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="A delegated department is required to revoke a Vice Principal scope",
+                detail=f"A department is required to revoke an {role.name} scope",
             )
         if department_id is not None:
             await InstitutionService._assert_dept(db, tenant_id, department_id)
@@ -1002,6 +1022,13 @@ class InstitutionService:
             # 404 keeps other scope identifiers indistinguishable from absent.
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Active role assignment not found")
         assignment.is_active = False
+
+        if role.name == "HOD" and department_id is not None:
+            dept_res = await db.execute(select(Department).where(Department.id == department_id, Department.tenant_id == tenant_id, Department.hod_id == user_id))
+            dept = dept_res.scalar_one_or_none()
+            if dept is not None:
+                dept.hod_id = None
+
         await db.flush()
         AuditService.record(
             db,
@@ -1290,6 +1317,84 @@ class InstitutionService:
             id=user.id, name=user.name, email=user.email, roll_no=user.student_roll_no,
             gender=user.gender.value if user.gender else None, is_active=user.is_active, enrollment=enrollment,
         )
+
+    @staticmethod
+    async def update_student(
+        db: AsyncSession, tenant_id: uuid.UUID, student_id: uuid.UUID, payload: StudentUpdate,
+    ) -> StudentOut:
+        res = await db.execute(
+            select(User)
+            .join(RoleAssignment, RoleAssignment.user_id == User.id)
+            .join(Role, Role.id == RoleAssignment.role_id)
+            .where(User.id == student_id, User.tenant_id == tenant_id, User.deleted_at == None, Role.name == "STUDENT")  # noqa: E712
+        )
+        student = res.scalar_one_or_none()
+        if student is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Student not found")
+
+        if payload.roll_no is not None and payload.roll_no != student.student_roll_no:
+            existing = await db.execute(
+                select(User).where(User.tenant_id == tenant_id, User.student_roll_no == payload.roll_no, User.id != student_id)
+            )
+            if existing.scalar_one_or_none() is not None:
+                raise HTTPException(status.HTTP_409_CONFLICT, detail="A student with this roll number already exists")
+            student.student_roll_no = payload.roll_no
+
+        if payload.name is not None:
+            student.name = payload.name
+        if payload.email is not None:
+            student.email = str(payload.email).lower() if payload.email else None
+        if payload.gender is not None:
+            from app.models.user import Gender
+            student.gender = Gender(payload.gender) if payload.gender else None
+        if payload.date_of_birth is not None:
+            student.date_of_birth = payload.date_of_birth
+        if payload.is_active is not None:
+            student.is_active = payload.is_active
+
+        if payload.class_id is not None:
+            await InstitutionService._assert_class(db, tenant_id, payload.class_id)
+            year = await InstitutionService._current_year(db, tenant_id)
+            if year is not None:
+                active_enr = (await db.execute(
+                    select(Enrollment).where(
+                        Enrollment.student_id == student_id,
+                        Enrollment.tenant_id == tenant_id,
+                        Enrollment.status == "ACTIVE",
+                    )
+                )).scalar_one_or_none()
+                if active_enr is not None:
+                    active_enr.class_id = payload.class_id
+                    if payload.roll_no:
+                        active_enr.roll_number = payload.roll_no
+                else:
+                    await InstitutionService._enroll(db, tenant_id, student.id, payload.class_id, year.id, student.student_roll_no or "")
+
+        await db.flush()
+        students = await InstitutionService.list_students(db, tenant_id)
+        return next((s for s in students if s.id == student_id), students[0])
+
+    @staticmethod
+    async def delete_student(db: AsyncSession, tenant_id: uuid.UUID, student_id: uuid.UUID) -> None:
+        res = await db.execute(
+            select(User)
+            .join(RoleAssignment, RoleAssignment.user_id == User.id)
+            .join(Role, Role.id == RoleAssignment.role_id)
+            .where(User.id == student_id, User.tenant_id == tenant_id, User.deleted_at == None, Role.name == "STUDENT")  # noqa: E712
+        )
+        student = res.scalar_one_or_none()
+        if student is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Student not found")
+
+        student.deleted_at = datetime.now(timezone.utc)
+        student.is_active = False
+
+        enr_res = await db.execute(
+            select(Enrollment).where(Enrollment.student_id == student_id, Enrollment.tenant_id == tenant_id)
+        )
+        for enr in enr_res.scalars().all():
+            enr.status = "DROPPED"
+        await db.flush()
 
     @staticmethod
     async def bulk_create_students(db: AsyncSession, tenant: Tenant, content: bytes) -> BulkUploadResult:
@@ -1699,6 +1804,14 @@ class InstitutionService:
         role = await InstitutionService._role_by_name(db, "HOD")
         if role is None:
             raise HTTPException(status.HTTP_409_CONFLICT, detail="HOD role is not configured")
+
+        sp_res = await db.execute(
+            select(StaffProfile).where(StaffProfile.user_id == hod_id, StaffProfile.tenant_id == tenant_id)
+        )
+        sp = sp_res.scalar_one_or_none()
+        if sp is not None and sp.department_id != department_id:
+            sp.department_id = department_id
+
         existing = (
             await db.execute(
                 select(RoleAssignment).where(
