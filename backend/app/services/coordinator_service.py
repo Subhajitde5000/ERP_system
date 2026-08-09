@@ -326,9 +326,9 @@ class CoordinatorService:
         events = await CoordinatorService._event_rows(
             db, tenant_id, start, end, limit=5
         )
-        upcoming_event_rows = [
-            CoordinatorService._event_dto(db, tenant_id, event) for event in events
-        ]
+        upcoming_event_rows = await CoordinatorService._bulk_event_dtos(
+            db, tenant_id, events
+        )
 
         # Live conflict count.
         conflicts = await CoordinatorService._compute_conflicts(
@@ -1084,10 +1084,9 @@ class CoordinatorService:
             .limit(limit)
             .offset(offset)
         )
-        items = [
-            await CoordinatorService._event_dto(db, tenant_id, event)
-            for event in rows.scalars().all()
-        ]
+        items = await CoordinatorService._bulk_event_dtos(
+            db, tenant_id, list(rows.scalars().all())
+        )
         return CoordinatorEventPage(total=int(total), limit=limit, offset=offset, items=items)
 
     @staticmethod
@@ -1780,6 +1779,88 @@ class CoordinatorService:
             .limit(limit)
         )
         return list(rows.scalars().all())
+
+    @staticmethod
+    async def _bulk_event_dtos(
+        db: AsyncSession, tenant_id: uuid.UUID, events: list[AcademicEvent]
+    ) -> list[CoordinatorEventRow]:
+        """Convert a list of events to DTO rows in bulk, preventing N+1 queries."""
+        if not events:
+            return []
+
+        # Collect target scopes and creators to bulk fetch names
+        dept_ids = {
+            event.scope_id
+            for event in events
+            if event.applies_to == AcademicEventScope.DEPARTMENT and event.scope_id is not None
+        }
+        class_ids = {
+            event.scope_id
+            for event in events
+            if event.applies_to == AcademicEventScope.CLASS and event.scope_id is not None
+        }
+        creator_ids = {
+            event.created_by
+            for event in events
+            if event.created_by is not None
+        }
+
+        # Query names in bulk
+        dept_names: dict[uuid.UUID, str] = {}
+        if dept_ids:
+            dept_rows = await db.execute(
+                select(Department.id, Department.name).where(
+                    Department.tenant_id == tenant_id, Department.id.in_(dept_ids)
+                )
+            )
+            dept_names = {row[0]: row[1] for row in dept_rows.all()}
+
+        class_names: dict[uuid.UUID, str] = {}
+        if class_ids:
+            class_rows = await db.execute(
+                select(SchoolClass.id, SchoolClass.name).where(
+                    SchoolClass.tenant_id == tenant_id, SchoolClass.id.in_(class_ids)
+                )
+            )
+            class_names = {row[0]: row[1] for row in class_rows.all()}
+
+        creator_names: dict[uuid.UUID, str] = {}
+        if creator_ids:
+            creator_rows = await db.execute(
+                select(User.id, User.name).where(
+                    User.tenant_id == tenant_id, User.id.in_(creator_ids)
+                )
+            )
+            creator_names = {row[0]: row[1] for row in creator_rows.all()}
+
+        # Build final list of CoordinatorEventRow objects
+        out: list[CoordinatorEventRow] = []
+        for event in events:
+            scope_name: str | None = None
+            if event.applies_to == AcademicEventScope.DEPARTMENT and event.scope_id is not None:
+                scope_name = dept_names.get(event.scope_id)
+            elif event.applies_to == AcademicEventScope.CLASS and event.scope_id is not None:
+                scope_name = class_names.get(event.scope_id)
+
+            creator_name = creator_names.get(event.created_by) if event.created_by is not None else None
+
+            out.append(
+                CoordinatorEventRow(
+                    id=event.id,
+                    title=event.title,
+                    description=event.description,
+                    event_type=event.event_type.value,
+                    start_date=event.start_date,
+                    end_date=event.end_date,
+                    is_holiday=event.is_holiday,
+                    applies_to=event.applies_to.value,
+                    scope_id=event.scope_id,
+                    scope_name=scope_name,
+                    color=event.color,
+                    created_by_name=creator_name,
+                )
+            )
+        return out
 
     @staticmethod
     async def _event_dto(
