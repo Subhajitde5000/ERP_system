@@ -206,8 +206,8 @@ async def test_create_slot_rejects_duplicate_unique_key():
         end_time=time(9, 50),
         subject_id=None,
         teacher_id=None,
-        room_no="105",
-        slot_type="CLASS",
+        room_no=None,
+        slot_type="LAB",
         effective_from=today,
     )
 
@@ -256,19 +256,17 @@ async def test_create_slot_succeeds_with_audit_trail():
     teacher_id = uuid.uuid4()
     today = date(2026, 7, 29)
 
-    # Lookups in `create_slot`:
+    # Lookups in `create_slot` when teacher_id and room_no are None:
     #   1. ensure class     → returns the class row
-    #   2. ensure teacher   → returns the teacher row
-    #   3. duplicate?       → returns None (no conflict)
-    #   4. current_year     → returns the year
-    #   5. slot DTO build   → one joined query, returns (class_name, dept, subject, code, teacher_name)
+    #   2. duplicate?       → returns None (no conflict)
+    #   3. current_year     → returns the year
+    #   4. slot DTO build   → one joined query, returns (class_name, dept, subject, code, teacher_name)
     # The DTO build uses slot attributes (slot.class_id etc.), so the new
     # TimetableSlot ORM object must carry them; the service then reads the
     # joined labels from the 5-tuple the DTO build returned.
     db = FakeDB(
         [
             Result(scalar=klass(tenant_id, class_id)),
-            Result(scalar=teacher(tenant_id, teacher_id)),
             Result(scalar=None),
             Result(scalar=year),
             Result(
@@ -290,9 +288,9 @@ async def test_create_slot_succeeds_with_audit_trail():
         start_time=time(9, 0),
         end_time=time(9, 50),
         subject_id=None,
-        teacher_id=teacher_id,
-        room_no="105",
-        slot_type="CLASS",
+        teacher_id=None,
+        room_no=None,
+        slot_type="LAB",
         effective_from=today,
     )
 
@@ -321,16 +319,17 @@ async def test_update_slot_records_old_and_new_state():
         period_number=1,
         start_time=time(9, 0),
         end_time=time(9, 50),
-        subject_id=uuid.uuid4(),
-        teacher_id=uuid.uuid4(),
+        subject_id=None,
+        teacher_id=None,
         room_no="105",
-        slot_type="CLASS",
+        slot_type="EXTRA",
         effective_from=date(2026, 7, 29),
         effective_to=None,
     )
     db = FakeDB(
         [
             Result(scalar=slot),
+            Result(scalar=None),
             Result(
                 row=SimpleNamespace(
                     class_name="FY-A",
