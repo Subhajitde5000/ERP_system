@@ -124,7 +124,7 @@ class CoordinatorSlotCreate(BaseModel):
     class_id: uuid.UUID
     # Resolved server-side against the institution's current academic year. The
     # field is kept on the wire for clients that already know the year; the
-    # service accepts an empty UUID and falls back to the canonical row.
+    # service accepts an empty UUID/string and falls back to the canonical row.
     academic_year_id: uuid.UUID | None = None
     day_of_week: int = Field(ge=1, le=6)
     period_number: int = Field(ge=1, le=20)
@@ -137,6 +137,20 @@ class CoordinatorSlotCreate(BaseModel):
     effective_from: date
     effective_to: date | None = None
 
+    @field_validator("academic_year_id", "subject_id", "teacher_id", mode="before")
+    @classmethod
+    def _sanitize_empty_uuid(cls, v: Any) -> Any:
+        if v == "" or v is None:
+            return None
+        return v
+
+    @field_validator("room_no", mode="before")
+    @classmethod
+    def _sanitize_empty_str(cls, v: Any) -> Any:
+        if v == "" or v is None:
+            return None
+        return v
+
     @model_validator(mode="after")
     def _validate_window(self) -> "CoordinatorSlotCreate":
         if self.start_time >= self.end_time:
@@ -147,11 +161,32 @@ class CoordinatorSlotCreate(BaseModel):
 
 
 class CoordinatorSlotUpdate(BaseModel):
+    class_id: uuid.UUID | None = None
+    day_of_week: int | None = Field(default=None, ge=1, le=6)
+    period_number: int | None = Field(default=None, ge=1, le=20)
+    start_time: time | None = None
+    end_time: time | None = None
     subject_id: uuid.UUID | None = None
     teacher_id: uuid.UUID | None = None
     room_no: str | None = Field(default=None, max_length=20)
     slot_type: Literal["CLASS", "BREAK", "LAB", "ACTIVITY"] | None = None
+    effective_from: date | None = None
     effective_to: date | None = None
+
+    @field_validator("class_id", "subject_id", "teacher_id", mode="before")
+    @classmethod
+    def _sanitize_empty_uuid(cls, v: Any) -> Any:
+        if v == "" or v is None:
+            return None
+        return v
+
+    @field_validator("room_no", mode="before")
+    @classmethod
+    def _sanitize_empty_str(cls, v: Any) -> Any:
+        if v == "" or v is None:
+            return None
+        return v
+
 
 
 # ── Conflict checker (C-AC-04) ──────────────────────────────────────────────
@@ -286,7 +321,7 @@ class CoordinatorEventPage(CoordinatorPage):
 
 
 class CoordinatorEventCreate(BaseModel):
-    academic_year_id: uuid.UUID
+    academic_year_id: uuid.UUID | None = None
     title: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=2000)
     event_type: Literal["HOLIDAY", "EVENT", "EXAM", "TERM"]
@@ -296,6 +331,13 @@ class CoordinatorEventCreate(BaseModel):
     applies_to: Literal["ALL", "DEPARTMENT", "CLASS"] = "ALL"
     scope_id: uuid.UUID | None = None
     color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+
+    @field_validator("academic_year_id", "scope_id", mode="before")
+    @classmethod
+    def _sanitize_empty_uuid(cls, v: Any) -> Any:
+        if v == "" or v is None:
+            return None
+        return v
 
     @model_validator(mode="after")
     def _validate_window(self) -> "CoordinatorEventCreate":

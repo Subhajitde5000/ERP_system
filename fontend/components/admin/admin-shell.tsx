@@ -22,6 +22,7 @@ const NAVIGATION: InstitutionConsoleNavItem[] = [
   { label: "Academic Years", href: "/admin/academic-years", icon: CalendarRange },
   { label: "Departments", href: "/admin/departments", icon: Building2 },
   { label: "Classes", href: "/admin/classes", icon: BookOpen },
+  { label: "Subjects", href: "/admin/subjects", icon: BookOpen },
   { label: "Staff", href: "/admin/staff", icon: Users },
   { label: "Students", href: "/admin/students", icon: Users },
   { label: "Modules", href: "/admin/modules", icon: Puzzle },

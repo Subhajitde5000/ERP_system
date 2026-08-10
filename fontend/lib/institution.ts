@@ -77,7 +77,7 @@ export interface StudentRecord {
   roll_no: string | null;
   gender: string | null;
   is_active: boolean;
-  enrollment: { class_name?: string; academic_year_name?: string } | null;
+  enrollment: { class_id?: string; class_name?: string; academic_year_name?: string } | null;
 }
 
 export interface ClassRecord {
@@ -194,8 +194,10 @@ export const deleteAcademicYear = (id: string) =>
 export const fetchDepartments = () => call<Department[]>("/departments");
 export const createDepartment = (payload: { name: string; code: string; description?: string }) =>
   call<Department>("/departments", { method: "POST", body: JSON.stringify(payload) });
-export const updateDepartment = (id: string, payload: { hod_id?: string | null; name?: string; description?: string; is_active?: boolean }) =>
+export const updateDepartment = (id: string, payload: { hod_id?: string | null; name?: string; code?: string; description?: string; is_active?: boolean }) =>
   call<Department>(`/departments/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+export const deleteDepartment = (id: string) =>
+  call<null>(`/departments/${id}`, { method: "DELETE" });
 
 export const fetchStaff = () => call<StaffMember[]>("/staff");
 export const uploadStaff = (file: File) => {
@@ -254,6 +256,59 @@ export const fetchStudents = () => call<StudentRecord[]>("/students");
 export const fetchClasses = () => call<ClassRecord[]>("/classes");
 export const createStudent = (payload: { name: string; roll_no: string; email?: string; gender?: string; class_id?: string }) =>
   call<StudentRecord>("/students", { method: "POST", body: JSON.stringify(payload) });
+export const updateStudent = (
+  id: string,
+  payload: { name?: string; roll_no?: string; email?: string; gender?: string; class_id?: string; is_active?: boolean }
+) => call<StudentRecord>(`/students/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+export const deleteStudent = (id: string) =>
+  call<null>(`/students/${id}`, { method: "DELETE" });
+export const uploadStudents = (file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return call<BulkUploadResult>("/students/bulk", { method: "POST", body: form });
+};
+
+// ── Subjects ─────────────────────────────────────────────────────────────────
+
+export interface SubjectRecord {
+  id: string;
+  name: string;
+  code: string;
+  class_id: string;
+  class_name: string | null;
+  subject_type: string;
+  credits: number | null;
+  max_marks: number;
+  passing_marks: number;
+  is_active: boolean;
+  teachers: { id: string; name: string; role: string }[];
+}
+
+export const fetchSubjects = () => call<SubjectRecord[]>("/subjects");
+export const createSubject = (payload: {
+  name: string;
+  code: string;
+  class_id: string;
+  subject_type?: string;
+  credits?: number;
+  max_marks?: number;
+  passing_marks?: number;
+}) => call<SubjectRecord>("/subjects", { method: "POST", body: JSON.stringify(payload) });
+
+export const updateSubject = (
+  id: string,
+  payload: {
+    name?: string;
+    subject_type?: string;
+    credits?: number;
+    max_marks?: number;
+    passing_marks?: number;
+    is_active?: boolean;
+  }
+) => call<SubjectRecord>(`/subjects/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+
+export const deleteSubject = (id: string) =>
+  call<null>(`/subjects/${id}`, { method: "DELETE" });
 
 // ── School grade wizard ─────────────────────────────────────────────────────
 

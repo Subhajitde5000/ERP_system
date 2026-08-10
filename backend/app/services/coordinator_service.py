@@ -183,7 +183,9 @@ class CoordinatorService:
     async def _ensure_teaching_assignment(
         db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID, subject_id: uuid.UUID, teacher_id: uuid.UUID
     ) -> None:
-        """Timetable slots must come from a real class → subject → teacher assignment."""
+        """Timetable slots must come from a real class → subject → teacher assignment.
+        If the teacher is not yet linked to the subject, auto-create the assignment link.
+        """
         subject = await CoordinatorService._ensure_subject(db, tenant_id, subject_id)
         if subject.class_id != class_id:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The selected subject does not belong to this class.")
@@ -193,7 +195,17 @@ class CoordinatorService:
             TeacherSubject.teacher_id == teacher_id,
         ).limit(1))
         if assignment.scalar_one_or_none() is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Assign this teacher to the subject before placing it on the timetable.")
+            # Auto-assign teacher to subject when building timetable slot
+            link = TeacherSubject(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+                teacher_id=teacher_id,
+                role_in_subject="TEACHER",
+                assigned_at=datetime.now(timezone.utc),
+            )
+            db.add(link)
+            await db.flush()
 
     @staticmethod
     async def _ensure_teacher(
@@ -666,11 +678,28 @@ class CoordinatorService:
         if slot is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Slot not found")
         before = {
+            "class_id": str(slot.class_id),
+            "day_of_week": slot.day_of_week,
+            "period_number": slot.period_number,
+            "start_time": slot.start_time.isoformat() if slot.start_time else None,
+            "end_time": slot.end_time.isoformat() if slot.end_time else None,
             "subject_id": str(slot.subject_id) if slot.subject_id else None,
             "teacher_id": str(slot.teacher_id) if slot.teacher_id else None,
             "room_no": slot.room_no,
             "slot_type": slot.slot_type,
+            "effective_from": slot.effective_from.isoformat() if slot.effective_from else None,
+            "effective_to": slot.effective_to.isoformat() if slot.effective_to else None,
         }
+        if payload.class_id is not None:
+            slot.class_id = payload.class_id
+        if payload.day_of_week is not None:
+            slot.day_of_week = payload.day_of_week
+        if payload.period_number is not None:
+            slot.period_number = payload.period_number
+        if payload.start_time is not None:
+            slot.start_time = payload.start_time
+        if payload.end_time is not None:
+            slot.end_time = payload.end_time
         if payload.subject_id is not None:
             await CoordinatorService._ensure_subject(db, tenant_id, payload.subject_id)
             slot.subject_id = payload.subject_id
@@ -681,8 +710,11 @@ class CoordinatorService:
             slot.room_no = payload.room_no
         if payload.slot_type is not None:
             slot.slot_type = payload.slot_type
+        if payload.effective_from is not None:
+            slot.effective_from = payload.effective_from
         if payload.effective_to is not None:
             slot.effective_to = payload.effective_to
+
         if slot.slot_type == "CLASS" and (slot.subject_id is None or slot.teacher_id is None):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A class slot needs both a subject and its assigned teacher.")
         if slot.subject_id is not None and slot.teacher_id is not None:
@@ -703,10 +735,17 @@ class CoordinatorService:
             tenant_id=tenant_id,
             old_value=before,
             new_value={
+                "class_id": str(slot.class_id),
+                "day_of_week": slot.day_of_week,
+                "period_number": slot.period_number,
+                "start_time": slot.start_time.isoformat() if slot.start_time else None,
+                "end_time": slot.end_time.isoformat() if slot.end_time else None,
                 "subject_id": str(slot.subject_id) if slot.subject_id else None,
                 "teacher_id": str(slot.teacher_id) if slot.teacher_id else None,
                 "room_no": slot.room_no,
                 "slot_type": slot.slot_type,
+                "effective_from": slot.effective_from.isoformat() if slot.effective_from else None,
+                "effective_to": slot.effective_to.isoformat() if slot.effective_to else None,
             },
         )
         return await CoordinatorService._slot_dto(db, tenant_id, slot)
@@ -1097,14 +1136,19 @@ class CoordinatorService:
         coordinator: User,
         payload: CoordinatorEventCreate,
     ) -> CoordinatorEventRow:
-        year = (
-            await db.execute(
-                select(AcademicYear).where(
-                    AcademicYear.id == payload.academic_year_id,
-                    AcademicYear.tenant_id == tenant_id,
+        year = None
+        if payload.academic_year_id:
+            year = (
+                await db.execute(
+                    select(AcademicYear).where(
+                        AcademicYear.id == payload.academic_year_id,
+                        AcademicYear.tenant_id == tenant_id,
+                    )
                 )
-            )
-        ).scalar_one_or_none()
+            ).scalar_one_or_none()
+        else:
+            year = await CoordinatorService._canonical_current_year(db, tenant_id)
+
         if year is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Academic year not found")
         if payload.applies_to == AcademicEventScope.DEPARTMENT.value and payload.scope_id:

@@ -257,18 +257,18 @@ async def delete_program(
 @router.get("/subjects", response_model=APIResponseSubjects)
 async def list_subjects(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    return APIResponse(success=True, data=await InstitutionService.list_subjects(db, admin.tenant_id), message="Subjects")
+    return APIResponse(success=True, data=await InstitutionService.list_subjects(db, manager.tenant_id), message="Subjects")
 
 
 @router.post("/subjects", response_model=APIResponseSubject, status_code=201)
 async def create_subject(
     payload: SubjectCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    return APIResponse(success=True, data=await InstitutionService.create_subject(db, admin.tenant_id, payload), message="Subject created")
+    return APIResponse(success=True, data=await InstitutionService.create_subject(db, manager.tenant_id, payload), message="Subject created")
 
 
 @router.put("/subjects/{subject_id}", response_model=APIResponseSubject)
@@ -276,16 +276,16 @@ async def update_subject(
     subject_id: uuid.UUID,
     payload: SubjectUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    return APIResponse(success=True, data=await InstitutionService.update_subject(db, admin.tenant_id, subject_id, payload), message="Subject updated")
+    return APIResponse(success=True, data=await InstitutionService.update_subject(db, manager.tenant_id, subject_id, payload), message="Subject updated")
 
 
 @router.delete("/subjects/{subject_id}", response_model=APIResponse[None])
 async def delete_subject(
     subject_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_tenant_user_admin)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
 ):
-    await InstitutionService.delete_subject(db, admin.tenant_id, subject_id)
+    await InstitutionService.delete_subject(db, manager.tenant_id, subject_id)
     return APIResponse(success=True, data=None, message="Subject deleted")

@@ -26,6 +26,7 @@ from app.schemas.institution import (
     StaffInvite,
     StaffUpdate,
     StudentCreate,
+    StudentUpdate,
 )
 from app.services.institution_service import BULK_MAX_FILE_BYTES, InstitutionService
 
@@ -54,12 +55,12 @@ async def invite_staff(
 ):
     tenant = await _tenant(db, admin)
     data = await InstitutionService.invite_staff(db, tenant, payload, actor=admin)
-    return APIResponse(success=True, data=data, message="Staff added — default password is password1234! (set-password link emailed)")
+    return APIResponse(success=True, data=data, message="Staff invited")
 
 
 @router.post("/staff/bulk", response_model=APIResponseBulk)
 async def bulk_create_staff(
-    file: Annotated[UploadFile, File(description="CSV with headers: name, email, role, phone, department_code")],
+    file: Annotated[UploadFile, File(description="CSV with headers: name, email, phone, role, department_code")],
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_tenant_user_admin)],
 ):
@@ -115,11 +116,13 @@ async def revoke_role(
 @router.put("/staff/{user_id}/active", response_model=APIResponseStaffOne)
 async def set_staff_active(
     user_id: uuid.UUID,
-    active: Annotated[bool, "true to activate, false to deactivate"],
+    payload: StaffUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_tenant_user_admin)],
 ):
-    data = await InstitutionService.set_user_active(db, admin.tenant_id, user_id, active)
+    if payload.is_active is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="is_active is required")
+    data = await InstitutionService.set_staff_active(db, admin.tenant_id, user_id, payload.is_active, actor=admin)
     return APIResponse(success=True, data=data, message="Staff status updated")
 
 
@@ -131,7 +134,7 @@ async def update_staff(
     admin: Annotated[User, Depends(get_current_tenant_user_admin)],
 ):
     data = await InstitutionService.update_staff(db, admin.tenant_id, user_id, payload, actor=admin)
-    return APIResponse(success=True, data=data, message="Staff member updated")
+    return APIResponse(success=True, data=data, message="Staff details updated")
 
 
 @router.delete("/staff/{user_id}", response_model=APIResponse[None])
@@ -141,11 +144,10 @@ async def delete_staff(
     admin: Annotated[User, Depends(get_current_tenant_user_admin)],
 ):
     await InstitutionService.delete_staff(db, admin.tenant_id, user_id, actor=admin)
-    return APIResponse(success=True, data=None, message="Staff member deleted")
+    return APIResponse(success=True, data=None, message="Staff deleted")
 
 
-
-# ── Students ─────────────────────────────────────────────────────────────────
+# ── People: students ─────────────────────────────────────────────────────────
 
 @router.get("/students", response_model=APIResponseStudents)
 async def list_students(
@@ -164,6 +166,30 @@ async def create_student(
     tenant = await _tenant(db, manager)
     data = await InstitutionService.create_student(db, tenant, payload)
     return APIResponse(success=True, data=data, message="Student created")
+
+
+@router.put("/students/{student_id}", response_model=APIResponseStudent)
+async def update_student(
+    student_id: uuid.UUID,
+    payload: StudentUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
+):
+    return APIResponse(
+        success=True,
+        data=await InstitutionService.update_student(db, manager.tenant_id, student_id, payload),
+        message="Student updated",
+    )
+
+
+@router.delete("/students/{student_id}", response_model=APIResponse[None])
+async def delete_student(
+    student_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    manager: Annotated[User, Depends(get_current_tenant_user_student_records_manager)],
+):
+    await InstitutionService.delete_student(db, manager.tenant_id, student_id)
+    return APIResponse(success=True, data=None, message="Student deleted")
 
 
 @router.post("/students/bulk", response_model=APIResponseBulk)
