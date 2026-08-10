@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   Filter,
+  Lock,
   Plus,
   Save,
   Trash2,
@@ -376,8 +377,57 @@ function SlotEditorModal({
   onSaved: () => Promise<void> | void;
 }) {
   const [draft, setDraft] = useState<CoordinatorTimetableSlot>(editor.slot);
+  const [spanCount, setSpanCount] = useState<number>(1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Tracks whether start_time was auto-adjusted from a previous slot's end_time
+  const [autoAdjustedFrom, setAutoAdjustedFrom] = useState<string | null>(null);
+
+  // ── Conflict detection ──────────────────────────────────────────────────────
+  const excludeId = editor.mode === "edit" ? editor.slot.id : null;
+
+  const conflicts = useMemo(() => {
+    if (!grid) return { periods: new Set<number>(), teachers: new Set<string>(), rooms: new Set<string>() };
+
+    const periods = new Set<number>();
+    const teachers = new Set<string>();
+    const rooms = new Set<string>();
+    const spanPeriods = Array.from({ length: spanCount }, (_, i) => draft.period_number + i);
+
+    for (const s of grid.slots) {
+      if (s.id === excludeId) continue;
+      if (s.day_of_week !== draft.day_of_week) continue;
+      if (s.class_id === draft.class_id) periods.add(s.period_number);
+      if (spanPeriods.includes(s.period_number)) {
+        if (s.teacher_id) teachers.add(s.teacher_id);
+        if (s.room_no) rooms.add(s.room_no);
+      }
+    }
+    return { periods, teachers, rooms };
+  }, [grid, draft.day_of_week, draft.class_id, draft.period_number, spanCount, excludeId]);
+
+  // ── Time-based overlap detection ────────────────────────────────────────────
+  // Catches custom-duration slots where the time window bleeds into another slot
+  // even if the period number differs. E.g. Period 1 extended to 10:30 overlaps
+  // Period 2 which starts at 10:00 by default.
+  const timeOverlapSlot = useMemo(() => {
+    if (!grid || !draft.start_time || !draft.end_time) return null;
+    for (const s of grid.slots) {
+      if (s.id === excludeId) continue;
+      if (s.class_id !== draft.class_id || s.day_of_week !== draft.day_of_week) continue;
+      // Two intervals [a,b) and [c,d) overlap iff a < d && c < b
+      if (draft.start_time < s.end_time && s.start_time < draft.end_time) {
+        return s; // first overlapping slot found
+      }
+    }
+    return null;
+  }, [grid, draft.class_id, draft.day_of_week, draft.start_time, draft.end_time, excludeId]);
+  // ────────────────────────────────────────────────────────────────────────────
+
+  const spanPeriods = Array.from({ length: spanCount }, (_, i) => draft.period_number + i);
+  const currentPeriodsLocked = spanPeriods.some((p) => conflicts.periods.has(p));
+  const currentTeacherLocked = draft.teacher_id ? conflicts.teachers.has(draft.teacher_id) : false;
+  const currentRoomLocked = draft.room_no ? conflicts.rooms.has(draft.room_no.trim()) : false;
 
   if (!grid) return null;
   const klass = grid.classes.find((c) => c.id === draft.class_id);
@@ -394,6 +444,72 @@ function SlotEditorModal({
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
+  function handleSpanChange(count: number) {
+    setSpanCount(count);
+    if (count > 1) {
+      const targetPeriodNum = draft.period_number + (count - 1);
+      const targetPeriod = grid?.period_labels.find((p) => p.period === targetPeriodNum);
+      if (targetPeriod) {
+        setDraft((current) => ({ ...current, end_time: targetPeriod.end }));
+      }
+    }
+  }
+
+  /**
+   * Smart period selection:
+   * 1. Start with default period label times.
+   * 2. Look for a saved slot for the PREVIOUS period (same class+day) that has a
+   *    custom (later) end_time. If found, cascade: new start = prev slot end_time.
+   * 3. Preserve the natural duration of the selected period so the end_time
+   *    moves forward by the same amount.
+   */
+  function handlePeriodChange(periodNumber: number) {
+    const periodInfo = grid!.period_labels.find((p) => p.period === periodNumber);
+    const defaultStart = periodInfo?.start ?? draft.start_time;
+    const defaultEnd = periodInfo?.end ?? draft.end_time;
+
+    // Natural duration of this period in minutes
+    const toMinutes = (t: string) => {
+      const [h, m] = t.split(":").map(Number);
+      return h * 60 + m;
+    };
+    const fromMinutes = (mins: number) => {
+      const h = Math.floor(mins / 60) % 24;
+      const m = mins % 60;
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    };
+    const naturalDuration = toMinutes(defaultEnd) - toMinutes(defaultStart);
+
+    // Find actual saved slot for the immediately preceding period (same class+day)
+    const prevSlot = grid!.slots.find(
+      (s) =>
+        s.id !== excludeId &&
+        s.class_id === draft.class_id &&
+        s.day_of_week === draft.day_of_week &&
+        s.period_number === periodNumber - 1,
+    );
+
+    let smartStart = defaultStart;
+    let smartEnd = defaultEnd;
+    let adjustedFrom: string | null = null;
+
+    if (prevSlot && prevSlot.end_time > defaultStart) {
+      // Previous period was extended beyond the default start of this period.
+      // Cascade: push this period's start to where the previous one ends.
+      smartStart = prevSlot.end_time;
+      smartEnd = fromMinutes(toMinutes(prevSlot.end_time) + naturalDuration);
+      adjustedFrom = prevSlot.end_time; // used for the hint banner
+    }
+
+    setAutoAdjustedFrom(adjustedFrom);
+    setDraft((current) => ({
+      ...current,
+      period_number: periodNumber,
+      start_time: smartStart,
+      end_time: smartEnd,
+    }));
+  }
+
   async function save() {
     if (!grid) return;
     setSaving(true);
@@ -403,12 +519,27 @@ function SlotEditorModal({
         if (!grid.classes[0]) {
           throw new Error("Create at least one class first.");
         }
-        // The backend resolves the current academic year server-side, so the
-        // client sends an empty placeholder. The schema requires the field
-        // to round-trip cleanly; the service ignores it.
-        await createCoordinatorSlot({
-          class_id: draft.class_id || grid.classes[0].id,
-          academic_year_id: undefined,
+        const periodsToCreate = Array.from({ length: spanCount }, (_, i) => draft.period_number + i);
+        for (const pNum of periodsToCreate) {
+          const pInfo = grid.period_labels.find((p) => p.period === pNum);
+          await createCoordinatorSlot({
+            class_id: draft.class_id || grid.classes[0].id,
+            academic_year_id: undefined,
+            day_of_week: draft.day_of_week,
+            period_number: pNum,
+            start_time: spanCount === 1 ? draft.start_time : (pInfo?.start ?? draft.start_time),
+            end_time: spanCount === 1 ? draft.end_time : (pInfo?.end ?? draft.end_time),
+            subject_id: draft.subject_id,
+            teacher_id: draft.teacher_id,
+            room_no: draft.room_no,
+            slot_type: draft.slot_type,
+            effective_from: draft.effective_from,
+            effective_to: draft.effective_to,
+          });
+        }
+      } else {
+        await updateCoordinatorSlot(editor.slot.id, {
+          class_id: draft.class_id,
           day_of_week: draft.day_of_week,
           period_number: draft.period_number,
           start_time: draft.start_time,
@@ -418,14 +549,6 @@ function SlotEditorModal({
           room_no: draft.room_no,
           slot_type: draft.slot_type,
           effective_from: draft.effective_from,
-          effective_to: draft.effective_to,
-        });
-      } else {
-        await updateCoordinatorSlot(editor.slot.id, {
-          subject_id: draft.subject_id,
-          teacher_id: draft.teacher_id,
-          room_no: draft.room_no,
-          slot_type: draft.slot_type,
           effective_to: draft.effective_to,
         });
       }
@@ -439,7 +562,7 @@ function SlotEditorModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-white p-6 shadow-2xl">
+      <div className="w-full max-w-lg overflow-y-auto max-h-[90vh] rounded-2xl border border-border bg-white p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="font-display text-lg font-bold text-primary">
@@ -459,67 +582,158 @@ function SlotEditorModal({
           </button>
         </div>
 
+        {/* ── Conflict & info banners ── */}
+
+        {/* Auto-cascade hint: previous period was extended, start time was pushed */}
+        {autoAdjustedFrom && !timeOverlapSlot && (
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
+            <svg className="mt-0.5 h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            Start time auto-adjusted to <strong className="mx-0.5">{autoAdjustedFrom}</strong> because the previous period
+            was extended beyond the default. You can still change it manually.
+          </div>
+        )}
+
+        {/* Time-overlap warning: actual time window clashes with a saved slot */}
+        {timeOverlapSlot && (
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-medium text-orange-700">
+            <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              Time overlap with <strong>{timeOverlapSlot.subject_name ?? timeOverlapSlot.subject_code ?? "another slot"}</strong>
+              {" "}({timeOverlapSlot.start_time.slice(0, 5)}–{timeOverlapSlot.end_time.slice(0, 5)},
+              Period {timeOverlapSlot.period_number}). Adjust start or end time to avoid the clash.
+            </span>
+          </div>
+        )}
+
+        {currentPeriodsLocked && !timeOverlapSlot && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+            <Lock className="h-3.5 w-3.5 shrink-0" />
+            This class already has a slot at{" "}
+            {spanPeriods.filter((p) => conflicts.periods.has(p)).map((p) => {
+              const pl = grid.period_labels.find((l) => l.period === p);
+              return pl ? `Period ${pl.label} (${pl.start}–${pl.end})` : `Period ${p}`;
+            }).join(", ")}{" "}
+            on {DAY_LABELS.find((d) => d.value === draft.day_of_week)?.long}.
+          </div>
+        )}
+        {currentTeacherLocked && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            <Lock className="h-3.5 w-3.5 shrink-0" />
+            {teacher?.name ?? "This teacher"} is already scheduled at this period.
+          </div>
+        )}
+        {currentRoomLocked && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            <Lock className="h-3.5 w-3.5 shrink-0" />
+            Room {draft.room_no} is already occupied at this period.
+          </div>
+        )}
+
         <div className="space-y-3">
-          {editor.mode === "create" ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Class">
-                <select
-                  value={draft.class_id}
-                  onChange={(e) => setField("class_id", e.target.value)}
-                  className="h-10 rounded-field border border-border bg-white px-3 text-sm"
-                >
-                  {grid.classes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Day">
-                <select
-                  value={draft.day_of_week}
-                  onChange={(e) => setField("day_of_week", Number(e.target.value))}
-                  className="h-10 rounded-field border border-border bg-white px-3 text-sm"
-                >
-                  {DAY_LABELS.map((d) => (
-                    <option key={d.value} value={d.value}>
-                      {d.long}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Period">
-                <select
-                  value={draft.period_number}
-                  onChange={(e) => {
-                    const periodNumber = Number(e.target.value);
-                    const periodInfo = grid.period_labels.find((p) => p.period === periodNumber);
-                    setDraft((current) => ({
-                      ...current,
-                      period_number: periodNumber,
-                      start_time: periodInfo?.start ?? current.start_time,
-                      end_time: periodInfo?.end ?? current.end_time,
-                    }));
-                  }}
-                  className="h-10 rounded-field border border-border bg-white px-3 text-sm"
-                >
-                  {grid.period_labels.map((p) => (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Class">
+              <select
+                value={draft.class_id}
+                onChange={(e) => setField("class_id", e.target.value)}
+                className="h-10 rounded-field border border-border bg-white px-3 text-sm"
+              >
+                {grid.classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Day">
+              <select
+                value={draft.day_of_week}
+                onChange={(e) => setField("day_of_week", Number(e.target.value))}
+                className="h-10 rounded-field border border-border bg-white px-3 text-sm"
+              >
+                {DAY_LABELS.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.long}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Start Period">
+              <select
+                value={draft.period_number}
+                onChange={(e) => handlePeriodChange(Number(e.target.value))}
+                className={`h-10 rounded-field border px-3 text-sm ${
+                  timeOverlapSlot
+                    ? "border-orange-400 bg-orange-50"
+                    : currentPeriodsLocked
+                    ? "border-amber-400 bg-amber-50"
+                    : "border-border bg-white"
+                }`}
+              >
+                {grid.period_labels.map((p) => {
+                  const locked = conflicts.periods.has(p.period);
+                  return (
                     <option key={p.period} value={p.period}>
-                      {p.label} ({p.start}–{p.end})
+                      {locked ? "🔒 " : ""}{p.label} ({p.start}–{p.end})
                     </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Effective from">
-                <input
-                  type="date"
-                  value={draft.effective_from}
-                  onChange={(e) => setField("effective_from", e.target.value)}
-                  className="h-10 rounded-field border border-border bg-white px-3 text-sm"
-                />
-              </Field>
-            </div>
-          ) : null}
+                  );
+                })}
+              </select>
+            </Field>
+            <Field label="Duration / Period Span">
+              <select
+                value={spanCount}
+                onChange={(e) => handleSpanChange(Number(e.target.value))}
+                className="h-10 rounded-field border border-border bg-white px-3 text-sm font-medium text-accent"
+              >
+                <option value={1}>1 Period (Single Slot)</option>
+                <option value={2}>2 Periods (Double / Lab Block)</option>
+                <option value={3}>3 Periods (Triple / Workshop Block)</option>
+              </select>
+            </Field>
+            <Field label="Start Time">
+              <input
+                type="time"
+                value={draft.start_time}
+                onChange={(e) => {
+                  setAutoAdjustedFrom(null); // manual override clears the hint
+                  setField("start_time", e.target.value);
+                }}
+                className={`h-10 rounded-field border px-3 text-sm ${
+                  timeOverlapSlot
+                    ? "border-orange-400 bg-orange-50"
+                    : "border-border bg-white"
+                }`}
+              />
+            </Field>
+            <Field label="End Time">
+              <input
+                type="time"
+                value={draft.end_time}
+                onChange={(e) => setField("end_time", e.target.value)}
+                className={`h-10 rounded-field border px-3 text-sm ${
+                  timeOverlapSlot
+                    ? "border-orange-400 bg-orange-50"
+                    : "border-border bg-white"
+                }`}
+              />
+            </Field>
+            <Field label="Effective from">
+              <input
+                type="date"
+                value={draft.effective_from}
+                onChange={(e) => setField("effective_from", e.target.value)}
+                className="h-10 rounded-field border border-border bg-white px-3 text-sm"
+              />
+            </Field>
+            <Field label="Effective to (optional)">
+              <input
+                type="date"
+                value={draft.effective_to ?? ""}
+                onChange={(e) => setField("effective_to", e.target.value || null)}
+                className="h-10 rounded-field border border-border bg-white px-3 text-sm"
+              />
+            </Field>
+          </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Subject">
@@ -544,7 +758,19 @@ function SlotEditorModal({
                 ))}
               </select>
             </Field>
-            <Field label="Teacher">
+
+            {/* Teacher field with lock indicator */}
+            <div className="flex flex-col gap-1 text-sm">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Teacher
+                </span>
+                {currentTeacherLocked && (
+                  <span className="flex items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-600">
+                    <Lock className="h-2.5 w-2.5" /> Busy
+                  </span>
+                )}
+              </div>
               <select
                 value={draft.teacher_id ?? ""}
                 onChange={(e) => {
@@ -555,26 +781,50 @@ function SlotEditorModal({
                     teacher_name: teacher?.name ?? null,
                   }));
                 }}
-                className="h-10 rounded-field border border-border bg-white px-3 text-sm"
+                className={`h-10 rounded-field border px-3 text-sm ${
+                  currentTeacherLocked
+                    ? "border-red-400 bg-red-50"
+                    : "border-border bg-white"
+                }`}
               >
                 <option value="">—</option>
-                {grid.teachers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                    {t.department_name ? ` · ${t.department_name}` : ""}
-                  </option>
-                ))}
+                {grid.teachers.map((t) => {
+                  const busy = conflicts.teachers.has(t.id);
+                  return (
+                    <option key={t.id} value={t.id}>
+                      {busy ? "🔒 " : ""}{t.name}
+                      {t.department_name ? ` · ${t.department_name}` : ""}
+                    </option>
+                  );
+                })}
               </select>
-            </Field>
-            <Field label="Room">
+            </div>
+
+            {/* Room field with lock indicator */}
+            <div className="flex flex-col gap-1 text-sm">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Room
+                </span>
+                {currentRoomLocked && (
+                  <span className="flex items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-600">
+                    <Lock className="h-2.5 w-2.5" /> Occupied
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 value={draft.room_no ?? ""}
                 onChange={(e) => setField("room_no", e.target.value || null)}
-                className="h-10 rounded-field border border-border bg-white px-3 text-sm"
+                className={`h-10 rounded-field border px-3 text-sm ${
+                  currentRoomLocked
+                    ? "border-red-400 bg-red-50"
+                    : "border-border bg-white"
+                }`}
                 placeholder="e.g. 201"
               />
-            </Field>
+            </div>
+
             <Field label="Type">
               <select
                 value={draft.slot_type}
@@ -582,29 +832,18 @@ function SlotEditorModal({
                 className="h-10 rounded-field border border-border bg-white px-3 text-sm"
               >
                 <option value="CLASS">Class</option>
-                <option value="LAB">Lab</option>
+                <option value="LAB">Lab (Multi-Period Block)</option>
                 <option value="ACTIVITY">Activity</option>
                 <option value="BREAK">Break</option>
               </select>
             </Field>
           </div>
 
-          {editor.mode === "create" ? (
-            <p className="text-[11px] text-muted-foreground">
-              {dowOf(draft.effective_from) === null
-                ? "Heads up: the effective date is a Sunday — pick a weekday or change the start time."
-                : `Slot will appear from ${dateLabel(draft.effective_from)}.`}
-            </p>
-          ) : (
-            <Field label="Effective to (optional)">
-              <input
-                type="date"
-                value={draft.effective_to ?? ""}
-                onChange={(e) => setField("effective_to", e.target.value || null)}
-                className="h-10 rounded-field border border-border bg-white px-3 text-sm"
-              />
-            </Field>
-          )}
+          <p className="text-[11px] text-muted-foreground">
+            {dowOf(draft.effective_from) === null
+              ? "Heads up: the effective date is a Sunday — pick a weekday or change the start time."
+              : `Slot is effective starting ${dateLabel(draft.effective_from)}.`}
+          </p>
 
           {error ? (
             <p className="rounded-field border border-destructive-border bg-destructive-light/30 px-3 py-2 text-xs text-destructive-text">

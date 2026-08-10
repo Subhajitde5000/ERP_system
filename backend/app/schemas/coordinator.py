@@ -161,13 +161,19 @@ class CoordinatorSlotCreate(BaseModel):
 
 
 class CoordinatorSlotUpdate(BaseModel):
+    class_id: uuid.UUID | None = None
+    day_of_week: int | None = Field(default=None, ge=1, le=6)
+    period_number: int | None = Field(default=None, ge=1, le=20)
+    start_time: time | None = None
+    end_time: time | None = None
     subject_id: uuid.UUID | None = None
     teacher_id: uuid.UUID | None = None
     room_no: str | None = Field(default=None, max_length=20)
     slot_type: Literal["CLASS", "BREAK", "LAB", "ACTIVITY"] | None = None
+    effective_from: date | None = None
     effective_to: date | None = None
 
-    @field_validator("subject_id", "teacher_id", mode="before")
+    @field_validator("class_id", "subject_id", "teacher_id", mode="before")
     @classmethod
     def _sanitize_empty_uuid(cls, v: Any) -> Any:
         if v == "" or v is None:
@@ -180,6 +186,7 @@ class CoordinatorSlotUpdate(BaseModel):
         if v == "" or v is None:
             return None
         return v
+
 
 
 # ── Conflict checker (C-AC-04) ──────────────────────────────────────────────
