@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Filter,
   Lock,
@@ -41,11 +41,260 @@ export function CoordinatorTimetablePage() {
     slot: CoordinatorTimetableSlot;
   } | null>(null);
 
+  // Drag and drop local draft state
+  const [dirtyEdits, setDirtyEdits] = useState<Record<string, Partial<CoordinatorTimetableSlot>>>({});
+  const [savingEdits, setSavingEdits] = useState(false);
+
+  // Merge loaded slots with local dirty edits so UI updates instantly
+  const mergedGrid = useMemo(() => {
+    if (!resource.data) return null;
+    const slots = resource.data.slots.map((s) => {
+      const edit = dirtyEdits[s.id];
+      if (edit) {
+        return { ...s, ...edit };
+      }
+      return s;
+    });
+    return { ...resource.data, slots };
+  }, [resource.data, dirtyEdits]);
+
+  const handleSlotMoved = (
+    slotId: string,
+    targetClassId: string,
+    dayOfWeek: number,
+    periodNumber: number,
+  ) => {
+    if (!resource.data || !mergedGrid) return;
+
+    // Find dragged slot (Slot A) from current merged grid state
+    const slotA = mergedGrid.slots.find((s) => s.id === slotId);
+    if (!slotA) return;
+
+    // Original saved slot from DB
+    const origSlotA = resource.data.slots.find((s) => s.id === slotId);
+
+    // Source coordinates of Slot A in current merged grid
+    const sourceClassId = slotA.class_id;
+    const sourceDayOfWeek = slotA.day_of_week;
+    const sourcePeriodNumber = slotA.period_number;
+
+    // Check if dropped on the exact same location as current position
+    if (
+      sourceClassId === targetClassId &&
+      sourceDayOfWeek === dayOfWeek &&
+      sourcePeriodNumber === periodNumber
+    ) {
+      return;
+    }
+
+    // Slot directly at the target period cell (Slot B)
+    const slotBAtTarget = mergedGrid.slots.find(
+      (s) =>
+        s.id !== slotA.id &&
+        s.class_id === targetClassId &&
+        s.day_of_week === dayOfWeek &&
+        s.period_number === periodNumber
+    );
+    const origSlotB = slotBAtTarget ? resource.data.slots.find((s) => s.id === slotBAtTarget.id) : null;
+
+    // ── CHECK REVERT: Is Slot A moving back to its original DB position? ──
+    const isSlotAReturningToOrigin =
+      origSlotA &&
+      origSlotA.class_id === targetClassId &&
+      origSlotA.day_of_week === dayOfWeek &&
+      origSlotA.period_number === periodNumber;
+
+    const isSlotBReturningToOrigin =
+      !slotBAtTarget ||
+      (origSlotB &&
+        origSlotB.class_id === sourceClassId &&
+        origSlotB.day_of_week === sourceDayOfWeek &&
+        origSlotB.period_number === sourcePeriodNumber);
+
+    if (isSlotAReturningToOrigin && isSlotBReturningToOrigin) {
+      // Revert to original DB state cleanly!
+      setDirtyEdits((current) => {
+        const next = { ...current };
+        delete next[slotA.id];
+        if (slotBAtTarget) {
+          delete next[slotBAtTarget.id];
+        }
+        return next;
+      });
+      return;
+    }
+
+    const toMins = (t: string) => {
+      const [h, m] = t.split(":").map(Number);
+      return h * 60 + m;
+    };
+
+    const fromMins = (mins: number) => {
+      const h = Math.floor(mins / 60) % 24;
+      const m = mins % 60;
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    };
+
+    const targetPeriodInfo = resource.data.period_labels.find((pl) => pl.period === periodNumber);
+    const sourcePeriodInfo = resource.data.period_labels.find((pl) => pl.period === sourcePeriodNumber);
+
+    const defaultStart = targetPeriodInfo?.start ?? "09:00";
+    const defaultEnd = targetPeriodInfo?.end ?? "09:50";
+    const defaultDurationMins = toMins(defaultEnd) - toMins(defaultStart);
+
+    const slotADurationMins = toMins(slotA.end_time) - toMins(slotA.start_time);
+
+    // Other slots in target class & day excluding Slot A AND excluding Slot B (which gets swapped out)
+    const otherSlotsInTargetClassDay = mergedGrid.slots.filter(
+      (s) =>
+        s.id !== slotA.id &&
+        (!slotBAtTarget || s.id !== slotBAtTarget.id) &&
+        s.class_id === targetClassId &&
+        s.day_of_week === dayOfWeek
+    );
+
+    // Helper: does time window [start, end) overlap with any other slot in target class & day?
+    const checkOverlap = (startTime: string, endTime: string) => {
+      const startMins = toMins(startTime);
+      const endMins = toMins(endTime);
+
+      return otherSlotsInTargetClassDay.some((s) => {
+        const sStart = toMins(s.start_time);
+        const sEnd = toMins(s.end_time);
+        return startMins < sEnd && sStart < endMins;
+      });
+    };
+
+    let chosenStart = defaultStart;
+    let chosenEnd = defaultEnd;
+
+    // ── STEP 1: Check if Full Duration fits without disturbing/overlapping any other slots ──
+    const fullEndMins = toMins(defaultStart) + slotADurationMins;
+    const fullEndTime = fromMins(fullEndMins);
+
+    const fullDurationOverlaps = checkOverlap(defaultStart, fullEndTime);
+
+    if (!fullDurationOverlaps) {
+      // Option 1 Fits! Use full duration.
+      chosenStart = defaultStart;
+      chosenEnd = fullEndTime;
+    } else {
+      // Option 1 failed. Check Option 2: Does default period duration (e.g. 50 min) fit?
+      if (slotADurationMins > defaultDurationMins) {
+        const defaultDurationOverlaps = checkOverlap(defaultStart, defaultEnd);
+
+        if (!defaultDurationOverlaps) {
+          // Option 2 Fits! Ask user to confirm resetting duration to default 50 min.
+          const slotName = slotA.subject_name ?? slotA.subject_code ?? "This period";
+          const formattedDuration = `${Math.floor(slotADurationMins / 60)}h ${slotADurationMins % 60}m`.replace("0h ", "");
+          const confirmReset = window.confirm(
+            `"${slotName}" has a duration of ${formattedDuration}. It does not fit here with its full duration, but it fits if reset to the default period duration (${defaultDurationMins} mins).\n\nDo you want to reset it to ${defaultDurationMins} mins and move it here?`
+          );
+
+          if (!confirmReset) {
+            return;
+          }
+
+          chosenStart = defaultStart;
+          chosenEnd = defaultEnd;
+        } else {
+          alert(
+            `Cannot move period here: It does not fit in this time window without overlapping existing periods.`
+          );
+          return;
+        }
+      } else {
+        alert(
+          `Cannot move period here: It overlaps with an existing period.`
+        );
+        return;
+      }
+    }
+
+    // ── Apply Edits ──
+    const editA: Partial<CoordinatorTimetableSlot> = {
+      class_id: targetClassId,
+      day_of_week: dayOfWeek,
+      period_number: periodNumber,
+      start_time: chosenStart,
+      end_time: chosenEnd,
+    };
+
+    setDirtyEdits((current) => {
+      const next = { ...current };
+
+      if (
+        origSlotA &&
+        origSlotA.class_id === editA.class_id &&
+        origSlotA.day_of_week === editA.day_of_week &&
+        origSlotA.period_number === editA.period_number &&
+        origSlotA.start_time === editA.start_time &&
+        origSlotA.end_time === editA.end_time
+      ) {
+        delete next[slotA.id];
+      } else {
+        next[slotA.id] = {
+          ...next[slotA.id],
+          ...editA,
+        };
+      }
+
+      if (slotBAtTarget) {
+        const editB: Partial<CoordinatorTimetableSlot> = {
+          class_id: sourceClassId,
+          day_of_week: sourceDayOfWeek,
+          period_number: sourcePeriodNumber,
+        };
+        if (sourcePeriodInfo) {
+          editB.start_time = sourcePeriodInfo.start;
+          editB.end_time = sourcePeriodInfo.end;
+        }
+
+        if (
+          origSlotB &&
+          origSlotB.class_id === editB.class_id &&
+          origSlotB.day_of_week === editB.day_of_week &&
+          origSlotB.period_number === editB.period_number &&
+          origSlotB.start_time === editB.start_time &&
+          origSlotB.end_time === editB.end_time
+        ) {
+          delete next[slotBAtTarget.id];
+        } else {
+          next[slotBAtTarget.id] = {
+            ...next[slotBAtTarget.id],
+            ...editB,
+          };
+        }
+      }
+
+      return next;
+    });
+  };
+
+  const saveChanges = async () => {
+    setSavingEdits(true);
+    try {
+      for (const [slotId, edit] of Object.entries(dirtyEdits)) {
+        await updateCoordinatorSlot(slotId, edit);
+      }
+      setDirtyEdits({});
+      await resource.reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save changes.");
+    } finally {
+      setSavingEdits(false);
+    }
+  };
+
+  const discardChanges = () => {
+    setDirtyEdits({});
+  };
+
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6 pb-20 relative">
       <PageHeader
         title="Timetable builder"
-        subtitle="Create and manage the weekly timetable for every class. Days run Monday → Saturday."
+        subtitle="Create and manage the weekly timetable for every class. Days run Monday → Saturday. Drag slots to reschedule them."
       />
 
       <Card className="!p-4">
@@ -77,6 +326,9 @@ export function CoordinatorTimetablePage() {
 
       <TimetableState
         resource={resource}
+        grid={mergedGrid}
+        dirtyEdits={dirtyEdits}
+        onSlotMoved={handleSlotMoved}
         onAdd={() =>
           setEditor({
             mode: "create",
@@ -100,8 +352,9 @@ export function CoordinatorTimetablePage() {
 
       {editor ? (
         <SlotEditorModal
+          key={`${editor.mode}-${editor.slot.id || editor.slot.period_number}-${editor.slot.day_of_week}-${editor.slot.class_id}`}
           editor={editor}
-          grid={resource.data}
+          grid={mergedGrid ?? resource.data}
           onClose={() => setEditor(null)}
           onSaved={async () => {
             setEditor(null);
@@ -109,17 +362,53 @@ export function CoordinatorTimetablePage() {
           }}
         />
       ) : null}
+
+      {/* Floating Save Actions Bar */}
+      {Object.keys(dirtyEdits).length > 0 && (
+        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-4 rounded-full border border-accent bg-white px-6 py-3 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <span className="text-sm font-medium text-foreground flex items-center gap-1.5">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent"></span>
+            </span>
+            Unsaved changes: {Object.keys(dirtyEdits).length} slot{Object.keys(dirtyEdits).length > 1 ? "s" : ""} adjusted
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={discardChanges}
+              className="rounded-full border border-border bg-white px-4 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition"
+            >
+              Discard
+            </button>
+            <button
+              type="button"
+              onClick={saveChanges}
+              disabled={savingEdits}
+              className="rounded-full bg-accent px-4 py-1.5 text-xs font-semibold text-white shadow-accent hover:bg-accent-hover transition disabled:opacity-60"
+            >
+              {savingEdits ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function TimetableState({
   resource,
+  grid,
+  dirtyEdits,
+  onSlotMoved,
   onAdd,
   onEdit,
   onDelete,
 }: {
   resource: ReturnType<typeof useResource<CoordinatorTimetableGrid>>;
+  grid: CoordinatorTimetableGrid | null;
+  dirtyEdits: Record<string, Partial<CoordinatorTimetableSlot>>;
+  onSlotMoved: (slotId: string, classId: string, dayOfWeek: number, periodNumber: number) => void;
   onAdd: () => void;
   onEdit: (slot: CoordinatorTimetableSlot) => void;
   onDelete: (slot: CoordinatorTimetableSlot) => Promise<void> | void;
@@ -145,12 +434,14 @@ function TimetableState({
       </Card>
     );
   }
-  if (!resource.data) {
+  if (!grid) {
     return null;
   }
   return (
     <TimetableGrid
-      grid={resource.data}
+      grid={grid}
+      dirtyEdits={dirtyEdits}
+      onSlotMoved={onSlotMoved}
       onAdd={onAdd}
       onEdit={onEdit}
       onDelete={onDelete}
@@ -160,11 +451,15 @@ function TimetableState({
 
 function TimetableGrid({
   grid,
+  dirtyEdits,
+  onSlotMoved,
   onAdd,
   onEdit,
   onDelete,
 }: {
   grid: CoordinatorTimetableGrid;
+  dirtyEdits: Record<string, Partial<CoordinatorTimetableSlot>>;
+  onSlotMoved: (slotId: string, classId: string, dayOfWeek: number, periodNumber: number) => void;
   onAdd: () => void;
   onEdit: (slot: CoordinatorTimetableSlot) => void;
   onDelete: (slot: CoordinatorTimetableSlot) => Promise<void> | void;
@@ -221,7 +516,7 @@ function TimetableGrid({
                 {slots.length} slot{slots.length === 1 ? "" : "s"}
               </span>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-visible">
               <table className="w-full min-w-[640px] table-fixed border-collapse text-xs">
                 <thead>
                   <tr className="bg-muted/30 text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -251,24 +546,45 @@ function TimetableGrid({
                         const slot = slots.find(
                           (s) => s.day_of_week === day.value && s.period_number === p.period,
                         );
+
+                        const handleDragOver = (e: React.DragEvent) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                        };
+
+                        const handleDrop = (e: React.DragEvent) => {
+                          e.preventDefault();
+                          const slotId = e.dataTransfer.getData("text/plain");
+                          if (slotId) {
+                            onSlotMoved(slotId, klass.id, day.value, p.period);
+                          }
+                        };
+
                         if (!slot) {
                           return (
                             <td
                               key={p.period}
-                              className="border-b border-border px-2 py-2 text-center"
+                              onDragOver={handleDragOver}
+                              onDrop={handleDrop}
+                              className="border-b border-border px-2 py-2 text-center transition-colors duration-150 hover:bg-accent/5 h-20"
                             >
-                              <span className="text-[10px] text-muted-foreground">—</span>
+                              <span className="text-[10px] text-muted-foreground select-none">—</span>
                             </td>
                           );
                         }
+
+                        const isDirty = !!dirtyEdits[slot.id];
                         return (
                           <td
                             key={p.period}
-                            className="border-b border-border px-2 py-2"
+                            onDragOver={handleDragOver}
+                            onDrop={handleDrop}
+                            className="border-b border-border px-2 py-2 transition-colors duration-150 hover:bg-accent/5 h-20"
                           >
                             <SlotChip
                               slot={slot}
                               isBreak={!!p.is_break}
+                              isDirty={isDirty}
                               onEdit={() => onEdit(slot)}
                               onDelete={() => onDelete(slot)}
                             />
@@ -290,11 +606,13 @@ function TimetableGrid({
 function SlotChip({
   slot,
   isBreak,
+  isDirty,
   onEdit,
   onDelete,
 }: {
   slot: CoordinatorTimetableSlot;
   isBreak: boolean;
+  isDirty: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -306,7 +624,24 @@ function SlotChip({
     );
   }
   return (
-    <div className="group rounded-field border border-accent-border bg-accent-light/40 px-2 py-1.5">
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", slot.id);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      className={`group rounded-field border px-2 py-1.5 cursor-grab active:cursor-grabbing hover:shadow-md transition relative select-none ${
+        isDirty
+          ? "border-dashed border-accent bg-accent-light/30 ring-1 ring-accent"
+          : "border-accent-border bg-accent-light/40"
+      }`}
+    >
+      {isDirty && (
+        <span className="absolute -top-1 -right-1 flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
+        </span>
+      )}
       <p className="truncate text-[12px] font-semibold text-primary">
         {slot.subject_code ?? slot.subject_name ?? "—"}
       </p>
@@ -382,6 +717,13 @@ function SlotEditorModal({
   const [error, setError] = useState<string | null>(null);
   // Tracks whether start_time was auto-adjusted from a previous slot's end_time
   const [autoAdjustedFrom, setAutoAdjustedFrom] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft(editor.slot);
+    setSpanCount(1);
+    setError(null);
+    setAutoAdjustedFrom(null);
+  }, [editor.slot]);
 
   // ── Conflict detection ──────────────────────────────────────────────────────
   const excludeId = editor.mode === "edit" ? editor.slot.id : null;
