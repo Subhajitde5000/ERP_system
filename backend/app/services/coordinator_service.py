@@ -1147,7 +1147,7 @@ class CoordinatorService:
                 )
             ).scalar_one_or_none()
         else:
-            year = await CoordinatorService._canonical_current_year(db, tenant_id)
+            year = await CoordinatorService._current_year(db, tenant_id)
 
         if year is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Academic year not found")
@@ -1170,7 +1170,7 @@ class CoordinatorService:
         event = AcademicEvent(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
-            academic_year_id=payload.academic_year_id,
+            academic_year_id=year.id,
             title=payload.title.strip(),
             description=(payload.description or "").strip() or None,
             event_type=AcademicEventType(payload.event_type),
@@ -1931,10 +1931,10 @@ class CoordinatorService:
 
     @staticmethod
     def _page_bounds(limit: int, offset: int) -> tuple[int, int]:
-        if not 1 <= limit <= 100:
+        if not 1 <= limit <= 200:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="limit must be between 1 and 100",
+                detail="limit must be between 1 and 200",
             )
         if offset < 0:
             raise HTTPException(

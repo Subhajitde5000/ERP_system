@@ -220,7 +220,7 @@ async def events(
     to_date: date | None = Query(default=None),
     event_type: Literal["HOLIDAY", "EVENT", "EXAM", "TERM"] | None = Query(default=None),
     include_past: bool = Query(default=False),
-    limit: int = Query(default=50, ge=1, le=100),
+    limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
     return APIResponse(
