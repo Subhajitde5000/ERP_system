@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarPlus, Plus, Save, Trash2, X } from "lucide-react";
+import { CalendarPlus, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 
 import { Card, EmptyState, PageHeader } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
@@ -9,6 +9,7 @@ import {
   createCoordinatorEvent,
   deleteCoordinatorEvent,
   fetchCoordinatorEvents,
+  updateCoordinatorEvent,
   type CoordinatorEventCreate,
   type CoordinatorEventRow,
   type CoordinatorEventType,
@@ -21,7 +22,10 @@ const EVENT_TYPES: CoordinatorEventType[] = ["HOLIDAY", "EVENT", "EXAM", "TERM"]
 export function CoordinatorCalendarPage() {
   const [filter, setFilter] = useState<CoordinatorEventType | "ALL">("ALL");
   const [includePast, setIncludePast] = useState(false);
-  const [editor, setEditor] = useState<CoordinatorEventCreate | null>(null);
+  const [editor, setEditor] = useState<{
+    eventId?: string;
+    draft: CoordinatorEventCreate;
+  } | null>(null);
 
   const resource = useResource(
     () =>
@@ -42,7 +46,7 @@ export function CoordinatorCalendarPage() {
           <button
             type="button"
             onClick={() =>
-              setEditor(blankEvent())
+              setEditor({ draft: blankEvent() })
             }
             className="inline-flex h-10 items-center gap-1.5 rounded-field bg-accent px-4 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover"
           >
@@ -84,6 +88,23 @@ export function CoordinatorCalendarPage() {
 
       <CalendarState
         resource={resource}
+        onEdit={(event) => {
+          setEditor({
+            eventId: event.id,
+            draft: {
+              academic_year_id: "",
+              title: event.title,
+              description: event.description,
+              event_type: event.event_type,
+              start_date: event.start_date,
+              end_date: event.end_date,
+              is_holiday: event.is_holiday,
+              applies_to: event.applies_to,
+              scope_id: event.scope_id,
+              color: event.color,
+            },
+          });
+        }}
         onDelete={async (event) => {
           if (!window.confirm(`Delete "${event.title}"?`)) return;
           await deleteCoordinatorEvent(event.id);
@@ -93,7 +114,8 @@ export function CoordinatorCalendarPage() {
 
       {editor ? (
         <EventEditorModal
-          draft={editor}
+          eventId={editor.eventId}
+          draft={editor.draft}
           onClose={() => setEditor(null)}
           onSaved={async () => {
             setEditor(null);
@@ -107,9 +129,11 @@ export function CoordinatorCalendarPage() {
 
 function CalendarState({
   resource,
+  onEdit,
   onDelete,
 }: {
   resource: ReturnType<typeof useResource<{ total: number; limit: number; offset: number; items: CoordinatorEventRow[] }>>;
+  onEdit: (event: CoordinatorEventRow) => void;
   onDelete: (event: CoordinatorEventRow) => Promise<void> | void;
 }) {
   if (resource.loading) {
@@ -136,14 +160,16 @@ function CalendarState({
   if (!resource.data) {
     return null;
   }
-  return <CalendarList items={resource.data.items} onDelete={onDelete} />;
+  return <CalendarList items={resource.data.items} onEdit={onEdit} onDelete={onDelete} />;
 }
 
 function CalendarList({
   items,
+  onEdit,
   onDelete,
 }: {
   items: CoordinatorEventRow[];
+  onEdit: (event: CoordinatorEventRow) => void;
   onDelete: (event: CoordinatorEventRow) => Promise<void> | void;
 }) {
   const grouped = useMemo(() => {
@@ -188,7 +214,7 @@ function CalendarList({
                   <p className="text-xs text-muted-foreground">
                     {event.event_type === "HOLIDAY"
                       ? "Holiday"
-                      : event.event_type.toLowerCase()}
+                      : event.event_type.charAt(0) + event.event_type.slice(1).toLowerCase()}
                     {event.scope_name ? ` · ${event.scope_name}` : ""}
                   </p>
                   <time className="mt-1 block text-[11px] text-muted-foreground">
@@ -198,13 +224,22 @@ function CalendarList({
                       : ""}
                   </time>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onDelete(event)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-field border border-border bg-white px-3 text-sm font-semibold text-destructive transition hover:border-destructive"
-                >
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden /> Delete
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(event)}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-field border border-border bg-white px-3 text-sm font-semibold text-foreground transition hover:border-accent hover:text-accent"
+                  >
+                    <Pencil className="h-3.5 w-3.5" aria-hidden /> Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(event)}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-field border border-border bg-white px-3 text-sm font-semibold text-destructive transition hover:border-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden /> Delete
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -231,10 +266,12 @@ function blankEvent(): CoordinatorEventCreate {
 }
 
 function EventEditorModal({
+  eventId,
   draft,
   onClose,
   onSaved,
 }: {
+  eventId?: string;
   draft: CoordinatorEventCreate;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
@@ -255,12 +292,14 @@ function EventEditorModal({
     setSaving(true);
     setError(null);
     try {
-      await createCoordinatorEvent({
-        ...form,
-        // academic_year_id is resolved server-side; sending empty string is the
-        // same as omitting the year.
-        academic_year_id: form.academic_year_id || undefined,
-      });
+      if (eventId) {
+        await updateCoordinatorEvent(eventId, form);
+      } else {
+        await createCoordinatorEvent({
+          ...form,
+          academic_year_id: form.academic_year_id || undefined,
+        });
+      }
       await onSaved();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save event.");
@@ -276,7 +315,7 @@ function EventEditorModal({
           <div>
             <h2 className="font-display text-lg font-bold text-primary">
               <CalendarPlus className="mr-2 inline-block h-5 w-5 text-accent" aria-hidden />
-              New academic event
+              {eventId ? "Edit academic event" : "New academic event"}
             </h2>
             <p className="text-xs text-muted-foreground">
               Holidays, exam weeks and term markers.
@@ -305,6 +344,7 @@ function EventEditorModal({
           <Field label="Type">
             <select
               value={form.event_type}
+              disabled={!!eventId}
               onChange={(e) => {
                 const eventType = e.target.value as CoordinatorEventType;
                 setForm({
@@ -313,7 +353,7 @@ function EventEditorModal({
                   is_holiday: eventType === "HOLIDAY" ? form.is_holiday : false,
                 });
               }}
-              className="h-10 rounded-field border border-border bg-white px-3 text-sm"
+              className="h-10 rounded-field border border-border bg-white px-3 text-sm disabled:bg-muted/50"
             >
               {EVENT_TYPES.map((t) => (
                 <option key={t} value={t}>
