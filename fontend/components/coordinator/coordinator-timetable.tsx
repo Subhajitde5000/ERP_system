@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Download,
   Filter,
   Lock,
   Plus,
@@ -17,6 +18,7 @@ import {
   deleteCoordinatorSlot,
   fetchCoordinatorTimetable,
   updateCoordinatorSlot,
+  type CoordinatorClassOption,
   type CoordinatorTimetableGrid,
   type CoordinatorTimetableSlot,
 } from "@/lib/coordinator-api";
@@ -473,6 +475,12 @@ function TimetableGrid({
     return map;
   }, [grid.slots]);
 
+  // Which class's download modal is open (null = closed)
+  const [downloadTarget, setDownloadTarget] = useState<{
+    klass: CoordinatorClassOption;
+    slots: CoordinatorTimetableSlot[];
+  } | null>(null);
+
   if (grid.classes.length === 0) {
     return (
       <Card>
@@ -499,6 +507,16 @@ function TimetableGrid({
         </button>
       </div>
 
+      {/* Download format picker modal */}
+      {downloadTarget && (
+        <DownloadModal
+          klass={downloadTarget.klass}
+          slots={downloadTarget.slots}
+          periods={periods}
+          onClose={() => setDownloadTarget(null)}
+        />
+      )}
+
       {grid.classes.map((klass) => {
         const slots = groupedByClass.get(klass.id) ?? [];
         return (
@@ -512,9 +530,20 @@ function TimetableGrid({
                   {klass.department_name ?? "—"} · {klass.class_teacher_name ?? "No class teacher"}
                 </p>
               </div>
-              <span className="rounded-full bg-accent-light px-2 py-1 text-[11px] font-semibold text-accent">
-                {slots.length} slot{slots.length === 1 ? "" : "s"}
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  title={`Download timetable for ${klass.name}`}
+                  onClick={() => setDownloadTarget({ klass, slots })}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-field border border-border bg-white px-3 text-xs font-semibold text-foreground transition hover:border-accent hover:text-accent"
+                >
+                  <Download className="h-3.5 w-3.5" aria-hidden />
+                  Download
+                </button>
+                <span className="rounded-full bg-accent-light px-2 py-1 text-[11px] font-semibold text-accent">
+                  {slots.length} slot{slots.length === 1 ? "" : "s"}
+                </span>
+              </div>
             </div>
             <div className="overflow-x-auto overflow-y-visible">
               <table className="w-full min-w-[640px] table-fixed border-collapse text-xs">
@@ -599,6 +628,302 @@ function TimetableGrid({
           </Card>
         );
       })}
+    </div>
+  );
+}
+
+// ── Download format picker modal ─────────────────────────────────────────────
+
+const DAY_NAMES_FULL: Record<number, string> = {
+  1: "Monday", 2: "Tuesday", 3: "Wednesday",
+  4: "Thursday", 5: "Friday", 6: "Saturday",
+};
+
+function DownloadModal({
+  klass,
+  slots,
+  periods,
+  onClose,
+}: {
+  klass: CoordinatorClassOption;
+  slots: CoordinatorTimetableSlot[];
+  periods: CoordinatorTimetableGrid["period_labels"];
+  onClose: () => void;
+}) {
+  const [format, setFormat] = useState<"excel" | "image">("excel");
+  const [busy, setBusy] = useState(false);
+
+  const safeName = klass.name.replace(/\s+/g, "-").toLowerCase();
+
+  // ── Sorted slots ────────────────────────────────────────────────────────────
+  const sortedSlots = useMemo(
+    () =>
+      [...slots].sort((a, b) =>
+        a.day_of_week !== b.day_of_week
+          ? a.day_of_week - b.day_of_week
+          : a.period_number - b.period_number,
+      ),
+    [slots],
+  );
+
+  // ── Excel export ─────────────────────────────────────────────────────────────
+  async function exportExcel() {
+    const XLSX = await import("xlsx");
+
+    const header = ["Day", "Period", "Start", "End", "Subject", "Teacher", "Room", "Type"];
+    const rows = sortedSlots.map((s) => {
+      const periodLabel =
+        periods.find((p) => p.period === s.period_number)?.label ?? String(s.period_number);
+      return [
+        DAY_NAMES_FULL[s.day_of_week] ?? String(s.day_of_week),
+        periodLabel,
+        s.start_time,
+        s.end_time,
+        s.subject_code
+          ? `${s.subject_code} – ${s.subject_name ?? ""}`
+          : (s.subject_name ?? "—"),
+        s.teacher_name ?? "TBA",
+        s.room_no ? `Room ${s.room_no}` : "Room TBA",
+        s.slot_type,
+      ];
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+
+    // Column widths
+    ws["!cols"] = [16, 10, 8, 8, 30, 24, 12, 12].map((w) => ({ wch: w }));
+
+    // Bold header row
+    header.forEach((_, ci) => {
+      const cellRef = XLSX.utils.encode_cell({ r: 0, c: ci });
+      if (ws[cellRef]) {
+        ws[cellRef].s = { font: { bold: true } };
+      }
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, klass.name.slice(0, 31));
+    XLSX.writeFile(wb, `timetable-${safeName}.xlsx`);
+  }
+
+  // ── Image export ──────────────────────────────────────────────────────────────
+  async function exportImage() {
+    const html2canvas = (await import("html2canvas")).default;
+
+    // Build an off-screen table that renders cleanly
+    const container = document.createElement("div");
+    container.style.cssText =
+      "position:fixed;top:-9999px;left:-9999px;background:#ffffff;padding:24px;font-family:sans-serif;font-size:12px;";
+
+    // Title
+    const title = document.createElement("div");
+    title.style.cssText = "font-size:16px;font-weight:700;margin-bottom:4px;color:#1e293b;";
+    title.textContent = `Timetable – ${klass.name}`;
+    container.appendChild(title);
+
+    if (klass.department_name) {
+      const sub = document.createElement("div");
+      sub.style.cssText = "font-size:11px;color:#64748b;margin-bottom:12px;";
+      sub.textContent = klass.department_name;
+      container.appendChild(sub);
+    }
+
+    // Table
+    const table = document.createElement("table");
+    table.style.cssText =
+      "border-collapse:collapse;width:100%;min-width:640px;";
+
+    const cellStyle = (header = false, center = false) =>
+      `border:1px solid #e2e8f0;padding:6px 10px;${header ? "font-weight:600;background:#f8fafc;color:#475569;" : "background:#ffffff;color:#1e293b;"}${center ? "text-align:center;" : ""}`;
+
+    // Header row: Day + one col per period
+    const thead = table.createTHead();
+    const headerRow = thead.insertRow();
+    const dayTh = document.createElement("th");
+    dayTh.textContent = "Day";
+    dayTh.style.cssText = cellStyle(true);
+    headerRow.appendChild(dayTh);
+    for (const p of periods) {
+      const th = document.createElement("th");
+      th.innerHTML = `${p.label}<br/><span style="font-size:10px;font-weight:400;color:#94a3b8;">${p.start}–${p.end}</span>`;
+      th.style.cssText = cellStyle(true, true);
+      headerRow.appendChild(th);
+    }
+
+    // Data rows
+    const tbody = table.createTBody();
+    for (const day of DAY_LABELS) {
+      const tr = tbody.insertRow();
+      const dayTd = document.createElement("td");
+      dayTd.textContent = day.short;
+      dayTd.style.cssText = cellStyle(true);
+      tr.appendChild(dayTd);
+
+      for (const p of periods) {
+        const slot = slots.find(
+          (s) => s.day_of_week === day.value && s.period_number === p.period,
+        );
+        const td = document.createElement("td");
+        td.style.cssText = cellStyle(false, true) + "min-width:80px;vertical-align:top;";
+        if (slot) {
+          td.innerHTML = `
+            <div style="font-weight:600;font-size:11px;color:#1e293b;">${slot.subject_code ?? slot.subject_name ?? "—"}</div>
+            <div style="font-size:10px;color:#64748b;">${slot.teacher_name ?? "TBA"}</div>
+            <div style="font-size:10px;color:#94a3b8;">${slot.room_no ? `Room ${slot.room_no}` : ""}</div>
+          `;
+        } else {
+          td.textContent = "—";
+          td.style.color = "#cbd5e1";
+        }
+        tr.appendChild(td);
+      }
+    }
+
+    container.appendChild(table);
+    document.body.appendChild(container);
+
+    try {
+      const canvas = await html2canvas(container, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+      });
+      const url = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `timetable-${safeName}.png`;
+      link.click();
+    } finally {
+      document.body.removeChild(container);
+    }
+  }
+
+  // ── Submit ────────────────────────────────────────────────────────────────────
+  async function handleDownload() {
+    setBusy(true);
+    try {
+      if (format === "excel") await exportExcel();
+      else await exportImage();
+      onClose();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Export failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-white p-6 shadow-2xl">
+        {/* Header */}
+        <div className="mb-5 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-display text-base font-bold text-primary">
+              Download Timetable
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {klass.name}
+              {klass.department_name ? ` · ${klass.department_name}` : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+
+        {/* Format picker */}
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Choose format
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          {/* Excel option */}
+          <button
+            type="button"
+            onClick={() => setFormat("excel")}
+            className={`flex flex-col items-center gap-2 rounded-xl border-2 px-4 py-5 transition ${
+              format === "excel"
+                ? "border-accent bg-accent-light/40 text-accent"
+                : "border-border bg-white text-foreground hover:border-accent/50"
+            }`}
+          >
+            {/* Spreadsheet icon */}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-8 w-8"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M3 9h18M3 15h18M9 3v18" />
+            </svg>
+            <span className="text-xs font-semibold">Excel (.xlsx)</span>
+          </button>
+
+          {/* Image option */}
+          <button
+            type="button"
+            onClick={() => setFormat("image")}
+            className={`flex flex-col items-center gap-2 rounded-xl border-2 px-4 py-5 transition ${
+              format === "image"
+                ? "border-accent bg-accent-light/40 text-accent"
+                : "border-border bg-white text-foreground hover:border-accent/50"
+            }`}
+          >
+            {/* Image icon */}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-8 w-8"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+            <span className="text-xs font-semibold">Image (.png)</span>
+          </button>
+        </div>
+
+        {/* Info line */}
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          {format === "excel"
+            ? "Exports a structured spreadsheet with all slots sorted by day and period."
+            : "Renders the timetable grid as a PNG image — ideal for sharing or printing."}
+        </p>
+
+        {/* Actions */}
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 items-center rounded-field border border-border bg-white px-4 text-sm font-semibold text-foreground transition hover:border-accent"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={busy}
+            className="inline-flex h-10 items-center gap-1.5 rounded-field bg-accent px-4 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover disabled:opacity-60"
+          >
+            <Download className="h-4 w-4" aria-hidden />
+            {busy ? "Exporting…" : "Download"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
