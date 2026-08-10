@@ -28,6 +28,7 @@ const NAVIGATION: InstitutionConsoleNavItem[] = [
   { label: "Substitutions", href: "/coordinator/substitutions", icon: Repeat },
   { label: "Add substitution", href: "/coordinator/substitutions/new", icon: RefreshCw },
   { label: "Academic calendar", href: "/coordinator/calendar", icon: CalendarPlus },
+  { label: "Notice feed", href: "/coordinator/notices", icon: Megaphone },
   { label: "Post notice", href: "/coordinator/notices/new", icon: Megaphone },
 ];
 

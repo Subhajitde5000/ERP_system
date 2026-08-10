@@ -214,7 +214,7 @@ export function CoordinatorNoticeComposerPage() {
 
       <p className="text-[12px] text-muted-foreground">
         Need to edit the title or pull a notice down? Open{" "}
-        <Link href="/notices" className="font-semibold text-accent hover:underline">
+        <Link href="/coordinator/notices" className="font-semibold text-accent hover:underline">
           the notice board
         </Link>{" "}
         to manage what you have already posted.
