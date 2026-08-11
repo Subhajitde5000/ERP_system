@@ -259,6 +259,7 @@ def _exam_to_row(
         pending_grading_count=pending_grading,
         created_by=exam.created_by,
         created_by_name=created_by_name,
+        academic_year_id=exam.academic_year_id,
     )
 
 
@@ -642,6 +643,8 @@ class ExamControllerService:
             for exam, cname, scode in scheduled_rows.all()
         ]
 
+        current_year = await _current_year(db, tenant_id)
+
         return ExamControllerScheduleContext(
             classes=class_opts,
             subjects=subject_opts,
@@ -649,6 +652,7 @@ class ExamControllerService:
             today=await _tenant_today(db, tenant_id),
             past_date_window_days=PAST_DATE_WINDOW_DAYS,
             scheduled=scheduled,
+            current_academic_year_id=current_year.id if current_year else None,
         )
 
     @staticmethod
@@ -1286,6 +1290,7 @@ class ExamControllerService:
         db: AsyncSession,
         tenant_id: uuid.UUID,
     ) -> ExamControllerMalpracticeBoard:
+        HandlerUser = aliased(User)
         logs_rows = await db.execute(
             select(
                 MalpracticeLog,
@@ -1300,7 +1305,7 @@ class ExamControllerService:
                 Department.name,
             )
             .join(User, User.id == MalpracticeLog.student_id)
-            .outerjoin(HandlerUser := aliased(User), HandlerUser.id == MalpracticeLog.handled_by)
+            .outerjoin(HandlerUser, HandlerUser.id == MalpracticeLog.handled_by)
             .join(ExamAttempt, ExamAttempt.id == MalpracticeLog.attempt_id)
             .join(Exam, Exam.id == ExamAttempt.exam_id)
             .join(Subject, Subject.id == Exam.subject_id)
@@ -2375,6 +2380,7 @@ class ExamControllerService:
         tenant_id: uuid.UUID,
         log_id: uuid.UUID,
     ) -> ExamControllerMalpracticeRow:
+        HandlerUser = aliased(User)
         row = (
             await db.execute(
                 select(
@@ -2390,7 +2396,7 @@ class ExamControllerService:
                     Department.name,
                 )
                 .join(User, User.id == MalpracticeLog.student_id)
-                .outerjoin(HandlerUser := aliased(User), HandlerUser.id == MalpracticeLog.handled_by)
+                .outerjoin(HandlerUser, HandlerUser.id == MalpracticeLog.handled_by)
                 .join(ExamAttempt, ExamAttempt.id == MalpracticeLog.attempt_id)
                 .join(Exam, Exam.id == ExamAttempt.exam_id)
                 .join(Subject, Subject.id == Exam.subject_id)

@@ -6,7 +6,9 @@
  * payloads mirror `backend/app/schemas/teacher.py` one-to-one.
  */
 
+import { API_BASE_URL, getAccessToken } from "./auth";
 import { APIError } from "./api-client";
+
 import {
   leadershipCall,
   queryString,
@@ -412,6 +414,139 @@ export const updateExamQuestion = (examId: string, questionId: string, payload: 
 
 export const deleteExamQuestion = (examId: string, questionId: string) =>
   call<TeacherExamDetail>(`/examinations/${examId}/questions/${questionId}`, { method: "DELETE" });
+
+export interface QuestionBankItemOut {
+  id: string;
+  tenant_id: string;
+  created_by: string | null;
+  subject_id: string | null;
+  subject_name?: string | null;
+  class_id: string | null;
+  class_name?: string | null;
+  text: string;
+  question_type: string;
+  default_marks: number;
+  negative_marks: number;
+  options: { text: string; is_correct?: boolean; image_url?: string | null; sort_order?: number }[];
+  image_url: string | null;
+  explanation: string | null;
+  difficulty: string | null;
+  tags: string[];
+  usage_count: number;
+  created_at: string;
+}
+
+export interface QuestionBankItemIn {
+  subject_id?: string | null;
+  class_id?: string | null;
+  text: string;
+  question_type: TeacherQuestionType;
+  default_marks?: number;
+  negative_marks?: number;
+  options?: TeacherQuestionOptionIn[];
+  image_url?: string | null;
+  explanation?: string | null;
+  difficulty?: TeacherDifficulty | null;
+  tags?: string[];
+}
+
+export const fetchQuestionBank = (filters: {
+  subject_id?: string;
+  question_type?: string;
+  difficulty?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+} = {}) =>
+  call<TeacherPage<QuestionBankItemOut>>(
+    `/question-bank${queryString({
+      subject_id: filters.subject_id,
+      question_type: filters.question_type,
+      difficulty: filters.difficulty,
+      search: filters.search,
+      limit: filters.limit,
+      offset: filters.offset,
+    })}`,
+  );
+
+export const createQuestionBankItem = (payload: QuestionBankItemIn) =>
+  call<QuestionBankItemOut>("/question-bank", jsonInit("POST", payload));
+
+export const updateQuestionBankItem = (itemId: string, payload: Partial<QuestionBankItemIn>) =>
+  call<QuestionBankItemOut>(`/question-bank/${itemId}`, jsonInit("PATCH", payload));
+
+export const deleteQuestionBankItem = (itemId: string) =>
+  call<{ id: string }>(`/question-bank/${itemId}`, { method: "DELETE" });
+
+/**
+ * Download the question bank as a CSV file.
+ * Triggers a browser "Save As" dialog.
+ */
+export async function exportQuestionBank(filters: {
+  fmt?: "csv";
+  subject_id?: string;
+  question_type?: string;
+  difficulty?: string;
+  search?: string;
+} = {}): Promise<void> {
+  const qs = queryString({
+    fmt: "csv",
+    subject_id: filters.subject_id,
+    question_type: filters.question_type,
+    difficulty: filters.difficulty,
+    search: filters.search,
+  });
+  const url = `${API_BASE_URL}/api/v1/teacher/question-bank/export${qs}`;
+  const token = getAccessToken();
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new APIError("Export failed", res.status);
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match ? match[1] : "question_bank.csv";
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+
+export interface QuestionBankImportResult {
+  imported: number;
+  errors: string[];
+}
+
+/**
+ * Upload a CSV or JSON file to bulk-import questions into the question bank.
+ */
+export async function importQuestionBankFile(file: File): Promise<QuestionBankImportResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const token = getAccessToken();
+  const url = `${API_BASE_URL}/api/v1/teacher/question-bank/import-file`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new APIError(text || "Import failed", res.status);
+  }
+  const json = await res.json();
+  return json.data as QuestionBankImportResult;
+}
+
+
+
+export const importQuestionsFromBank = (examId: string, bankItemIds: string[]) =>
+  call<TeacherExamDetail>(`/examinations/${examId}/import-questions`, jsonInit("POST", { bank_item_ids: bankItemIds }));
 
 export const fetchExamAttempts = (examId: string, filters: { limit?: number; offset?: number } = {}) =>
   call<TeacherPage<TeacherAttemptRow>>(

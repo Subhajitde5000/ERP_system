@@ -122,6 +122,7 @@ export interface ExamControllerExamRow {
   pending_grading_count: number;
   created_by: string;
   created_by_name: string | null;
+  academic_year_id: string | null;
 }
 
 export interface ExamControllerPublicationRow {
@@ -205,6 +206,7 @@ export interface ExamControllerScheduleContext {
   today: string;
   past_date_window_days: number;
   scheduled: ExamControllerScheduledSlot[];
+  current_academic_year_id: string | null;
 }
 
 export interface ExamControllerScheduleClash {

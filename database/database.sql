@@ -681,11 +681,33 @@ CREATE TABLE exam_sections (
   sort_order                   INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE question_bank_items (
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by                   UUID REFERENCES users(id) ON DELETE SET NULL,
+  subject_id                   UUID REFERENCES subjects(id) ON DELETE SET NULL,
+  class_id                     UUID REFERENCES classes(id) ON DELETE SET NULL,
+  text                         TEXT NOT NULL,
+  rich_text                    JSONB,
+  question_type                question_type NOT NULL,
+  default_marks                NUMERIC(5,2) NOT NULL DEFAULT 1.00,
+  negative_marks               NUMERIC(5,2) NOT NULL DEFAULT 0.00,
+  options                      JSONB NOT NULL DEFAULT '[]'::jsonb,
+  image_url                    TEXT,
+  explanation                  TEXT,
+  difficulty                   difficulty_level,
+  tags                         JSONB DEFAULT '[]'::jsonb,
+  usage_count                  INTEGER NOT NULL DEFAULT 1,
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE questions (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   exam_id                      UUID NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
   section_id                   UUID REFERENCES exam_sections(id),
+  bank_item_id                 UUID REFERENCES question_bank_items(id) ON DELETE SET NULL,
   text                         TEXT NOT NULL,
   rich_text                    JSONB,
   question_type                question_type NOT NULL,
