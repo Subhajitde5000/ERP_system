@@ -30,7 +30,7 @@ export function TeacherQuestionBankPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportFmt, setExportFmt] = useState<"csv" | "json">("csv");
+  const [exportFmt, setExportFmt] = useState<"csv" | "pdf">("csv");
   const [exportError, setExportError] = useState<string | null>(null);
 
   const resource = useResource(
@@ -50,12 +50,16 @@ export function TeacherQuestionBankPage() {
     setExporting(true);
     setExportError(null);
     try {
-      await exportQuestionBank({
-        fmt: exportFmt,
-        question_type: typeFilter || undefined,
-        difficulty: difficultyFilter || undefined,
-        search: search.trim() || undefined,
-      });
+      if (exportFmt === "pdf") {
+        printQuestionBankPdf(items);
+      } else {
+        await exportQuestionBank({
+          fmt: "csv",
+          question_type: typeFilter || undefined,
+          difficulty: difficultyFilter || undefined,
+          search: search.trim() || undefined,
+        });
+      }
     } catch (err) {
       setExportError(err instanceof Error ? err.message : "Export failed.");
     } finally {
@@ -83,11 +87,11 @@ export function TeacherQuestionBankPage() {
             <div className="flex items-center gap-1">
               <select
                 value={exportFmt}
-                onChange={(e) => setExportFmt(e.target.value as "csv" | "json")}
+                onChange={(e) => setExportFmt(e.target.value as "csv" | "pdf")}
                 className="h-10 rounded-l-field border border-r-0 border-border bg-card px-2 text-sm text-primary focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 <option value="csv">CSV</option>
-                <option value="json">JSON</option>
+                <option value="pdf">PDF</option>
               </select>
               <button
                 type="button"
@@ -201,12 +205,141 @@ export function TeacherQuestionBankPage() {
   );
 }
 
+// ── PDF export (browser print-to-PDF) ───────────────────────────────────────
+
+function printQuestionBankPdf(items: QuestionBankItemOut[]) {
+  const typeLabel: Record<string, string> = {
+    MCQ: "Multiple Choice",
+    TRUE_FALSE: "True / False",
+    SHORT_ANSWER: "Short Answer",
+    LONG_ANSWER: "Long Answer",
+    FILL_BLANK: "Fill in Blank",
+    MATCH: "Match Following",
+  };
+
+  const diffColor: Record<string, string> = {
+    EASY: "#16a34a",
+    MEDIUM: "#d97706",
+    HARD: "#dc2626",
+  };
+
+  const questionRows = items
+    .map((q, i) => {
+      const diff = q.difficulty ?? "";
+      const diffBadge = diff
+        ? `<span style="background:${diffColor[diff] ?? "#64748b"}20;color:${diffColor[diff] ?? "#64748b"};border:1px solid ${diffColor[diff] ?? "#64748b"}40;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.05em;">${diff}</span>`
+        : "";
+
+      const optionsHtml =
+        q.options && q.options.length
+          ? `<ol style="margin:10px 0 0 0;padding-left:20px;list-style-type:upper-alpha;">
+              ${q.options
+                .map(
+                  (o) =>
+                    `<li style="margin:4px 0;font-size:12px;${o.is_correct ? "font-weight:700;color:#16a34a;" : "color:#374151;"}">${o.text}${o.is_correct ? " <span style='font-size:10px;'>(✓)</span>" : ""}</li>`,
+                )
+                .join("")}
+            </ol>`
+          : "";
+
+      const explanationHtml = q.explanation
+        ? `<p style="margin:8px 0 0 0;font-size:11px;color:#6b7280;font-style:italic;">Explanation: ${q.explanation}</p>`
+        : "";
+
+      return `
+        <div style="page-break-inside:avoid;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;margin-bottom:14px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px;">
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+              <span style="background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.05em;">Q${i + 1}</span>
+              <span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">${typeLabel[q.question_type] ?? q.question_type}</span>
+              ${diffBadge}
+            </div>
+            <div style="text-align:right;white-space:nowrap;">
+              <span style="font-size:11px;color:#6b7280;font-weight:600;">${q.default_marks} mark${q.default_marks !== 1 ? "s" : ""}${q.negative_marks ? ` · −${q.negative_marks} neg` : ""}</span>
+            </div>
+          </div>
+          <p style="margin:0;font-size:13px;font-weight:600;color:#111827;line-height:1.5;">${q.text}</p>
+          ${optionsHtml}
+          ${explanationHtml}
+        </div>`;
+    })
+    .join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Question Bank Export</title>
+  <style>
+    @page { size: A4; margin: 20mm 18mm; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f9fafb; margin:0; padding:0; }
+    .header { background: linear-gradient(135deg,#1e40af,#6d28d9); color:#fff; padding:24px 28px; border-radius:10px; margin-bottom:24px; }
+    .header h1 { margin:0 0 4px 0; font-size:22px; font-weight:800; letter-spacing:-.02em; }
+    .header p  { margin:0; font-size:12px; opacity:.8; }
+    .meta { display:flex; gap:18px; margin-bottom:20px; }
+    .meta-chip { background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:6px 14px; font-size:11px; font-weight:600; color:#374151; }
+    @media print {
+      body { background:#fff; }
+      .header { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📚 Question Bank</h1>
+    <p>Exported on ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })} · Teacher copy</p>
+  </div>
+  <div class="meta">
+    <div class="meta-chip">Total Questions: <strong>${items.length}</strong></div>
+  </div>
+  ${questionRows}
+</body>
+</html>`;
+
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  iframe.style.visibility = "hidden";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) {
+    document.body.removeChild(iframe);
+    return;
+  }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  setTimeout(() => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch {
+      // Fallback if print fails
+    } finally {
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 2000);
+    }
+  }, 300);
+}
+
 function QuestionBankCard({
   index,
   item,
   onEdited,
   onDeleted,
 }: {
+
   index: number;
   item: QuestionBankItemOut;
   onEdited: () => Promise<void>;

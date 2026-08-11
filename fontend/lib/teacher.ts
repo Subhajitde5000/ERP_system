@@ -479,18 +479,18 @@ export const deleteQuestionBankItem = (itemId: string) =>
   call<{ id: string }>(`/question-bank/${itemId}`, { method: "DELETE" });
 
 /**
- * Download the question bank as a CSV or JSON file.
+ * Download the question bank as a CSV file.
  * Triggers a browser "Save As" dialog.
  */
 export async function exportQuestionBank(filters: {
-  fmt?: "csv" | "json";
+  fmt?: "csv";
   subject_id?: string;
   question_type?: string;
   difficulty?: string;
   search?: string;
 } = {}): Promise<void> {
   const qs = queryString({
-    fmt: filters.fmt ?? "csv",
+    fmt: "csv",
     subject_id: filters.subject_id,
     question_type: filters.question_type,
     difficulty: filters.difficulty,
@@ -505,7 +505,7 @@ export async function exportQuestionBank(filters: {
   const blob = await res.blob();
   const disposition = res.headers.get("Content-Disposition") ?? "";
   const match = disposition.match(/filename="([^"]+)"/);
-  const filename = match ? match[1] : filters.fmt === "json" ? "question_bank.json" : "question_bank.csv";
+  const filename = match ? match[1] : "question_bank.csv";
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = objectUrl;
@@ -515,6 +515,7 @@ export async function exportQuestionBank(filters: {
   a.remove();
   URL.revokeObjectURL(objectUrl);
 }
+
 
 export interface QuestionBankImportResult {
   imported: number;
