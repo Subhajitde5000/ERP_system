@@ -59,6 +59,7 @@ from app.schemas.teacher import (
     TeacherNoticeCreate,
     TeacherQuestionBankImportIn,
     TeacherQuestionBankItemIn,
+    TeacherQuestionBankItemUpdate,
     TeacherQuestionIn,
     TeacherQuestionUpdate,
     TeacherReplyCreate,
@@ -360,6 +361,20 @@ async def create_question_bank_item(
         success=True,
         data=await TeacherService.create_question_bank_item(db, teacher, payload),
         message="Question added to Question Bank",
+    )
+
+
+@router.patch("/question-bank/{item_id}", response_model=APIResponseTeacherQuestionBankItem)
+async def update_question_bank_item(
+    item_id: uuid.UUID,
+    payload: TeacherQuestionBankItemUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_tenant_user_teacher)],
+):
+    return APIResponse(
+        success=True,
+        data=await TeacherService.update_question_bank_item(db, teacher, item_id, payload),
+        message="Question bank item updated",
     )
 
 

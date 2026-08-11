@@ -334,6 +334,22 @@ class TeacherQuestionBankItemIn(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class TeacherQuestionBankItemUpdate(BaseModel):
+    """Partial update — all fields are optional."""
+
+    subject_id: uuid.UUID | None = None
+    class_id: uuid.UUID | None = None
+    text: str | None = Field(default=None, min_length=1, max_length=20_000)
+    question_type: Literal["MCQ", "SHORT_ANSWER", "LONG_ANSWER", "TRUE_FALSE", "FILL_BLANK", "MATCH"] | None = None
+    default_marks: float | None = Field(default=None, gt=0, le=1000)
+    negative_marks: float | None = Field(default=None, ge=0, le=1000)
+    options: list[TeacherQuestionOptionIn] | None = None
+    image_url: str | None = None
+    explanation: str | None = Field(default=None, max_length=5000)
+    difficulty: Literal["EASY", "MEDIUM", "HARD"] | None = None
+    tags: list[str] | None = None
+
+
 class TeacherQuestionBankItemOut(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID

@@ -472,6 +472,9 @@ export const fetchQuestionBank = (filters: {
 export const createQuestionBankItem = (payload: QuestionBankItemIn) =>
   call<QuestionBankItemOut>("/question-bank", jsonInit("POST", payload));
 
+export const updateQuestionBankItem = (itemId: string, payload: Partial<QuestionBankItemIn>) =>
+  call<QuestionBankItemOut>(`/question-bank/${itemId}`, jsonInit("PATCH", payload));
+
 export const deleteQuestionBankItem = (itemId: string) =>
   call<{ id: string }>(`/question-bank/${itemId}`, { method: "DELETE" });
 

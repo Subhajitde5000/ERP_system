@@ -109,6 +109,7 @@ from app.schemas.teacher import (
     TeacherQuestionBankImportIn,
     TeacherQuestionBankItemIn,
     TeacherQuestionBankItemOut,
+    TeacherQuestionBankItemUpdate,
     TeacherQuestionBankPage,
     TeacherReplyCreate,
     TeacherReplyRow,
@@ -1667,9 +1668,101 @@ class TeacherService:
         )
 
     @staticmethod
+    async def update_question_bank_item(
+        db: AsyncSession, teacher: User, item_id: uuid.UUID, payload: TeacherQuestionBankItemUpdate
+    ) -> TeacherQuestionBankItemOut:
+        item = (
+            await db.execute(
+                select(QuestionBankItem).where(
+                    QuestionBankItem.id == item_id, QuestionBankItem.tenant_id == teacher.tenant_id
+                )
+            )
+        ).scalar_one_or_none()
+        if item is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Question bank item not found")
+
+        if payload.text is not None:
+            item.text = payload.text.strip()
+        if payload.question_type is not None:
+            item.question_type = QuestionType(payload.question_type)
+        if payload.default_marks is not None:
+            item.default_marks = Decimal(str(payload.default_marks))
+        if payload.negative_marks is not None:
+            item.negative_marks = Decimal(str(payload.negative_marks))
+        if payload.options is not None:
+            item.options = [
+                {
+                    "text": opt.text.strip(),
+                    "is_correct": opt.is_correct,
+                    "image_url": opt.image_url,
+                    "sort_order": opt.sort_order,
+                }
+                for opt in payload.options
+            ]
+        if payload.image_url is not None:
+            item.image_url = payload.image_url
+        if payload.explanation is not None:
+            item.explanation = payload.explanation.strip() or None
+        if payload.difficulty is not None:
+            item.difficulty = DifficultyLevel(payload.difficulty)
+        if payload.tags is not None:
+            item.tags = [t.strip() for t in payload.tags if t.strip()]
+        # subject / class can be explicitly cleared by passing None in the payload
+        if payload.subject_id is not None:
+            item.subject_id = payload.subject_id
+        if payload.class_id is not None:
+            item.class_id = payload.class_id
+
+        await db.flush()
+        AuditService.record(
+            db,
+            actor=teacher,
+            actor_role="TEACHER",
+            action="UPDATE_QUESTION_BANK_ITEM",
+            entity="QuestionBankItem",
+            entity_id=item.id,
+            tenant_id=teacher.tenant_id,
+            new_value={"text": (item.text or "")[:120]},
+        )
+
+        # Resolve names for response
+        subject_name: str | None = None
+        class_name: str | None = None
+        if item.subject_id:
+            subj = (await db.execute(select(Subject).where(Subject.id == item.subject_id))).scalar_one_or_none()
+            if subj:
+                subject_name = subj.name
+        if item.class_id:
+            cls = (await db.execute(select(SchoolClass).where(SchoolClass.id == item.class_id))).scalar_one_or_none()
+            if cls:
+                class_name = cls.name
+
+        return TeacherQuestionBankItemOut(
+            id=item.id,
+            tenant_id=item.tenant_id,
+            created_by=item.created_by,
+            subject_id=item.subject_id,
+            subject_name=subject_name,
+            class_id=item.class_id,
+            class_name=class_name,
+            text=item.text,
+            question_type=_value(item.question_type) or "MCQ",
+            default_marks=float(item.default_marks),
+            negative_marks=float(item.negative_marks or 0),
+            options=item.options or [],
+            image_url=item.image_url,
+            explanation=item.explanation,
+            difficulty=_value(item.difficulty),
+            tags=item.tags or [],
+            usage_count=item.usage_count,
+            created_at=item.created_at,
+        )
+
+    @staticmethod
     async def delete_question_bank_item(
         db: AsyncSession, teacher: User, item_id: uuid.UUID
     ) -> None:
+
         item = (
             await db.execute(
                 select(QuestionBankItem).where(
