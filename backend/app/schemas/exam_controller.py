@@ -81,6 +81,7 @@ class ExamControllerExamRow(BaseModel):
     pending_grading_count: int
     created_by: uuid.UUID
     created_by_name: str | None = None
+    academic_year_id: uuid.UUID | None = None
 
 
 class ExamControllerExamPage(ExamControllerPage):
@@ -110,6 +111,9 @@ class ExamControllerScheduleContext(BaseModel):
     # can show a warning rather than blocking an edit of a past record.
     past_date_window_days: int
     scheduled: list["ExamControllerScheduledSlot"]
+    # Current active academic year — used by the form so it can pre-fill
+    # academic_year_id without a separate lookup.
+    current_academic_year_id: uuid.UUID | None = None
 
 
 class ExamControllerScheduledSlot(BaseModel):

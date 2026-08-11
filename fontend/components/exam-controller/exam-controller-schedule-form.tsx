@@ -101,6 +101,10 @@ export function ExamControllerScheduleForm({
         if (ctx.classes.length > 0) {
           // best-effort: keep the form blank for the user to pick
         }
+        // Pre-fill academic_year_id from the current active year returned by context
+        if (ctx.current_academic_year_id) {
+          setForm((prev) => ({ ...prev, academic_year_id: ctx.current_academic_year_id! }));
+        }
         if (editingId) {
           const { fetchExamControllerExam } = await import("@/lib/exam-controller-api");
           const exam = await fetchExamControllerExam(editingId);
@@ -108,7 +112,7 @@ export function ExamControllerScheduleForm({
             setEditing({
               subject_id: exam.subject_id,
               class_id: exam.class_id,
-              academic_year_id: exam.class_id ? "" : "",
+              academic_year_id: exam.academic_year_id ?? "",
               scheduled_at: exam.scheduled_at,
               duration_minutes: exam.duration_minutes,
               title: exam.title,
@@ -118,7 +122,7 @@ export function ExamControllerScheduleForm({
               title: exam.title,
               subject_id: exam.subject_id,
               class_id: exam.class_id,
-              academic_year_id: exam.class_id ? "" : "",
+              academic_year_id: exam.academic_year_id ?? ctx.current_academic_year_id ?? "",
               exam_type: exam.exam_type as ExamControllerExamType,
               mode: exam.mode as ExamControllerExamMode,
               total_marks: exam.total_marks,
@@ -225,11 +229,12 @@ export function ExamControllerScheduleForm({
     try {
       if (!form.class_id) throw new Error("Class is required");
       if (!form.subject_id) throw new Error("Subject is required");
+      if (!form.academic_year_id) throw new Error("No active academic year found. Please set one in institution settings.");
       const payload: ExamControllerExamCreate = {
         title: form.title.trim(),
         subject_id: form.subject_id,
         class_id: form.class_id,
-        academic_year_id: form.academic_year_id || form.class_id,
+        academic_year_id: form.academic_year_id,
         exam_type: form.exam_type,
         mode: form.mode,
         total_marks: form.total_marks,
