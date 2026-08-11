@@ -360,9 +360,12 @@ export function TeacherCreateExamPage() {
 
 /** C-TC-09 — exam detail: edit draft, publish, jump to questions & results. */
 export function TeacherExamDetailPage() {
-  const params = useParams<{ id: string }>();
-  const examId = params.id;
-  const resource = useResource(() => fetchTeacherExam(examId), [examId]);
+  const params = useParams<{ id?: string }>();
+  const examId = params?.id ?? "";
+  const resource = useResource(
+    () => (examId ? fetchTeacherExam(examId) : Promise.reject(new Error("Exam ID is required"))),
+    [examId],
+  );
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 

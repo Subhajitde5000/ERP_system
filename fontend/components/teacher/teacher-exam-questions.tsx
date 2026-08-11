@@ -38,17 +38,21 @@ function newOption(isCorrect = false): OptionDraft {
 
 /** C-TC-10 — add MCQ / descriptive / true-false questions with options. */
 export function TeacherExamQuestionsPage() {
-  const params = useParams<{ id: string }>();
-  const examId = params.id;
-  const resource = useResource(() => fetchTeacherExam(examId), [examId]);
+  const params = useParams<{ id?: string }>();
+  const examId = params?.id ?? "";
+  const resource = useResource(
+    () => (examId ? fetchTeacherExam(examId) : Promise.reject(new Error("Exam ID is required"))),
+    [examId],
+  );
   const [editing, setEditing] = useState<TeacherQuestionOut | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const data = resource.data;
+  const questions = Array.isArray(data?.questions) ? data.questions : [];
 
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
-        title={resource.data ? `Questions — ${resource.data.title}` : "Questions"}
+        title={data ? `Questions — ${data.title}` : "Questions"}
         subtitle="Objective questions are auto-graded; descriptive ones are graded from the Results screen."
         action={
           <div className="flex flex-wrap gap-2">
@@ -78,9 +82,9 @@ export function TeacherExamQuestionsPage() {
                 This exam is {statusLabel(data.status).toLowerCase()} — questions can no longer be edited.
               </p>
             ) : null}
-            {data.questions.length ? (
+            {questions.length ? (
               <ol className="space-y-3">
-                {data.questions.map((question, index) => (
+                {questions.map((question, index) => (
                   <Card key={question.id}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">

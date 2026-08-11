@@ -20,10 +20,16 @@ import { AsyncState, EmptyTable, dateTime, percent, statusLabel } from "@/compon
 
 /** C-TC-11 — submissions for one exam: grade descriptive answers, release results. */
 export function TeacherExamResultsPage() {
-  const params = useParams<{ id: string }>();
-  const examId = params.id;
-  const exam = useResource(() => fetchTeacherExam(examId), [examId]);
-  const attempts = useResource(() => fetchExamAttempts(examId, { limit: 100 }), [examId]);
+  const params = useParams<{ id?: string }>();
+  const examId = params?.id ?? "";
+  const exam = useResource(
+    () => (examId ? fetchTeacherExam(examId) : Promise.reject(new Error("Exam ID is required"))),
+    [examId],
+  );
+  const attempts = useResource(
+    () => (examId ? fetchExamAttempts(examId, { limit: 100 }) : Promise.reject(new Error("Exam ID is required"))),
+    [examId],
+  );
   const [gradingAttemptId, setGradingAttemptId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
