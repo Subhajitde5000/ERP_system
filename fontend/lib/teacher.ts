@@ -413,6 +413,69 @@ export const updateExamQuestion = (examId: string, questionId: string, payload: 
 export const deleteExamQuestion = (examId: string, questionId: string) =>
   call<TeacherExamDetail>(`/examinations/${examId}/questions/${questionId}`, { method: "DELETE" });
 
+export interface QuestionBankItemOut {
+  id: string;
+  tenant_id: string;
+  created_by: string | null;
+  subject_id: string | null;
+  subject_name?: string | null;
+  class_id: string | null;
+  class_name?: string | null;
+  text: string;
+  question_type: string;
+  default_marks: number;
+  negative_marks: number;
+  options: { text: string; is_correct?: boolean; image_url?: string | null; sort_order?: number }[];
+  image_url: string | null;
+  explanation: string | null;
+  difficulty: string | null;
+  tags: string[];
+  usage_count: number;
+  created_at: string;
+}
+
+export interface QuestionBankItemIn {
+  subject_id?: string | null;
+  class_id?: string | null;
+  text: string;
+  question_type: TeacherQuestionType;
+  default_marks?: number;
+  negative_marks?: number;
+  options?: TeacherQuestionOptionIn[];
+  image_url?: string | null;
+  explanation?: string | null;
+  difficulty?: TeacherDifficulty | null;
+  tags?: string[];
+}
+
+export const fetchQuestionBank = (filters: {
+  subject_id?: string;
+  question_type?: string;
+  difficulty?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+} = {}) =>
+  call<TeacherPage<QuestionBankItemOut>>(
+    `/question-bank${queryString({
+      subject_id: filters.subject_id,
+      question_type: filters.question_type,
+      difficulty: filters.difficulty,
+      search: filters.search,
+      limit: filters.limit,
+      offset: filters.offset,
+    })}`,
+  );
+
+export const createQuestionBankItem = (payload: QuestionBankItemIn) =>
+  call<QuestionBankItemOut>("/question-bank", jsonInit("POST", payload));
+
+export const deleteQuestionBankItem = (itemId: string) =>
+  call<{ id: string }>(`/question-bank/${itemId}`, { method: "DELETE" });
+
+export const importQuestionsFromBank = (examId: string, bankItemIds: string[]) =>
+  call<TeacherExamDetail>(`/examinations/${examId}/import-questions`, jsonInit("POST", { bank_item_ids: bankItemIds }));
+
 export const fetchExamAttempts = (examId: string, filters: { limit?: number; offset?: number } = {}) =>
   call<TeacherPage<TeacherAttemptRow>>(
     `/examinations/${examId}/attempts${queryString({ limit: filters.limit, offset: filters.offset })}`,

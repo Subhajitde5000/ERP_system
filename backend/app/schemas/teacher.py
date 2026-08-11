@@ -320,6 +320,49 @@ class TeacherQuestionOut(BaseModel):
     options: list[TeacherQuestionOptionOut] = Field(default_factory=list)
 
 
+class TeacherQuestionBankItemIn(BaseModel):
+    subject_id: uuid.UUID | None = None
+    class_id: uuid.UUID | None = None
+    text: str = Field(..., min_length=1, max_length=20_000)
+    question_type: Literal["MCQ", "SHORT_ANSWER", "LONG_ANSWER", "TRUE_FALSE", "FILL_BLANK", "MATCH"]
+    default_marks: float = Field(default=1.0, gt=0, le=1000)
+    negative_marks: float = Field(default=0.0, ge=0, le=1000)
+    options: list[TeacherQuestionOptionIn] = Field(default_factory=list)
+    image_url: str | None = None
+    explanation: str | None = Field(default=None, max_length=5000)
+    difficulty: Literal["EASY", "MEDIUM", "HARD"] | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class TeacherQuestionBankItemOut(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    created_by: uuid.UUID | None = None
+    subject_id: uuid.UUID | None = None
+    subject_name: str | None = None
+    class_id: uuid.UUID | None = None
+    class_name: str | None = None
+    text: str
+    question_type: str
+    default_marks: float
+    negative_marks: float
+    options: list[dict] = Field(default_factory=list)
+    image_url: str | None = None
+    explanation: str | None = None
+    difficulty: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    usage_count: int
+    created_at: datetime
+
+
+class TeacherQuestionBankPage(TeacherPage):
+    items: list[TeacherQuestionBankItemOut]
+
+
+class TeacherQuestionBankImportIn(BaseModel):
+    bank_item_ids: list[uuid.UUID] = Field(..., min_length=1)
+
+
 class TeacherExamDetail(TeacherExamRow):
     instructions: str | None = None
     allow_review: bool
@@ -708,3 +751,5 @@ APIResponseTeacherNoticeTargets = APIResponse[list[TeacherTargetOption]]
 APIResponseTeacherThreads = APIResponse[TeacherThreadPage]
 APIResponseTeacherThread = APIResponse[TeacherThreadDetail]
 APIResponseTeacherReply = APIResponse[TeacherReplyRow]
+APIResponseTeacherQuestionBankList = APIResponse[TeacherQuestionBankPage]
+APIResponseTeacherQuestionBankItem = APIResponse[TeacherQuestionBankItemOut]

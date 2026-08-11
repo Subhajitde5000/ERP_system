@@ -44,6 +44,7 @@ from app.models.lms import (
     LeaveStatus,
     Milestone,
     Question,
+    QuestionBankItem,
     QuestionOption,
     QuestionType,
     ReviewDecision,
@@ -101,6 +102,10 @@ from app.schemas.teacher import (
     TeacherQuestionOptionOut,
     TeacherQuestionOut,
     TeacherQuestionUpdate,
+    TeacherQuestionBankImportIn,
+    TeacherQuestionBankItemIn,
+    TeacherQuestionBankItemOut,
+    TeacherQuestionBankPage,
     TeacherReplyCreate,
     TeacherReplyRow,
     TeacherReviewHistoryRow,
@@ -1284,6 +1289,63 @@ class TeacherService:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Mark at least one option as correct")
 
     @staticmethod
+    async def _save_to_question_bank(
+        db: AsyncSession,
+        teacher: User,
+        subject_id: uuid.UUID | None,
+        class_id: uuid.UUID | None,
+        text: str,
+        question_type: str,
+        default_marks: Decimal,
+        negative_marks: Decimal,
+        options: list[dict],
+        image_url: str | None = None,
+        explanation: str | None = None,
+        difficulty: str | None = None,
+    ) -> QuestionBankItem:
+        existing = (
+            await db.execute(
+                select(QuestionBankItem).where(
+                    QuestionBankItem.tenant_id == teacher.tenant_id,
+                    QuestionBankItem.text == text.strip(),
+                    QuestionBankItem.question_type == QuestionType(question_type),
+                )
+            )
+        ).scalars().first()
+
+        if existing:
+            existing.usage_count += 1
+            existing.updated_at = datetime.now(timezone.utc)
+            if options:
+                existing.options = options
+            if explanation:
+                existing.explanation = explanation.strip()
+            if difficulty:
+                existing.difficulty = DifficultyLevel(difficulty) if difficulty else None
+            await db.flush()
+            return existing
+
+        bank_item = QuestionBankItem(
+            id=uuid.uuid4(),
+            tenant_id=teacher.tenant_id,
+            created_by=teacher.id,
+            subject_id=subject_id,
+            class_id=class_id,
+            text=text.strip(),
+            question_type=QuestionType(question_type),
+            default_marks=default_marks,
+            negative_marks=negative_marks,
+            options=options,
+            image_url=image_url,
+            explanation=explanation.strip() if explanation else None,
+            difficulty=DifficultyLevel(difficulty) if difficulty else None,
+            usage_count=1,
+        )
+        db.add(bank_item)
+        await db.flush()
+        return bank_item
+
+    @staticmethod
     async def add_question(
         db: AsyncSession, teacher: User, exam_id: uuid.UUID, payload: TeacherQuestionIn
     ) -> TeacherQuestionOut:
@@ -1310,6 +1372,34 @@ class TeacherService:
         db.add(question)
         await db.flush()
         options = await TeacherService._replace_options(db, question.id, payload.options)
+        
+        # Auto-save question into Question Bank
+        options_dicts = [
+            {
+                "text": opt.text.strip(),
+                "is_correct": opt.is_correct,
+                "image_url": opt.image_url,
+                "sort_order": opt.sort_order,
+            }
+            for opt in options
+        ]
+        bank_item = await TeacherService._save_to_question_bank(
+            db,
+            teacher,
+            subject_id=exam.subject_id,
+            class_id=exam.class_id,
+            text=question.text,
+            question_type=payload.question_type,
+            default_marks=question.marks,
+            negative_marks=question.negative_marks,
+            options=options_dicts,
+            image_url=question.image_url,
+            explanation=question.explanation,
+            difficulty=_value(question.difficulty),
+        )
+        question.bank_item_id = bank_item.id
+        await db.flush()
+
         AuditService.record(
             db,
             actor=teacher,
@@ -1399,6 +1489,33 @@ class TeacherService:
                     select(QuestionOption).where(QuestionOption.question_id == question.id).order_by(QuestionOption.sort_order)
                 )
             ).scalars().all()
+
+        options_dicts = [
+            {
+                "text": opt.text.strip(),
+                "is_correct": opt.is_correct,
+                "image_url": opt.image_url,
+                "sort_order": opt.sort_order,
+            }
+            for opt in options
+        ]
+        bank_item = await TeacherService._save_to_question_bank(
+            db,
+            teacher,
+            subject_id=exam.subject_id,
+            class_id=exam.class_id,
+            text=question.text,
+            question_type=_value(question.question_type) or "MCQ",
+            default_marks=question.marks,
+            negative_marks=question.negative_marks,
+            options=options_dicts,
+            image_url=question.image_url,
+            explanation=question.explanation,
+            difficulty=_value(question.difficulty),
+        )
+        question.bank_item_id = bank_item.id
+        await db.flush()
+
         AuditService.record(
             db,
             actor=teacher,
@@ -1410,6 +1527,234 @@ class TeacherService:
             new_value={"exam_id": str(exam.id)},
         )
         return TeacherService._question_out(question, list(options))
+
+    # ── Question Bank workflows ────────────────────────────────────────────────
+
+    @staticmethod
+    async def list_question_bank(
+        db: AsyncSession,
+        teacher: User,
+        subject_id: uuid.UUID | None = None,
+        question_type: str | None = None,
+        difficulty: str | None = None,
+        search: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> TeacherQuestionBankPage:
+        query = select(QuestionBankItem).where(QuestionBankItem.tenant_id == teacher.tenant_id)
+        if subject_id:
+            query = query.where(QuestionBankItem.subject_id == subject_id)
+        if question_type:
+            query = query.where(QuestionBankItem.question_type == QuestionType(question_type))
+        if difficulty:
+            query = query.where(QuestionBankItem.difficulty == DifficultyLevel(difficulty))
+        if search and search.strip():
+            query = query.where(QuestionBankItem.text.ilike(f"%{search.strip()}%"))
+
+        total = (
+            await db.execute(select(func.count()).select_from(query.subquery()))
+        ).scalar_one()
+
+        rows = (
+            await db.execute(
+                query.order_by(QuestionBankItem.created_at.desc()).limit(limit).offset(offset)
+            )
+        ).scalars().all()
+
+        subject_ids = [r.subject_id for r in rows if r.subject_id]
+        class_ids = [r.class_id for r in rows if r.class_id]
+
+        subjects = {}
+        if subject_ids:
+            sub_rows = (await db.execute(select(Subject).where(Subject.id.in_(subject_ids)))).scalars().all()
+            subjects = {s.id: s.name for s in sub_rows}
+
+        classes = {}
+        if class_ids:
+            cls_rows = (await db.execute(select(SchoolClass).where(SchoolClass.id.in_(class_ids)))).scalars().all()
+            classes = {c.id: c.name for c in cls_rows}
+
+        items = []
+        for r in rows:
+            items.append(
+                TeacherQuestionBankItemOut(
+                    id=r.id,
+                    tenant_id=r.tenant_id,
+                    created_by=r.created_by,
+                    subject_id=r.subject_id,
+                    subject_name=subjects.get(r.subject_id) if r.subject_id else None,
+                    class_id=r.class_id,
+                    class_name=classes.get(r.class_id) if r.class_id else None,
+                    text=r.text,
+                    question_type=_value(r.question_type) or "MCQ",
+                    default_marks=float(r.default_marks),
+                    negative_marks=float(r.negative_marks or 0),
+                    options=r.options or [],
+                    image_url=r.image_url,
+                    explanation=r.explanation,
+                    difficulty=_value(r.difficulty),
+                    tags=r.tags or [],
+                    usage_count=r.usage_count,
+                    created_at=r.created_at,
+                )
+            )
+
+        return TeacherQuestionBankPage(
+            total=total,
+            limit=limit,
+            offset=offset,
+            items=items,
+        )
+
+    @staticmethod
+    async def create_question_bank_item(
+        db: AsyncSession, teacher: User, payload: TeacherQuestionBankItemIn
+    ) -> TeacherQuestionBankItemOut:
+        options_dicts = [
+            {
+                "text": opt.text.strip(),
+                "is_correct": opt.is_correct,
+                "image_url": opt.image_url,
+                "sort_order": opt.sort_order,
+            }
+            for opt in payload.options
+        ]
+        bank_item = await TeacherService._save_to_question_bank(
+            db,
+            teacher,
+            subject_id=payload.subject_id,
+            class_id=payload.class_id,
+            text=payload.text,
+            question_type=payload.question_type,
+            default_marks=Decimal(str(payload.default_marks)),
+            negative_marks=Decimal(str(payload.negative_marks)),
+            options=options_dicts,
+            image_url=payload.image_url,
+            explanation=payload.explanation,
+            difficulty=payload.difficulty,
+        )
+        AuditService.record(
+            db,
+            actor=teacher,
+            actor_role="TEACHER",
+            action="CREATE_QUESTION_BANK_ITEM",
+            entity="QuestionBankItem",
+            entity_id=bank_item.id,
+            tenant_id=teacher.tenant_id,
+            new_value={"type": payload.question_type},
+        )
+        return TeacherQuestionBankItemOut(
+            id=bank_item.id,
+            tenant_id=bank_item.tenant_id,
+            created_by=bank_item.created_by,
+            subject_id=bank_item.subject_id,
+            class_id=bank_item.class_id,
+            text=bank_item.text,
+            question_type=_value(bank_item.question_type) or "MCQ",
+            default_marks=float(bank_item.default_marks),
+            negative_marks=float(bank_item.negative_marks or 0),
+            options=bank_item.options or [],
+            image_url=bank_item.image_url,
+            explanation=bank_item.explanation,
+            difficulty=_value(bank_item.difficulty),
+            tags=bank_item.tags or [],
+            usage_count=bank_item.usage_count,
+            created_at=bank_item.created_at,
+        )
+
+    @staticmethod
+    async def delete_question_bank_item(
+        db: AsyncSession, teacher: User, item_id: uuid.UUID
+    ) -> None:
+        item = (
+            await db.execute(
+                select(QuestionBankItem).where(
+                    QuestionBankItem.id == item_id, QuestionBankItem.tenant_id == teacher.tenant_id
+                )
+            )
+        ).scalar_one_or_none()
+        if item is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Question bank item not found")
+        await db.delete(item)
+        await db.flush()
+        AuditService.record(
+            db,
+            actor=teacher,
+            actor_role="TEACHER",
+            action="DELETE_QUESTION_BANK_ITEM",
+            entity="QuestionBankItem",
+            entity_id=item_id,
+            tenant_id=teacher.tenant_id,
+        )
+
+    @staticmethod
+    async def import_questions_from_bank(
+        db: AsyncSession, teacher: User, exam_id: uuid.UUID, payload: TeacherQuestionBankImportIn
+    ) -> TeacherExamDetail:
+        exam = await TeacherService._owned_exam(db, teacher, exam_id)
+        TeacherService._ensure_exam_editable(exam)
+
+        bank_items = (
+            await db.execute(
+                select(QuestionBankItem).where(
+                    QuestionBankItem.id.in_(payload.bank_item_ids),
+                    QuestionBankItem.tenant_id == teacher.tenant_id,
+                )
+            )
+        ).scalars().all()
+
+        if not bank_items:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No matching question bank items found")
+
+        next_order = (
+            await db.execute(
+                select(func.coalesce(func.max(Question.sort_order), -1)).where(Question.exam_id == exam.id)
+            )
+        ).scalar() or -1
+
+        for bank_item in bank_items:
+            next_order += 1
+            question = Question(
+                id=uuid.uuid4(),
+                exam_id=exam.id,
+                bank_item_id=bank_item.id,
+                text=bank_item.text,
+                question_type=bank_item.question_type,
+                marks=bank_item.default_marks,
+                negative_marks=bank_item.negative_marks,
+                image_url=bank_item.image_url,
+                explanation=bank_item.explanation,
+                difficulty=bank_item.difficulty,
+                sort_order=next_order,
+            )
+            db.add(question)
+            await db.flush()
+
+            bank_item.usage_count += 1
+
+            for index, opt in enumerate(bank_item.options or []):
+                option_row = QuestionOption(
+                    id=uuid.uuid4(),
+                    question_id=question.id,
+                    text=opt.get("text", "").strip(),
+                    image_url=opt.get("image_url"),
+                    is_correct=bool(opt.get("is_correct", False)),
+                    sort_order=opt.get("sort_order", index),
+                )
+                db.add(option_row)
+
+        await db.flush()
+        AuditService.record(
+            db,
+            actor=teacher,
+            actor_role="TEACHER",
+            action="IMPORT_EXAM_QUESTIONS",
+            entity="Exam",
+            entity_id=exam.id,
+            tenant_id=teacher.tenant_id,
+            new_value={"imported_count": len(bank_items)},
+        )
+        return await TeacherService.exam_detail(db, teacher, exam_id)
 
     @staticmethod
     async def delete_question(db: AsyncSession, teacher: User, exam_id: uuid.UUID, question_id: uuid.UUID) -> TeacherExamDetail:

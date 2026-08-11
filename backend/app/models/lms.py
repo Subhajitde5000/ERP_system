@@ -142,6 +142,48 @@ class ExamSection(Base):
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class QuestionBankItem(Base):
+    __tablename__ = "question_bank_items"
+    __table_args__ = (
+        Index("idx_qbank_tenant_subject", "tenant_id", "subject_id"),
+        Index("idx_qbank_created_by", "tenant_id", "created_by"),
+        Index("idx_qbank_type_diff", "tenant_id", "question_type", "difficulty"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True
+    )
+    class_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    rich_text: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    question_type: Mapped[QuestionType] = mapped_column(
+        SAEnum(QuestionType, name="question_type"), nullable=False
+    )
+    default_marks: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("1.00"))
+    negative_marks: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0.00"))
+    options: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    difficulty: Mapped[DifficultyLevel | None] = mapped_column(
+        SAEnum(DifficultyLevel, name="difficulty_level"), nullable=True
+    )
+    tags: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+    usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Question(Base):
     __tablename__ = "questions"
     __table_args__ = (Index("idx_questions_exam", "exam_id", "sort_order"),)
@@ -152,6 +194,9 @@ class Question(Base):
     )
     section_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("exam_sections.id"), nullable=True
+    )
+    bank_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("question_bank_items.id", ondelete="SET NULL"), nullable=True
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
     rich_text: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

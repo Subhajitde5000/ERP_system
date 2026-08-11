@@ -3,15 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Database, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Card, EmptyState, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
 import {
   addExamQuestion,
   deleteExamQuestion,
+  fetchQuestionBank,
   fetchTeacherExam,
+  importQuestionsFromBank,
   updateExamQuestion,
+  type QuestionBankItemOut,
   type TeacherQuestionIn,
   type TeacherQuestionOptionIn,
   type TeacherQuestionOut,
@@ -39,6 +42,7 @@ export function TeacherExamQuestionsPage() {
   const examId = params.id;
   const resource = useResource(() => fetchTeacherExam(examId), [examId]);
   const [editing, setEditing] = useState<TeacherQuestionOut | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
   const data = resource.data;
 
   return (
@@ -48,6 +52,15 @@ export function TeacherExamQuestionsPage() {
         subtitle="Objective questions are auto-graded; descriptive ones are graded from the Results screen."
         action={
           <div className="flex flex-wrap gap-2">
+            {data && data.status === "DRAFT" ? (
+              <button
+                type="button"
+                onClick={() => setShowImportModal(true)}
+                className="inline-flex h-10 items-center gap-1.5 rounded-field bg-accent px-4 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover"
+              >
+                <Database className="h-4 w-4" /> Import from Question Bank
+              </button>
+            ) : null}
             <Link href={`/teacher/examinations/${examId}`} className="inline-flex h-10 items-center rounded-field border border-border px-4 text-sm font-semibold text-primary hover:border-accent hover:text-accent">
               Exam detail
             </Link>
@@ -128,6 +141,16 @@ export function TeacherExamQuestionsPage() {
                 onCancelEdit={() => setEditing(null)}
                 onSaved={async () => {
                   setEditing(null);
+                  await resource.reload();
+                }}
+              />
+            ) : null}
+            {showImportModal && data ? (
+              <ImportFromBankModal
+                examId={examId}
+                subjectId={data.subject_id}
+                onClose={() => setShowImportModal(false)}
+                onImported={async () => {
                   await resource.reload();
                 }}
               />
@@ -429,5 +452,159 @@ function QuestionComposer({
       </form>
       </div>
     </Card>
+  );
+}
+
+function ImportFromBankModal({
+  examId,
+  subjectId,
+  onClose,
+  onImported,
+}: {
+  examId: string;
+  subjectId?: string;
+  onClose: () => void;
+  onImported: () => Promise<void>;
+}) {
+  const [items, setItems] = useState<QuestionBankItemOut[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadBank = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchQuestionBank({ subject_id: subjectId, search: search.trim() || undefined, limit: 100 });
+      setItems(res.items);
+    } catch {
+      setError("Failed to load question bank items.");
+    } finally {
+      setLoading(false);
+    }
+  }, [subjectId, search]);
+
+  useEffect(() => {
+    loadBank();
+  }, [loadBank]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleImport = async () => {
+    if (!selectedIds.size) return;
+    setImporting(true);
+    setError(null);
+    try {
+      await importQuestionsFromBank(examId, Array.from(selectedIds));
+      await onImported();
+      onClose();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to import questions.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-border bg-card p-6 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border pb-4">
+          <div>
+            <h2 className="font-display text-lg font-bold text-primary">Import from Question Bank</h2>
+            <p className="text-xs text-muted-foreground">Select saved questions to import directly into this examination.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-field p-1 text-muted-foreground hover:bg-muted hover:text-primary"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="my-4">
+          <input
+            type="text"
+            placeholder="Search saved questions..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className={inputClass}
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          {loading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Loading Question Bank...</p>
+          ) : items.length ? (
+            items.map((item) => (
+              <label
+                key={item.id}
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition ${
+                  selectedIds.has(item.id)
+                    ? "border-accent bg-accent/5"
+                    : "border-border hover:border-accent/40"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(item.id)}
+                  onChange={() => toggleSelect(item.id)}
+                  className="mt-1 h-4 w-4 rounded accent-accent"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-muted-foreground">
+                    <span className="rounded bg-muted px-1.5 py-0.5">{statusLabel(item.question_type)}</span>
+                    <span>{item.default_marks} marks</span>
+                    {item.difficulty ? (
+                      <span className="rounded bg-accent/10 px-1.5 py-0.5 text-accent">{item.difficulty}</span>
+                    ) : null}
+                    {item.subject_name ? <span className="text-primary font-medium">· {item.subject_name}</span> : null}
+                  </div>
+                  <p className="mt-1 text-sm font-semibold text-primary">{item.text}</p>
+                </div>
+              </label>
+            ))
+          ) : (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No questions found in Question Bank matching your filter.
+            </p>
+          )}
+        </div>
+
+        {error ? <p role="alert" className="mt-2 text-xs text-destructive-text">{error}</p> : null}
+
+        <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
+          <span className="text-xs font-medium text-muted-foreground">
+            {selectedIds.size} question{selectedIds.size === 1 ? "" : "s"} selected
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-9 items-center rounded-field border border-border px-4 text-xs font-semibold text-primary hover:border-accent"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!selectedIds.size || importing}
+              onClick={handleImport}
+              className="inline-flex h-9 items-center gap-1.5 rounded-field bg-accent px-4 text-xs font-semibold text-white shadow-accent disabled:opacity-50"
+            >
+              <Database className="h-3.5 w-3.5" />
+              {importing ? "Importing..." : `Import Selected (${selectedIds.size})`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
