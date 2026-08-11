@@ -11,7 +11,7 @@ import uuid
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -371,6 +371,55 @@ async def delete_question_bank_item(
 ):
     await TeacherService.delete_question_bank_item(db, teacher, item_id)
     return APIResponse(success=True, data={"id": str(item_id)}, message="Question deleted from Question Bank")
+
+
+@router.get("/question-bank/export")
+async def export_question_bank(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_tenant_user_teacher)],
+    fmt: Literal["csv", "json"] = Query(default="csv"),
+    subject_id: uuid.UUID | None = Query(default=None),
+    question_type: str | None = Query(default=None),
+    difficulty: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+):
+    """Download the teacher's question bank as a CSV or JSON file."""
+    file_bytes, filename, media_type = await TeacherService.export_question_bank(
+        db,
+        teacher,
+        fmt=fmt,
+        subject_id=subject_id,
+        question_type=question_type,
+        difficulty=difficulty,
+        search=search,
+    )
+    return Response(
+        content=file_bytes,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/question-bank/import-file", response_model=APIResponse[dict])
+async def import_question_bank_file(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_tenant_user_teacher)],
+    file: UploadFile = File(...),
+):
+    """Upload a CSV or JSON file to bulk-import questions into the question bank."""
+    content = await file.read()
+    result = await TeacherService.import_question_bank_file(
+        db,
+        teacher,
+        filename=file.filename or "upload",
+        content=content,
+    )
+    imported = result["imported"]
+    return APIResponse(
+        success=True,
+        data=result,
+        message=f"{imported} question{'s' if imported != 1 else ''} imported successfully.",
+    )
 
 
 @router.get("/examinations/{exam_id}/attempts", response_model=APIResponseTeacherAttempts)

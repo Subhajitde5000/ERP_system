@@ -15,7 +15,11 @@ before writing, exactly like the HOD department fence.
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import uuid
+
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -1687,7 +1691,217 @@ class TeacherService:
             tenant_id=teacher.tenant_id,
         )
 
+    # ── Question Bank export / file-import ──────────────────────────────────
+
+    # CSV column order mirrored in the import parser below.
+    _QB_CSV_FIELDS = [
+        "text",
+        "question_type",
+        "difficulty",
+        "default_marks",
+        "negative_marks",
+        "explanation",
+        "options_json",   # JSON array: [{"text":"…","is_correct":true},…]
+        "tags",           # comma-separated tag list
+        "subject_id",
+        "class_id",
+    ]
+
     @staticmethod
+    async def export_question_bank(
+        db: AsyncSession,
+        teacher: User,
+        fmt: str = "csv",
+        subject_id: uuid.UUID | None = None,
+        question_type: str | None = None,
+        difficulty: str | None = None,
+        search: str | None = None,
+    ) -> tuple[bytes, str, str]:
+        """Return (file_bytes, filename, media_type) for the question bank export."""
+        page = await TeacherService.list_question_bank(
+            db,
+            teacher,
+            subject_id=subject_id,
+            question_type=question_type,
+            difficulty=difficulty,
+            search=search,
+            limit=10_000,
+            offset=0,
+        )
+
+        if fmt == "json":
+            data = [
+                {
+                    "text": item.text,
+                    "question_type": item.question_type,
+                    "difficulty": item.difficulty,
+                    "default_marks": item.default_marks,
+                    "negative_marks": item.negative_marks,
+                    "explanation": item.explanation,
+                    "options": item.options,
+                    "tags": item.tags,
+                    "subject_id": str(item.subject_id) if item.subject_id else None,
+                    "class_id": str(item.class_id) if item.class_id else None,
+                    "usage_count": item.usage_count,
+                }
+                for item in page.items
+            ]
+            raw = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+            return raw, "question_bank.json", "application/json"
+
+        # CSV (default)
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=TeacherService._QB_CSV_FIELDS)
+        writer.writeheader()
+        for item in page.items:
+            writer.writerow(
+                {
+                    "text": item.text,
+                    "question_type": item.question_type,
+                    "difficulty": item.difficulty or "",
+                    "default_marks": item.default_marks,
+                    "negative_marks": item.negative_marks,
+                    "explanation": item.explanation or "",
+                    "options_json": json.dumps(item.options, ensure_ascii=False),
+                    "tags": ",".join(item.tags),
+                    "subject_id": str(item.subject_id) if item.subject_id else "",
+                    "class_id": str(item.class_id) if item.class_id else "",
+                }
+            )
+        raw = buf.getvalue().encode("utf-8-sig")  # BOM so Excel opens UTF-8 cleanly
+        return raw, "question_bank.csv", "text/csv; charset=utf-8-sig"
+
+    @staticmethod
+    async def import_question_bank_file(
+        db: AsyncSession,
+        teacher: User,
+        filename: str,
+        content: bytes,
+    ) -> dict:
+        """Parse a CSV or JSON file and bulk-insert into the question bank.
+
+        Returns a summary dict with ``imported`` and ``errors`` counts.
+        """
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if ext == "json":
+            rows = TeacherService._parse_json_import(content)
+        elif ext == "csv":
+            rows = TeacherService._parse_csv_import(content)
+        else:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Unsupported file type. Please upload a .csv or .json file.",
+            )
+
+        _VALID_TYPES = {"MCQ", "SHORT_ANSWER", "LONG_ANSWER", "TRUE_FALSE", "FILL_BLANK", "MATCH"}
+        _VALID_DIFF = {"EASY", "MEDIUM", "HARD", None}
+
+        imported = 0
+        errors: list[str] = []
+
+        for idx, row in enumerate(rows, start=1):
+            text = (row.get("text") or "").strip()
+            if not text:
+                errors.append(f"Row {idx}: 'text' is required.")
+                continue
+            qtype = (row.get("question_type") or "MCQ").strip().upper()
+            if qtype not in _VALID_TYPES:
+                errors.append(f"Row {idx}: unknown question_type '{qtype}'.")
+                continue
+            diff = (row.get("difficulty") or "").strip().upper() or None
+            if diff not in _VALID_DIFF:
+                diff = None
+
+            try:
+                default_marks = float(row.get("default_marks") or 1)
+                negative_marks = float(row.get("negative_marks") or 0)
+            except (ValueError, TypeError):
+                default_marks, negative_marks = 1.0, 0.0
+
+            options_raw = row.get("options") or row.get("options_json") or []
+            if isinstance(options_raw, str):
+                try:
+                    options_raw = json.loads(options_raw)
+                except json.JSONDecodeError:
+                    options_raw = []
+            options = [
+                {"text": str(o.get("text", "")).strip(), "is_correct": bool(o.get("is_correct", False))}
+                for o in options_raw
+                if isinstance(o, dict)
+            ]
+
+            tags_raw = row.get("tags") or []
+            if isinstance(tags_raw, str):
+                tags_raw = [t.strip() for t in tags_raw.split(",") if t.strip()]
+
+            subject_id: uuid.UUID | None = None
+            class_id: uuid.UUID | None = None
+            try:
+                if row.get("subject_id"):
+                    subject_id = uuid.UUID(str(row["subject_id"]))
+            except ValueError:
+                pass
+            try:
+                if row.get("class_id"):
+                    class_id = uuid.UUID(str(row["class_id"]))
+            except ValueError:
+                pass
+
+            try:
+                await TeacherService._save_to_question_bank(
+                    db,
+                    teacher,
+                    subject_id=subject_id,
+                    class_id=class_id,
+                    text=text,
+                    question_type=qtype,
+                    default_marks=Decimal(str(default_marks)),
+                    negative_marks=Decimal(str(negative_marks)),
+                    options=options,
+                    image_url=None,
+                    explanation=(row.get("explanation") or "").strip() or None,
+                    difficulty=diff,
+                    tags=list(tags_raw),
+                )
+                imported += 1
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"Row {idx}: {exc}")
+
+        if imported:
+            await db.flush()
+            AuditService.record(
+                db,
+                actor=teacher,
+                actor_role="TEACHER",
+                action="IMPORT_QUESTION_BANK_FILE",
+                entity="QuestionBankItem",
+                entity_id=teacher.id,
+                tenant_id=teacher.tenant_id,
+                new_value={"imported": imported, "errors": len(errors)},
+            )
+
+        return {"imported": imported, "errors": errors}
+
+    @staticmethod
+    def _parse_csv_import(content: bytes) -> list[dict]:
+        text = content.decode("utf-8-sig", errors="replace")
+        reader = csv.DictReader(io.StringIO(text))
+        return list(reader)
+
+    @staticmethod
+    def _parse_json_import(content: bytes) -> list[dict]:
+        data = json.loads(content.decode("utf-8", errors="replace"))
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            return [data]
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="JSON file must contain an array of question objects.",
+        )
+
+    @staticmethod
+
     async def import_questions_from_bank(
         db: AsyncSession, teacher: User, exam_id: uuid.UUID, payload: TeacherQuestionBankImportIn
     ) -> TeacherExamDetail:

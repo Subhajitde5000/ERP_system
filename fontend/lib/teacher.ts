@@ -6,7 +6,9 @@
  * payloads mirror `backend/app/schemas/teacher.py` one-to-one.
  */
 
+import { API_BASE_URL, getAccessToken } from "./auth";
 import { APIError } from "./api-client";
+
 import {
   leadershipCall,
   queryString,
@@ -472,6 +474,72 @@ export const createQuestionBankItem = (payload: QuestionBankItemIn) =>
 
 export const deleteQuestionBankItem = (itemId: string) =>
   call<{ id: string }>(`/question-bank/${itemId}`, { method: "DELETE" });
+
+/**
+ * Download the question bank as a CSV or JSON file.
+ * Triggers a browser "Save As" dialog.
+ */
+export async function exportQuestionBank(filters: {
+  fmt?: "csv" | "json";
+  subject_id?: string;
+  question_type?: string;
+  difficulty?: string;
+  search?: string;
+} = {}): Promise<void> {
+  const qs = queryString({
+    fmt: filters.fmt ?? "csv",
+    subject_id: filters.subject_id,
+    question_type: filters.question_type,
+    difficulty: filters.difficulty,
+    search: filters.search,
+  });
+  const url = `${API_BASE_URL}/api/v1/teacher/question-bank/export${qs}`;
+  const token = getAccessToken();
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new APIError("Export failed", res.status);
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match ? match[1] : filters.fmt === "json" ? "question_bank.json" : "question_bank.csv";
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+export interface QuestionBankImportResult {
+  imported: number;
+  errors: string[];
+}
+
+/**
+ * Upload a CSV or JSON file to bulk-import questions into the question bank.
+ */
+export async function importQuestionBankFile(file: File): Promise<QuestionBankImportResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const token = getAccessToken();
+  const url = `${API_BASE_URL}/api/v1/teacher/question-bank/import-file`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new APIError(text || "Import failed", res.status);
+  }
+  const json = await res.json();
+  return json.data as QuestionBankImportResult;
+}
+
+
 
 export const importQuestionsFromBank = (examId: string, bankItemIds: string[]) =>
   call<TeacherExamDetail>(`/examinations/${examId}/import-questions`, jsonInit("POST", { bank_item_ids: bankItemIds }));
