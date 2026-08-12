@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Play, Send } from "lucide-react";
+import { Clock, Play, Send } from "lucide-react";
 
 import { Card, PageHeader, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
@@ -90,7 +90,17 @@ export function StudentExamsPage() {
                         </td>
                         <td className="px-5 py-3">
                           {exam.my_attempt_status ? (
-                            <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
+                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                              exam.my_attempt_status === "GRADED"
+                                ? "bg-success-light text-success-text"
+                                : exam.my_attempt_status === "NOT_ATTEMPTED"
+                                ? "bg-destructive-light text-destructive-text"
+                                : exam.my_attempt_status === "SUBMITTED"
+                                ? "bg-accent-light text-accent"
+                                : exam.my_attempt_status === "IN_PROGRESS"
+                                ? "bg-warning-light text-warning-text"
+                                : "bg-muted text-muted-foreground"
+                            }`}>
                               {statusLabel(exam.my_attempt_status)}
                             </span>
                           ) : (
@@ -139,6 +149,64 @@ function formatClock(totalSeconds: number): string {
   return `${`${minutes}`.padStart(2, "0")}:${`${seconds}`.padStart(2, "0")}`;
 }
 
+function formatCountdown(totalSeconds: number) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return {
+    hours: `${hours}`.padStart(2, "0"),
+    minutes: `${minutes}`.padStart(2, "0"),
+    seconds: `${seconds}`.padStart(2, "0"),
+  };
+}
+
+function CountdownToStart({ scheduledAt, onReached }: { scheduledAt: string; onReached: () => void }) {
+  const [secondsLeft, setSecondsLeft] = useState<number>(() =>
+    Math.max(0, Math.floor((new Date(scheduledAt).getTime() - Date.now()) / 1000))
+  );
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const rem = Math.max(0, Math.floor((new Date(scheduledAt).getTime() - Date.now()) / 1000));
+      setSecondsLeft(rem);
+      if (rem <= 0) {
+        clearInterval(timer);
+        onReached();
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [scheduledAt, onReached]);
+
+  const { hours, minutes, seconds } = formatCountdown(secondsLeft);
+
+  return (
+    <div className="w-full rounded-field border border-accent/30 bg-accent-light/40 p-4 text-center">
+      <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-accent">
+        <Clock className="h-4 w-4 animate-pulse" /> Exam starts in
+      </div>
+      <div className="mt-2 flex items-center justify-center gap-2 font-mono text-2xl font-bold tracking-tight text-primary">
+        <div className="flex flex-col items-center">
+          <span className="rounded bg-white px-2 py-1 shadow-sm border border-border">{hours}</span>
+          <span className="mt-1 text-[10px] font-sans font-semibold text-muted-foreground uppercase">Hrs</span>
+        </div>
+        <span className="text-muted-foreground font-sans">:</span>
+        <div className="flex flex-col items-center">
+          <span className="rounded bg-white px-2 py-1 shadow-sm border border-border">{minutes}</span>
+          <span className="mt-1 text-[10px] font-sans font-semibold text-muted-foreground uppercase">Mins</span>
+        </div>
+        <span className="text-muted-foreground font-sans">:</span>
+        <div className="flex flex-col items-center">
+          <span className="rounded bg-white px-2 py-1 shadow-sm border border-border text-accent">{seconds}</span>
+          <span className="mt-1 text-[10px] font-sans font-semibold text-muted-foreground uppercase">Secs</span>
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        The &quot;Start exam&quot; button will unlock automatically when the countdown reaches 00:00:00.
+      </p>
+    </div>
+  );
+}
+
 /** C-ST-08 — timed exam-attempt screen with autosave and a countdown. */
 export function StudentExamAttemptPage() {
   const params = useParams<{ id?: string }>();
@@ -154,6 +222,11 @@ export function StudentExamAttemptPage() {
 
   const detail = exam.data;
   const hasLiveAttempt = detail?.my_attempt_status === "IN_PROGRESS" && (detail?.mode === "ONLINE");
+
+  const isBeforeStart = useMemo(() => {
+    if (!detail?.scheduled_at) return false;
+    return new Date(detail.scheduled_at).getTime() > Date.now();
+  }, [detail?.scheduled_at]);
 
   async function begin() {
     setStartBusy(true);
@@ -212,26 +285,31 @@ export function StudentExamAttemptPage() {
               <li>Objective answers are graded automatically; written answers are graded by your teacher.</li>
             </ul>
             {startError ? <p role="alert" className="mt-4 text-sm text-destructive-text">{startError}</p> : null}
-            <div className="mt-5 flex flex-wrap gap-3">
-              {detail.can_attempt ? (
-                <button
-                  type="button"
-                  disabled={startBusy}
-                  onClick={begin}
-                  className="inline-flex h-11 items-center gap-2 rounded-field bg-accent px-5 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover disabled:opacity-60"
-                >
-                  <Play className="h-4 w-4" /> {startBusy ? "Starting…" : "Start exam"}
-                </button>
-              ) : (
-                <p className="text-sm font-semibold text-warning-text">
-                  {detail.my_attempt_status
-                    ? `Your attempt is ${statusLabel(detail.my_attempt_status).toLowerCase()}.`
-                    : "This exam is not open for attempts right now."}
-                </p>
-              )}
-              <Link href="/student/examinations" className="inline-flex h-11 items-center rounded-field border border-border px-5 text-sm font-semibold text-muted-foreground hover:border-accent hover:text-accent">
-                Back to exams
-              </Link>
+            <div className="mt-5 space-y-4">
+              {isBeforeStart ? (
+                <CountdownToStart scheduledAt={detail.scheduled_at} onReached={() => exam.reload()} />
+              ) : null}
+              <div className="flex flex-wrap gap-3">
+                {!isBeforeStart && detail.can_attempt ? (
+                  <button
+                    type="button"
+                    disabled={startBusy}
+                    onClick={begin}
+                    className="inline-flex h-11 items-center gap-2 rounded-field bg-accent px-5 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover disabled:opacity-60"
+                  >
+                    <Play className="h-4 w-4" /> {startBusy ? "Starting…" : "Start exam"}
+                  </button>
+                ) : !isBeforeStart ? (
+                  <p className="text-sm font-semibold text-warning-text">
+                    {detail.my_attempt_status
+                      ? `Your attempt is ${statusLabel(detail.my_attempt_status).toLowerCase()}.`
+                      : "This exam is not open for attempts right now."}
+                  </p>
+                ) : null}
+                <Link href="/student/examinations" className="inline-flex h-11 items-center rounded-field border border-border px-5 text-sm font-semibold text-muted-foreground hover:border-accent hover:text-accent">
+                  Back to exams
+                </Link>
+              </div>
             </div>
           </Card>
         ) : null}

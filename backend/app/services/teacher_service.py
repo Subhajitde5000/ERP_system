@@ -2156,12 +2156,15 @@ class TeacherService:
 
     @staticmethod
     def _attempt_row(attempt: ExamAttempt, user: User, pending: int) -> TeacherAttemptRow:
+        status_val = _value(attempt.status) or "IN_PROGRESS"
+        if attempt.total_score is not None or status_val == AttemptStatus.GRADED.value:
+            status_val = AttemptStatus.GRADED.value
         return TeacherAttemptRow(
             attempt_id=attempt.id,
             student_id=user.id,
             student_name=user.name,
             roll_number=user.student_roll_no,
-            status=_value(attempt.status) or "IN_PROGRESS",
+            status=status_val,
             started_at=attempt.started_at,
             submitted_at=attempt.submitted_at,
             total_score=float(attempt.total_score) if attempt.total_score is not None else None,
