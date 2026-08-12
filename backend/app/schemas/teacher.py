@@ -499,6 +499,20 @@ class TeacherMilestoneIn(BaseModel):
         return value
 
 
+class TeacherMilestoneUpdateIn(BaseModel):
+    title: str | None = Field(default=None, min_length=2, max_length=255)
+    description: str | None = Field(default=None, max_length=5000)
+    marks: int | None = Field(default=None, ge=0, le=1000)
+    due_date: datetime | None = None
+
+    @field_validator("due_date")
+    @classmethod
+    def due_must_be_tz_aware(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("due_date must include a timezone")
+        return value
+
+
 class TeacherMilestoneOut(BaseModel):
     id: uuid.UUID
     title: str

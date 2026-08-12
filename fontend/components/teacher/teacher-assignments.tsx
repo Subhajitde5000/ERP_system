@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Ban, Plus, Send, Trash2 } from "lucide-react";
+import { Ban, Pencil, Plus, Send, Trash2 } from "lucide-react";
 
 import { Card, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
@@ -16,6 +16,7 @@ import {
   fetchTeacherAssignments,
   fetchTeachingAssignments,
   publishTeacherAssignment,
+  updateAssignmentMilestone,
   updateTeacherAssignment,
 } from "@/lib/teacher";
 import { AsyncState, EmptyTable, dateTime, statusLabel } from "@/components/principal/principal-ui";
@@ -527,6 +528,40 @@ function MilestonesCard({
     }
   }
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ title: "", description: "", marks: "10", due_date: "" });
+
+  function startEditing(milestone: (typeof milestones)[number]) {
+    setEditingId(milestone.id);
+    setEditForm({
+      title: milestone.title,
+      description: milestone.description ?? "",
+      marks: String(milestone.marks),
+      due_date: toDatetimeLocal(milestone.due_date),
+    });
+  }
+
+  async function saveEdit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const detail = await updateAssignmentMilestone(assignmentId, editingId, {
+        title: editForm.title.trim(),
+        description: editForm.description.trim() || null,
+        marks: Number(editForm.marks),
+        due_date: editForm.due_date ? new Date(editForm.due_date).toISOString() : null,
+      });
+      onChanged(detail);
+      setEditingId(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update this milestone.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Card>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -543,6 +578,8 @@ function MilestonesCard({
         <ol className="relative">
           {milestones.map((milestone, idx) => {
             const isLast = idx === milestones.length - 1;
+            const isEditing = editingId === milestone.id;
+
             return (
               <li key={milestone.id} className="flex gap-4">
                 {/* Connector column */}
@@ -555,27 +592,108 @@ function MilestonesCard({
 
                 {/* Content */}
                 <div className={`flex-1 ${isLast ? "pb-0" : "pb-5"}`}>
-                  <div className="flex items-start justify-between gap-3 rounded-field border border-border p-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-primary">
-                        {milestone.title}
-                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
-                      </p>
-                      {milestone.description ? <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p> : null}
-                      {milestone.due_date ? <p className="mt-1 text-[11px] text-muted-foreground">Due {dateTime(milestone.due_date)}</p> : null}
+                  {isEditing ? (
+                    <form onSubmit={saveEdit} className="space-y-3 rounded-field border border-accent bg-accent-light/10 p-3">
+                      <p className="text-xs font-bold text-accent">Edit Stage {idx + 1}</p>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="sm:col-span-2">
+                          <label htmlFor={`edit-stage-title-${milestone.id}`} className={labelClass}>Stage title</label>
+                          <input
+                            id={`edit-stage-title-${milestone.id}`}
+                            className={inputClass}
+                            maxLength={255}
+                            value={editForm.title}
+                            onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor={`edit-stage-marks-${milestone.id}`} className={labelClass}>Marks</label>
+                          <input
+                            id={`edit-stage-marks-${milestone.id}`}
+                            type="number"
+                            min={0}
+                            max={1000}
+                            className={inputClass}
+                            value={editForm.marks}
+                            onChange={(e) => setEditForm({ ...editForm, marks: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label htmlFor={`edit-stage-due-${milestone.id}`} className={labelClass}>Due date (optional)</label>
+                          <input
+                            id={`edit-stage-due-${milestone.id}`}
+                            type="datetime-local"
+                            className={inputClass}
+                            value={editForm.due_date}
+                            onChange={(e) => setEditForm({ ...editForm, due_date: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor={`edit-stage-desc-${milestone.id}`} className={labelClass}>Description (optional)</label>
+                          <input
+                            id={`edit-stage-desc-${milestone.id}`}
+                            className={inputClass}
+                            maxLength={5000}
+                            value={editForm.description}
+                            onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="inline-flex h-8 items-center rounded-field bg-accent px-3 text-xs font-semibold text-white transition hover:bg-accent-hover disabled:opacity-60"
+                        >
+                          Save stage
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                          className="inline-flex h-8 items-center rounded-field border border-border px-3 text-xs font-semibold text-muted-foreground hover:border-accent hover:text-accent"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="flex items-start justify-between gap-3 rounded-field border border-border p-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-primary">
+                          {milestone.title}
+                          <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
+                        </p>
+                        {milestone.description ? <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p> : null}
+                        {milestone.due_date ? <p className="mt-1 text-[11px] text-muted-foreground">Due {dateTime(milestone.due_date)}</p> : null}
+                      </div>
+                      {editable ? (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => startEditing(milestone)}
+                            aria-label={`Edit milestone ${milestone.title}`}
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-field border border-border text-muted-foreground hover:border-accent hover:text-accent disabled:opacity-60"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => remove(milestone.id)}
+                            aria-label={`Remove milestone ${milestone.title}`}
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-field border border-border text-muted-foreground hover:border-destructive-border hover:text-destructive-text disabled:opacity-60"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
-                    {editable ? (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => remove(milestone.id)}
-                        aria-label={`Remove milestone ${milestone.title}`}
-                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-field border border-border text-muted-foreground hover:border-destructive-border hover:text-destructive-text disabled:opacity-60"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    ) : null}
-                  </div>
+                  )}
                 </div>
               </li>
             );

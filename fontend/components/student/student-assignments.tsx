@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CheckCircle2, Circle, Lock, Plus, Send, Trash2 } from "lucide-react";
+import { CheckCircle2, Clock, Lock, Plus, Send, Trash2 } from "lucide-react";
 
 import { Card, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
@@ -242,24 +242,28 @@ function MilestoneChain({
   onSubmitMilestone: (milestoneId: string) => void;
 }) {
   const approved = data.milestones.filter((m) => m.my_status === "APPROVED").length;
+  const submitted = data.milestones.filter((m) => m.my_status && m.my_status !== "APPROVED").length;
   const total = data.milestones.length;
+  const pct = Math.round((approved / Math.max(1, total)) * 100);
 
   return (
     <Card>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="font-display text-base font-bold text-primary">Milestones</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">{approved}/{total} completed · stages unlock one by one</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {approved}/{total} approved{submitted > 0 ? ` · ${submitted} under review` : ""} · stages unlock one by one
+          </p>
         </div>
         {/* progress bar */}
         <div className="flex items-center gap-2">
           <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
             <div
               className="h-full rounded-full bg-accent transition-all"
-              style={{ width: `${Math.round((approved / Math.max(1, total)) * 100)}%` }}
+              style={{ width: `${pct}%` }}
             />
           </div>
-          <span className="text-xs font-semibold text-muted-foreground">{Math.round((approved / Math.max(1, total)) * 100)}%</span>
+          <span className="text-xs font-semibold text-muted-foreground">{pct}%</span>
         </div>
       </div>
 
@@ -268,11 +272,13 @@ function MilestoneChain({
         {data.milestones.map((milestone, idx) => {
           const mine = milestone.my_status;
           const isApproved = mine === "APPROVED";
+          const isUnderReview = mine === "SUBMITTED" || mine === "UNDER_REVIEW";
+          const isResubmit = mine === "RESUBMIT_REQUESTED";
           const isLocked = !milestone.unlocked;
           const submittable =
             data.status === "PUBLISHED" &&
             milestone.unlocked &&
-            (!mine || mine === "RESUBMIT_REQUESTED");
+            (!mine || isResubmit);
           const isLast = idx === data.milestones.length - 1;
 
           return (
@@ -284,24 +290,28 @@ function MilestoneChain({
                   className={`relative z-10 mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 ${
                     isApproved
                       ? "border-success-text bg-success-light text-success-text"
-                      : isLocked
-                        ? "border-border bg-muted text-muted-foreground"
-                        : mine
-                          ? "border-accent bg-accent-light text-accent"
-                          : "border-accent bg-white text-accent"
+                      : isUnderReview
+                        ? "border-warning-text bg-warning-light text-warning-text"
+                        : isResubmit
+                          ? "border-destructive-border bg-destructive-light text-destructive-text"
+                          : isLocked
+                            ? "border-border bg-muted text-muted-foreground"
+                            : "border-accent bg-accent-light text-accent"
                   }`}
                 >
                   {isApproved ? (
                     <CheckCircle2 className="h-4 w-4" />
+                  ) : isUnderReview ? (
+                    <Clock className="h-3.5 w-3.5" />
                   ) : isLocked ? (
                     <Lock className="h-3.5 w-3.5" />
                   ) : (
-                    <Circle className="h-3.5 w-3.5" />
+                    <Send className="h-3 w-3" />
                   )}
                 </div>
                 {/* Vertical line */}
                 {!isLast && (
-                  <div className={`w-0.5 flex-1 ${isApproved ? "bg-success-text/30" : "bg-border"}`} style={{ minHeight: "1.5rem" }} />
+                  <div className={`w-0.5 flex-1 ${isApproved ? "bg-success-text/30" : isUnderReview ? "bg-warning-text/30" : "bg-border"}`} style={{ minHeight: "1.5rem" }} />
                 )}
               </div>
 
@@ -311,11 +321,13 @@ function MilestoneChain({
                   className={`rounded-field border p-3 ${
                     isApproved
                       ? "border-success-text/20 bg-success-light/30"
-                      : isLocked
-                        ? "border-border bg-muted/30"
-                        : submittable
-                          ? "border-accent/40 bg-accent-light/20"
-                          : "border-border bg-white"
+                      : isUnderReview
+                        ? "border-warning-text/20 bg-warning-light/30"
+                        : isResubmit
+                          ? "border-destructive-border/30 bg-destructive-light/20"
+                          : isLocked
+                            ? "border-border bg-muted/30"
+                            : "border-accent/40 bg-accent-light/20"
                   }`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -568,11 +580,12 @@ export function StudentAssignmentMilestonesPage() {
               {/* Overall progress */}
               {(() => {
                 const approved = data.milestones.filter((m) => m.my_status === "APPROVED").length;
+                const underReview = data.milestones.filter((m) => m.my_status === "SUBMITTED" || m.my_status === "UNDER_REVIEW").length;
                 const pct = Math.round((approved / data.milestones.length) * 100);
                 return (
                   <div className="mb-6">
                     <div className="mb-1 flex items-center justify-between text-xs font-semibold text-muted-foreground">
-                      <span>{approved} of {data.milestones.length} approved</span>
+                      <span>{approved} of {data.milestones.length} approved{underReview > 0 ? ` · ${underReview} under review` : ""}</span>
                       <span>{pct}%</span>
                     </div>
                     <div
@@ -592,7 +605,10 @@ export function StudentAssignmentMilestonesPage() {
               {/* Chain */}
               <ol className="relative">
                 {data.milestones.map((milestone, idx) => {
-                  const isApproved = milestone.my_status === "APPROVED";
+                  const mine = milestone.my_status;
+                  const isApproved = mine === "APPROVED";
+                  const isUnderReview = mine === "SUBMITTED" || mine === "UNDER_REVIEW";
+                  const isResubmit = mine === "RESUBMIT_REQUESTED";
                   const isLocked = !milestone.unlocked;
                   const isLast = idx === data.milestones.length - 1;
 
@@ -604,15 +620,19 @@ export function StudentAssignmentMilestonesPage() {
                           className={`relative z-10 mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 ${
                             isApproved
                               ? "border-success-text bg-success-light text-success-text"
-                              : isLocked
-                                ? "border-border bg-muted text-muted-foreground"
-                                : milestone.my_status
-                                  ? "border-accent bg-accent-light text-accent"
-                                  : "border-accent bg-white text-accent"
+                              : isUnderReview
+                                ? "border-warning-text bg-warning-light text-warning-text"
+                                : isResubmit
+                                  ? "border-destructive-border bg-destructive-light text-destructive-text"
+                                  : isLocked
+                                    ? "border-border bg-muted text-muted-foreground"
+                                    : "border-accent bg-accent-light text-accent"
                           }`}
                         >
                           {isApproved ? (
                             <CheckCircle2 className="h-4 w-4" />
+                          ) : isUnderReview ? (
+                            <Clock className="h-3.5 w-3.5" />
                           ) : isLocked ? (
                             <Lock className="h-3.5 w-3.5" />
                           ) : (
@@ -620,7 +640,7 @@ export function StudentAssignmentMilestonesPage() {
                           )}
                         </div>
                         {!isLast && (
-                          <div className={`w-0.5 flex-1 ${isApproved ? "bg-success-text/30" : "bg-border"}`} style={{ minHeight: "1.5rem" }} />
+                          <div className={`w-0.5 flex-1 ${isApproved ? "bg-success-text/30" : isUnderReview ? "bg-warning-text/30" : "bg-border"}`} style={{ minHeight: "1.5rem" }} />
                         )}
                       </div>
 

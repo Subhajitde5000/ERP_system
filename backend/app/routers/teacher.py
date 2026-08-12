@@ -56,6 +56,7 @@ from app.schemas.teacher import (
     TeacherGradeSubmission,
     TeacherLeaveReview,
     TeacherMilestoneIn,
+    TeacherMilestoneUpdateIn,
     TeacherNoticeCreate,
     TeacherQuestionBankImportIn,
     TeacherQuestionBankItemIn,
@@ -595,6 +596,21 @@ async def delete_milestone(
         success=True,
         data=await TeacherService.delete_milestone(db, teacher, assignment_id, milestone_id),
         message="Milestone removed",
+    )
+
+
+@router.patch("/assignments/{assignment_id}/milestones/{milestone_id}", response_model=APIResponseTeacherAssignment)
+async def update_milestone(
+    assignment_id: uuid.UUID,
+    milestone_id: uuid.UUID,
+    payload: TeacherMilestoneUpdateIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_tenant_user_teacher)],
+):
+    return APIResponse(
+        success=True,
+        data=await TeacherService.update_milestone(db, teacher, assignment_id, milestone_id, payload),
+        message="Milestone updated",
     )
 
 

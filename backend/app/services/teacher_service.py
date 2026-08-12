@@ -100,6 +100,7 @@ from app.schemas.teacher import (
     TeacherLeaveRow,
     TeacherMilestoneIn,
     TeacherMilestoneOut,
+    TeacherMilestoneUpdateIn,
     TeacherNoticeCreate,
     TeacherNoticePage,
     TeacherNoticeRow,
@@ -2431,7 +2432,7 @@ class TeacherService:
             await db.execute(
                 select(
                     Submission.assignment_id,
-                    func.count(Submission.id),
+                    func.count(Submission.student_id.distinct()),
                     func.coalesce(func.sum(case((Submission.status.in_(_PENDING_SUBMISSION_STATUSES), 1), else_=0)), 0),
                     func.coalesce(func.sum(case((Submission.reviewed_at.is_not(None), 1), else_=0)), 0),
                 )
@@ -2758,6 +2759,54 @@ class TeacherService:
             entity_id=milestone.id,
             tenant_id=teacher.tenant_id,
             old_value={"title": milestone.title},
+        )
+        return await TeacherService.assignment_detail(db, teacher, assignment_id)
+
+    @staticmethod
+    async def update_milestone(
+        db: AsyncSession, teacher: User, assignment_id: uuid.UUID, milestone_id: uuid.UUID, payload: TeacherMilestoneUpdateIn
+    ) -> TeacherAssignmentDetail:
+        assignment = await TeacherService._owned_assignment(db, teacher, assignment_id)
+        if (_value(assignment.status) or "DRAFT") == AssignmentStatus.CLOSED.value:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="Closed assignments cannot be edited")
+        milestone = (
+            await db.execute(
+                select(Milestone).where(Milestone.id == milestone_id, Milestone.assignment_id == assignment.id)
+            )
+        ).scalar_one_or_none()
+        if milestone is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Milestone not found")
+        if payload.marks is not None and payload.marks != milestone.marks:
+            existing_marks = (
+                await db.execute(
+                    select(func.coalesce(func.sum(Milestone.marks), 0)).where(
+                        Milestone.assignment_id == assignment.id,
+                        Milestone.id != milestone.id,
+                    )
+                )
+            ).scalar()
+            if int(existing_marks or 0) + payload.marks > assignment.total_marks:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Milestone marks exceed the assignment total_marks",
+                )
+            milestone.marks = payload.marks
+        if payload.title is not None:
+            milestone.title = payload.title.strip()
+        if payload.description is not None:
+            milestone.description = payload.description.strip() if payload.description else None
+        if payload.due_date is not None or "due_date" in payload.model_fields_set:
+            milestone.due_date = payload.due_date
+        await db.flush()
+        AuditService.record(
+            db,
+            actor=teacher,
+            actor_role="TEACHER",
+            action="UPDATE_MILESTONE",
+            entity="Milestone",
+            entity_id=milestone.id,
+            tenant_id=teacher.tenant_id,
+            new_value={"title": milestone.title, "marks": milestone.marks},
         )
         return await TeacherService.assignment_detail(db, teacher, assignment_id)
 

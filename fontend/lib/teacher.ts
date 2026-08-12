@@ -596,6 +596,8 @@ export interface TeacherMilestoneIn {
   unlock_after_milestone_id?: string | null;
 }
 
+export type TeacherMilestoneUpdateIn = Partial<Omit<TeacherMilestoneIn, "unlock_after_milestone_id">>;
+
 export interface TeacherMilestoneOut {
   id: string;
   title: string;
@@ -659,6 +661,9 @@ export const closeTeacherAssignment = (assignmentId: string) =>
 
 export const addAssignmentMilestone = (assignmentId: string, payload: TeacherMilestoneIn) =>
   call<TeacherAssignmentDetail>(`/assignments/${assignmentId}/milestones`, jsonInit("POST", payload));
+
+export const updateAssignmentMilestone = (assignmentId: string, milestoneId: string, payload: TeacherMilestoneUpdateIn) =>
+  call<TeacherAssignmentDetail>(`/assignments/${assignmentId}/milestones/${milestoneId}`, jsonInit("PATCH", payload));
 
 export const deleteAssignmentMilestone = (assignmentId: string, milestoneId: string) =>
   call<TeacherAssignmentDetail>(`/assignments/${assignmentId}/milestones/${milestoneId}`, { method: "DELETE" });
