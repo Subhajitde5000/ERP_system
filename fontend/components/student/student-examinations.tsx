@@ -36,7 +36,7 @@ export function StudentExamsPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader title="Examinations" subtitle="Published exams for your class. Online exams can be attempted from here." />
+      <PageHeader title="Examinations" subtitle="Your published exams. Upcoming shows active and scheduled exams; Completed shows past ones." />
       <div className="mb-5 flex flex-wrap gap-2">
         {WHEN_FILTERS.map(([value, label]) => (
           <button
@@ -101,7 +101,7 @@ export function StudentExamsPage() {
                         </td>
                         <td className="px-5 py-3 text-right">
                           {exam.can_attempt ? (
-                            <Link href={`/student/examinations/${exam.id}/attempt`} className="text-xs font-semibold text-accent hover:underline">
+                            <Link href={`/student/examinations/${exam.id}/attempt`} className="inline-flex items-center gap-1 rounded-field bg-accent px-3 py-1.5 text-[11px] font-bold text-white hover:bg-accent-hover">
                               Start exam
                             </Link>
                           ) : exam.result_available ? (
@@ -109,7 +109,7 @@ export function StudentExamsPage() {
                               View result
                             </Link>
                           ) : exam.my_attempt_status === "IN_PROGRESS" ? (
-                            <Link href={`/student/examinations/${exam.id}/attempt`} className="text-xs font-semibold text-accent hover:underline">
+                            <Link href={`/student/examinations/${exam.id}/attempt`} className="inline-flex items-center gap-1 rounded-field bg-warning-light px-3 py-1.5 text-[11px] font-bold text-warning-text hover:opacity-80">
                               Resume
                             </Link>
                           ) : null}

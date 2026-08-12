@@ -700,9 +700,11 @@ class StudentService:
             Exam.status.in_((ExamStatus.PUBLISHED, ExamStatus.ONGOING, ExamStatus.COMPLETED, ExamStatus.RESULTS_RELEASED)),
         ]
         if when == "upcoming":
-            clauses.append(Exam.scheduled_at >= now)
+            # Show exams that are still open (not yet completed).
+            clauses.append(Exam.status.in_((ExamStatus.PUBLISHED, ExamStatus.ONGOING)))
         elif when == "completed":
-            clauses.append(or_(Exam.scheduled_at < now, Exam.status.in_((ExamStatus.COMPLETED, ExamStatus.RESULTS_RELEASED))))
+            # Show exams that have ended.
+            clauses.append(Exam.status.in_((ExamStatus.COMPLETED, ExamStatus.RESULTS_RELEASED)))
         elif when not in (None, "all"):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="when must be upcoming, completed or all")
         total = (await db.execute(select(func.count(Exam.id)).where(*clauses))).scalar() or 0
