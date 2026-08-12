@@ -44,6 +44,7 @@ from app.models.lms import (
     ContentItem,
     ContentKind,
     ContentTag,
+    DifficultyLevel,
     DiscussionReply,
     LeaveStatus,
     Milestone,
@@ -2835,6 +2836,7 @@ class TeacherService:
             roll_number=(enrollment.roll_number if enrollment and enrollment.roll_number else user.student_roll_no),
             milestone_id=submission.milestone_id,
             milestone_title=milestone.title if milestone else None,
+            milestone_marks=milestone.marks if milestone else None,
             submitted_at=submission.submitted_at,
             is_late=submission.is_late,
             late_by_minutes=submission.late_by_minutes,
@@ -2960,10 +2962,11 @@ class TeacherService:
         submission, assignment, user, enrollment, milestone = row
         if payload.decision == "APPROVED" and payload.score is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A score is required to approve a submission")
-        if payload.score is not None and payload.score > assignment.total_marks:
+        max_allowed = milestone.marks if milestone is not None else assignment.total_marks
+        if payload.score is not None and payload.score > max_allowed:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Score cannot exceed {assignment.total_marks}",
+                detail=f"Score cannot exceed {max_allowed}",
             )
         now = datetime.now(timezone.utc)
         decision_map = {
@@ -2982,7 +2985,7 @@ class TeacherService:
         else:
             submission.score = Decimal(str(payload.score)) if payload.score is not None else None
             submission.grade = (
-                grade_for(float(payload.score) * 100 / assignment.total_marks) if payload.score is not None else None
+                grade_for(float(payload.score) * 100 / max_allowed) if payload.score is not None else None
             )
         db.add(
             SubmissionReview(

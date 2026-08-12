@@ -26,9 +26,10 @@ export function TeacherAssignmentSubmissionsPage() {
     [assignmentId],
   );
   const [status, setStatus] = useState<string>("");
+  const [milestoneId, setMilestoneId] = useState<string>("");
   const resource = useResource(
-    () => fetchTeacherSubmissions({ assignmentId, status: status || undefined, limit: 100 }),
-    [assignmentId, status],
+    () => fetchTeacherSubmissions({ assignmentId, milestoneId: milestoneId || undefined, status: status || undefined, limit: 100 }),
+    [assignmentId, milestoneId, status],
   );
 
   return (
@@ -42,7 +43,8 @@ export function TeacherAssignmentSubmissionsPage() {
           </Link>
         }
       />
-      <div className="mb-5 flex flex-wrap gap-2">
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-muted-foreground">Status:</span>
         {STATUS_FILTERS.map((option) => (
           <button
             key={option || "ALL"}
@@ -59,6 +61,38 @@ export function TeacherAssignmentSubmissionsPage() {
           </button>
         ))}
       </div>
+      {assignment.data?.milestones.length ? (
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground">Stage:</span>
+          <button
+            type="button"
+            onClick={() => setMilestoneId("")}
+            aria-pressed={!milestoneId}
+            className={`h-9 rounded-field border px-4 text-xs font-semibold transition ${
+              !milestoneId
+                ? "border-accent bg-accent-light text-accent"
+                : "border-border text-muted-foreground hover:border-accent hover:text-accent"
+            }`}
+          >
+            All stages
+          </button>
+          {assignment.data.milestones.map((m, idx) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setMilestoneId(m.id)}
+              aria-pressed={milestoneId === m.id}
+              className={`h-9 rounded-field border px-4 text-xs font-semibold transition ${
+                milestoneId === m.id
+                  ? "border-accent bg-accent-light text-accent"
+                  : "border-border text-muted-foreground hover:border-accent hover:text-accent"
+              }`}
+            >
+              Stage {idx + 1}: {m.title}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <AsyncState loading={resource.loading} error={resource.error} onRetry={resource.reload} loadingLabel="Loading submissions…">
         {resource.data ? (
           <Card className="!p-0">
@@ -154,8 +188,9 @@ export function TeacherSubmissionDetailPage() {
       setError("Enter a score to approve the submission.");
       return;
     }
-    if (score !== null && (Number.isNaN(score) || score < 0 || score > resource.data.total_marks)) {
-      setError(`Score must be between 0 and ${resource.data.total_marks}.`);
+    const maxMarks = resource.data.milestone_marks ?? resource.data.total_marks;
+    if (score !== null && (Number.isNaN(score) || score < 0 || score > maxMarks)) {
+      setError(`Score must be between 0 and ${maxMarks}.`);
       return;
     }
     setBusy(true);
@@ -227,7 +262,7 @@ export function TeacherSubmissionDetailPage() {
                   <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{resource.data.feedback}</p>
                   {resource.data.score !== null ? (
                     <p className="mt-2 text-sm font-semibold text-primary">
-                      Score: {resource.data.score} / {resource.data.total_marks}
+                      Score: {resource.data.score} / {resource.data.milestone_marks ?? resource.data.total_marks}
                       {resource.data.grade ? ` · Grade ${resource.data.grade}` : ""}
                     </p>
                   ) : null}
@@ -269,13 +304,13 @@ export function TeacherSubmissionDetailPage() {
                   <div className="grid gap-4 sm:grid-cols-3">
                     <div>
                       <label htmlFor="review-score" className={labelClass}>
-                        Score (0–{resource.data.total_marks}){form.decision === "APPROVED" ? " *" : ""}
+                        Score (0–{resource.data.milestone_marks ?? resource.data.total_marks}){form.decision === "APPROVED" ? " *" : ""}
                       </label>
                       <input
                         id="review-score"
                         type="number"
                         min={0}
-                        max={resource.data.total_marks}
+                        max={resource.data.milestone_marks ?? resource.data.total_marks}
                         step={0.5}
                         className={inputClass}
                         value={form.score}

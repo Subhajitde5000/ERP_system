@@ -551,6 +551,7 @@ class TeacherSubmissionRow(BaseModel):
     roll_number: str | None = None
     milestone_id: uuid.UUID | None = None
     milestone_title: str | None = None
+    milestone_marks: int | None = None
     submitted_at: datetime
     is_late: bool
     late_by_minutes: int | None = None

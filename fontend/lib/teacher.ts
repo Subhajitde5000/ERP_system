@@ -672,6 +672,7 @@ export interface TeacherSubmissionRow {
   roll_number: string | null;
   milestone_id: string | null;
   milestone_title: string | null;
+  milestone_marks: number | null;
   submitted_at: string;
   is_late: boolean;
   late_by_minutes: number | null;

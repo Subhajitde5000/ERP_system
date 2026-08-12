@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Ban, Plus, Send, Trash2 } from "lucide-react";
 
-import { Card, EmptyState, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
+import { Card, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
 import {
   addAssignmentMilestone,
@@ -460,7 +460,7 @@ export function TeacherAssignmentDetailPage() {
             <MilestonesCard
               assignmentId={assignmentId}
               milestones={data.milestones}
-              editable={data.status === "DRAFT"}
+              editable={data.status !== "CLOSED"}
               onChanged={(detail) => resource.setData({ ...data, ...detail })}
             />
           </div>
@@ -529,41 +529,67 @@ function MilestonesCard({
 
   return (
     <Card>
-      <h2 className="font-display text-base font-bold text-primary">Milestones</h2>
-      <p className="mt-1 text-xs text-muted-foreground">Stages unlock in order; students submit against each stage.</p>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-display text-base font-bold text-primary">Milestones</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Stages unlock in order; students submit against each stage.</p>
+        </div>
+        {milestones.length ? (
+          <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">{milestones.length} stages</span>
+        ) : null}
+      </div>
+
       {milestones.length ? (
-        <ol className="mt-4 space-y-2">
-          {milestones.map((milestone) => (
-            <li key={milestone.id} className="flex items-start justify-between gap-3 rounded-field border border-border p-3">
-              <div>
-                <p className="text-sm font-semibold text-primary">
-                  {milestone.sort_order + 1}. {milestone.title}
-                  <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
-                </p>
-                {milestone.description ? <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p> : null}
-                {milestone.due_date ? <p className="mt-1 text-[11px] text-muted-foreground">Due {dateTime(milestone.due_date)}</p> : null}
-              </div>
-              {editable ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => remove(milestone.id)}
-                  aria-label={`Remove milestone ${milestone.title}`}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-field border border-border text-muted-foreground hover:border-destructive-border hover:text-destructive-text disabled:opacity-60"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-            </li>
-          ))}
+        <ol className="relative">
+          {milestones.map((milestone, idx) => {
+            const isLast = idx === milestones.length - 1;
+            return (
+              <li key={milestone.id} className="flex gap-4">
+                {/* Connector column */}
+                <div className="flex flex-col items-center">
+                  <div className="relative z-10 mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-accent bg-accent-light text-accent">
+                    <span className="text-xs font-bold">{idx + 1}</span>
+                  </div>
+                  {!isLast && <div className="w-0.5 flex-1 bg-border" style={{ minHeight: "1.5rem" }} />}
+                </div>
+
+                {/* Content */}
+                <div className={`flex-1 ${isLast ? "pb-0" : "pb-5"}`}>
+                  <div className="flex items-start justify-between gap-3 rounded-field border border-border p-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-primary">
+                        {milestone.title}
+                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
+                      </p>
+                      {milestone.description ? <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p> : null}
+                      {milestone.due_date ? <p className="mt-1 text-[11px] text-muted-foreground">Due {dateTime(milestone.due_date)}</p> : null}
+                    </div>
+                    {editable ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => remove(milestone.id)}
+                        aria-label={`Remove milestone ${milestone.title}`}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-field border border-border text-muted-foreground hover:border-destructive-border hover:text-destructive-text disabled:opacity-60"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ol>
       ) : (
-        <div className="mt-4">
-          <EmptyState text="No milestones — this is a single-submission assignment." />
+        <div className="mt-2 rounded-field border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+          No milestones yet — add stages below, or leave empty for a single-submission assignment.
         </div>
       )}
+
       {editable ? (
         <form onSubmit={add} className="mt-4 space-y-3 border-t border-border pt-4">
+          <p className="text-xs font-semibold text-muted-foreground">Add next stage</p>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="sm:col-span-2">
               <label htmlFor="milestone-title" className={labelClass}>Milestone title</label>
@@ -586,7 +612,7 @@ function MilestonesCard({
           </div>
           {error ? <p role="alert" className="text-sm text-destructive-text">{error}</p> : null}
           <button type="submit" disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-field border border-border px-4 text-sm font-semibold text-primary hover:border-accent hover:text-accent disabled:opacity-60">
-            <Plus className="h-4 w-4" /> {busy ? "Adding…" : "Add milestone"}
+            <Plus className="h-4 w-4" /> {busy ? "Adding…" : "Add stage"}
           </button>
         </form>
       ) : null}

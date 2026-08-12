@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CheckCircle2, Lock, Plus, Send, Trash2 } from "lucide-react";
+import { CheckCircle2, Circle, Lock, Plus, Send, Trash2 } from "lucide-react";
 
 import { Card, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
@@ -24,6 +24,14 @@ const STATUS_FILTERS = [
   ["APPROVED", "Approved"],
   ["RESUBMIT_REQUESTED", "Changes requested"],
 ] as const;
+
+function myStatusClass(status: string): string {
+  if (status === "APPROVED") return "bg-success-light text-success-text";
+  if (status === "REJECTED") return "bg-destructive-light text-destructive-text";
+  if (status === "RESUBMIT_REQUESTED") return "bg-warning-light text-warning-text";
+  if (status === "UNDER_REVIEW" || status === "SUBMITTED") return "bg-accent-light text-accent";
+  return "bg-muted text-muted-foreground";
+}
 
 /** C-ST-10 — assignment list with the student's own status on each row. */
 export function StudentAssignmentsPage() {
@@ -109,15 +117,7 @@ export function StudentAssignmentsPage() {
   );
 }
 
-function myStatusClass(status: string): string {
-  if (status === "APPROVED") return "bg-success-light text-success-text";
-  if (status === "REJECTED") return "bg-destructive-light text-destructive-text";
-  if (status === "RESUBMIT_REQUESTED") return "bg-warning-light text-warning-text";
-  if (status === "UNDER_REVIEW" || status === "SUBMITTED") return "bg-accent-light text-accent";
-  return "bg-muted text-muted-foreground";
-}
-
-/** C-ST-11 — brief, milestones, submit/resubmit with files. */
+/** C-ST-11 — brief, milestones chain, submit/resubmit with files. */
 export function StudentAssignmentDetailPage() {
   const params = useParams<{ id?: string }>();
   const assignmentId = params?.id ?? "";
@@ -125,7 +125,7 @@ export function StudentAssignmentDetailPage() {
     () => (assignmentId ? fetchStudentAssignment(assignmentId) : Promise.reject(new Error("No assignment ID provided"))),
     [assignmentId],
   );
-  const [submitFor, setSubmitFor] = useState<string | null | undefined>(undefined); // undefined = closed, null = whole assignment
+  const [submitFor, setSubmitFor] = useState<string | null | undefined>(undefined);
   const data = resource.data;
 
   const latest = data?.my_submissions[0] ?? null;
@@ -142,7 +142,9 @@ export function StudentAssignmentDetailPage() {
         {data ? (
           <div className="space-y-5">
             <AssignmentBrief data={data} canSubmit={canSubmit} onSubmitClicked={() => setSubmitFor(null)} />
-            {data.milestones.length ? <MilestonesSection data={data} onSubmitMilestone={(milestoneId) => setSubmitFor(milestoneId)} /> : null}
+            {data.milestones.length ? (
+              <MilestoneChain data={data} onSubmitMilestone={(id) => setSubmitFor(id)} />
+            ) : null}
             {submitFor !== undefined ? (
               <SubmissionComposer
                 key={submitFor ?? "assignment"}
@@ -228,55 +230,124 @@ function AssignmentBrief({
   );
 }
 
-function MilestonesSection({
+/**
+ * Chain-style milestone stepper — each stage is a card connected by a vertical
+ * line, showing locked / active / done state at a glance.
+ */
+function MilestoneChain({
   data,
   onSubmitMilestone,
 }: {
   data: StudentAssignmentDetail;
   onSubmitMilestone: (milestoneId: string) => void;
 }) {
+  const approved = data.milestones.filter((m) => m.my_status === "APPROVED").length;
+  const total = data.milestones.length;
+
   return (
     <Card>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="font-display text-base font-bold text-primary">Milestones</h2>
-        <Link href={`/student/assignments/${data.id}/milestones`} className="text-sm font-semibold text-accent hover:underline">
-          Progress view
-        </Link>
+        <div>
+          <h2 className="font-display text-base font-bold text-primary">Milestones</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">{approved}/{total} completed · stages unlock one by one</p>
+        </div>
+        {/* progress bar */}
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-accent transition-all"
+              style={{ width: `${Math.round((approved / Math.max(1, total)) * 100)}%` }}
+            />
+          </div>
+          <span className="text-xs font-semibold text-muted-foreground">{Math.round((approved / Math.max(1, total)) * 100)}%</span>
+        </div>
       </div>
-      <ol className="space-y-3">
-        {data.milestones.map((milestone) => {
+
+      {/* Chain */}
+      <ol className="relative">
+        {data.milestones.map((milestone, idx) => {
           const mine = milestone.my_status;
+          const isApproved = mine === "APPROVED";
+          const isLocked = !milestone.unlocked;
           const submittable =
             data.status === "PUBLISHED" &&
             milestone.unlocked &&
             (!mine || mine === "RESUBMIT_REQUESTED");
+          const isLast = idx === data.milestones.length - 1;
+
           return (
-            <li key={milestone.id} className="flex flex-wrap items-start justify-between gap-3 rounded-field border border-border p-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-primary">
-                  {milestone.sort_order + 1}. {milestone.title}
-                  <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
-                </p>
-                {milestone.description ? <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p> : null}
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {milestone.unlocked ? "Unlocked" : "Locked — finish the previous stage first"}
-                  {milestone.due_date ? ` · due ${dateTime(milestone.due_date)}` : ""}
-                  {mine ? ` · ${statusLabel(mine)}${milestone.my_score !== null ? ` (${milestone.my_score}/${milestone.marks})` : ""}` : ""}
-                </p>
-              </div>
-              {submittable ? (
-                <button
-                  type="button"
-                  onClick={() => onSubmitMilestone(milestone.id)}
-                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-field border border-accent px-3 text-xs font-semibold text-accent hover:bg-accent-light"
+            <li key={milestone.id} className="flex gap-4">
+              {/* Connector column */}
+              <div className="flex flex-col items-center">
+                {/* Circle */}
+                <div
+                  className={`relative z-10 mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 ${
+                    isApproved
+                      ? "border-success-text bg-success-light text-success-text"
+                      : isLocked
+                        ? "border-border bg-muted text-muted-foreground"
+                        : mine
+                          ? "border-accent bg-accent-light text-accent"
+                          : "border-accent bg-white text-accent"
+                  }`}
                 >
-                  <Send className="h-3.5 w-3.5" /> {mine === "RESUBMIT_REQUESTED" ? "Resubmit" : "Submit"}
-                </button>
-              ) : !milestone.unlocked ? (
-                <Lock className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Locked" />
-              ) : mine === "APPROVED" ? (
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-success-text" aria-label="Approved" />
-              ) : null}
+                  {isApproved ? (
+                    <CheckCircle2 className="h-4 w-4" />
+                  ) : isLocked ? (
+                    <Lock className="h-3.5 w-3.5" />
+                  ) : (
+                    <Circle className="h-3.5 w-3.5" />
+                  )}
+                </div>
+                {/* Vertical line */}
+                {!isLast && (
+                  <div className={`w-0.5 flex-1 ${isApproved ? "bg-success-text/30" : "bg-border"}`} style={{ minHeight: "1.5rem" }} />
+                )}
+              </div>
+
+              {/* Content */}
+              <div className={`flex-1 pb-6 ${isLast ? "pb-0" : ""}`}>
+                <div
+                  className={`rounded-field border p-3 ${
+                    isApproved
+                      ? "border-success-text/20 bg-success-light/30"
+                      : isLocked
+                        ? "border-border bg-muted/30"
+                        : submittable
+                          ? "border-accent/40 bg-accent-light/20"
+                          : "border-border bg-white"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm font-semibold ${isLocked ? "text-muted-foreground" : "text-primary"}`}>
+                        {milestone.sort_order + 1}. {milestone.title}
+                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
+                      </p>
+                      {milestone.description ? (
+                        <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p>
+                      ) : null}
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {isLocked
+                          ? "Locked — complete the previous stage first"
+                          : mine
+                            ? `${statusLabel(mine)}${milestone.my_score !== null ? ` · ${milestone.my_score}/${milestone.marks} marks` : ""}`
+                            : "Unlocked — ready for your submission"}
+                        {milestone.due_date ? ` · due ${dateTime(milestone.due_date)}` : ""}
+                      </p>
+                    </div>
+                    {submittable ? (
+                      <button
+                        type="button"
+                        onClick={() => onSubmitMilestone(milestone.id)}
+                        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-field bg-accent px-3 text-xs font-semibold text-white shadow-accent transition hover:bg-accent-hover"
+                      >
+                        <Send className="h-3 w-3" /> {mine === "RESUBMIT_REQUESTED" ? "Resubmit" : "Submit"}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
             </li>
           );
         })}
@@ -469,7 +540,7 @@ function SubmissionsHistory({ data }: { data: StudentAssignmentDetail }) {
   );
 }
 
-/** C-ST-12 — milestone progress stepper. */
+/** C-ST-12 — standalone milestone progress page (full stepper, no submit actions). */
 export function StudentAssignmentMilestonesPage() {
   const params = useParams<{ id?: string }>();
   const assignmentId = params?.id ?? "";
@@ -494,51 +565,83 @@ export function StudentAssignmentMilestonesPage() {
         {data ? (
           data.milestones.length ? (
             <Card>
-              <div
-                className="mb-5 h-2 overflow-hidden rounded-full bg-muted"
-                role="progressbar"
-                aria-label="Milestone progress"
-                aria-valuenow={data.milestones.filter((milestone) => milestone.my_status === "APPROVED").length}
-                aria-valuemin={0}
-                aria-valuemax={data.milestones.length}
-              >
-                <div
-                  className="h-full rounded-full bg-accent transition-all"
-                  style={{
-                    width: `${Math.round(
-                      (data.milestones.filter((milestone) => milestone.my_status === "APPROVED").length / Math.max(1, data.milestones.length)) * 100,
-                    )}%`,
-                  }}
-                />
-              </div>
-              <ol className="relative space-y-6 border-l-2 border-border pl-6">
-                {data.milestones.map((milestone) => {
-                  const approved = milestone.my_status === "APPROVED";
+              {/* Overall progress */}
+              {(() => {
+                const approved = data.milestones.filter((m) => m.my_status === "APPROVED").length;
+                const pct = Math.round((approved / data.milestones.length) * 100);
+                return (
+                  <div className="mb-6">
+                    <div className="mb-1 flex items-center justify-between text-xs font-semibold text-muted-foreground">
+                      <span>{approved} of {data.milestones.length} approved</span>
+                      <span>{pct}%</span>
+                    </div>
+                    <div
+                      className="h-2 overflow-hidden rounded-full bg-muted"
+                      role="progressbar"
+                      aria-label="Milestone progress"
+                      aria-valuenow={approved}
+                      aria-valuemin={0}
+                      aria-valuemax={data.milestones.length}
+                    >
+                      <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Chain */}
+              <ol className="relative">
+                {data.milestones.map((milestone, idx) => {
+                  const isApproved = milestone.my_status === "APPROVED";
+                  const isLocked = !milestone.unlocked;
+                  const isLast = idx === data.milestones.length - 1;
+
                   return (
-                    <li key={milestone.id} className="relative">
-                      <span
-                        className={`absolute -left-[31px] top-0 flex h-5 w-5 items-center justify-center rounded-full border-2 bg-white ${
-                          approved ? "border-success" : milestone.unlocked ? "border-accent" : "border-border"
-                        }`}
-                        aria-hidden="true"
-                      >
-                        {approved ? <span className="h-2 w-2 rounded-full bg-success" /> : null}
-                      </span>
-                      <p className="text-sm font-semibold text-primary">
-                        {milestone.title}
-                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
-                      </p>
-                      {milestone.description ? <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p> : null}
-                      <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
-                        {!milestone.unlocked
-                          ? "🔒 Locked — previous stage not approved yet"
-                          : milestone.my_status
-                            ? `${statusLabel(milestone.my_status)}${milestone.my_score !== null ? ` · scored ${milestone.my_score}/${milestone.marks}` : ""}${
-                                milestone.my_submitted_at ? ` · submitted ${dateTime(milestone.my_submitted_at)}` : ""
-                              }`
-                            : "Unlocked — ready for your submission"}
-                        {milestone.due_date ? ` · due ${dateTime(milestone.due_date)}` : ""}
-                      </p>
+                    <li key={milestone.id} className="flex gap-4">
+                      {/* Connector */}
+                      <div className="flex flex-col items-center">
+                        <div
+                          className={`relative z-10 mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 ${
+                            isApproved
+                              ? "border-success-text bg-success-light text-success-text"
+                              : isLocked
+                                ? "border-border bg-muted text-muted-foreground"
+                                : milestone.my_status
+                                  ? "border-accent bg-accent-light text-accent"
+                                  : "border-accent bg-white text-accent"
+                          }`}
+                        >
+                          {isApproved ? (
+                            <CheckCircle2 className="h-4 w-4" />
+                          ) : isLocked ? (
+                            <Lock className="h-3.5 w-3.5" />
+                          ) : (
+                            <span className="text-xs font-bold">{idx + 1}</span>
+                          )}
+                        </div>
+                        {!isLast && (
+                          <div className={`w-0.5 flex-1 ${isApproved ? "bg-success-text/30" : "bg-border"}`} style={{ minHeight: "1.5rem" }} />
+                        )}
+                      </div>
+
+                      {/* Content */}
+                      <div className={`flex-1 ${isLast ? "pb-0" : "pb-6"}`}>
+                        <p className={`text-sm font-semibold ${isLocked ? "text-muted-foreground" : "text-primary"}`}>
+                          {milestone.title}
+                          <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
+                        </p>
+                        {milestone.description ? (
+                          <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p>
+                        ) : null}
+                        <p className="mt-1 text-[11px] font-medium text-muted-foreground">
+                          {isLocked
+                            ? "🔒 Locked — previous stage not approved yet"
+                            : milestone.my_status
+                              ? `${statusLabel(milestone.my_status)}${milestone.my_score !== null ? ` · scored ${milestone.my_score}/${milestone.marks}` : ""}${milestone.my_submitted_at ? ` · submitted ${dateTime(milestone.my_submitted_at)}` : ""}`
+                              : "Unlocked — ready for your submission"}
+                          {milestone.due_date ? ` · due ${dateTime(milestone.due_date)}` : ""}
+                        </p>
+                      </div>
                     </li>
                   );
                 })}
