@@ -116,13 +116,11 @@ async def revoke_role(
 @router.put("/staff/{user_id}/active", response_model=APIResponseStaffOne)
 async def set_staff_active(
     user_id: uuid.UUID,
-    payload: StaffUpdate,
+    active: bool,
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_tenant_user_admin)],
 ):
-    if payload.is_active is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="is_active is required")
-    data = await InstitutionService.set_staff_active(db, admin.tenant_id, user_id, payload.is_active, actor=admin)
+    data = await InstitutionService.set_user_active(db, admin.tenant_id, user_id, active)
     return APIResponse(success=True, data=data, message="Staff status updated")
 
 

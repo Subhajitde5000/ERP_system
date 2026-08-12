@@ -36,7 +36,8 @@ from app.schemas.setup import (
 from app.utils.security import hash_password
 
 ONBOARDING_KEY = "onboarding"
-DEFAULT_SETUP_PASSWORD = "Setup@12345"  # staff/students get a reset link in real deployments
+DEFAULT_SETUP_PASSWORD = "Setup@12345"  # staff get a reset link in real deployments
+DEFAULT_STUDENT_PASSWORD = "password1232!"
 
 
 class SetupService:
@@ -368,7 +369,7 @@ class SetupService:
                     gender=student.gender,
                     date_of_birth=student.date_of_birth,
                     student_roll_no=student.roll_no,
-                    password_hash=hash_password(DEFAULT_SETUP_PASSWORD),
+                    password_hash=hash_password(DEFAULT_STUDENT_PASSWORD),
                     is_active=True,
                 )
                 db.add(user)

@@ -294,6 +294,12 @@ async def test_staff_invite_student_enroll(real_backend):
     assert sc.status_code == 201, sc.text
     assert sc.json()["data"]["enrollment"]["class_name"] == "PHY-1"
 
+    # verify student can log in using default password password1232!
+    st_login = await client.post("/api/v1/tenant/auth/login", json={
+        "slug": "green", "identifier": "PHY001", "password": "password1232!"})
+    assert st_login.status_code == 200, st_login.text
+    assert "tokens" in st_login.json()["data"]
+
     # duplicate roll number rejected
     dup_s = await client.post("/api/v1/institution/students", headers=h, json={"name": "Duplicate", "roll_no": "PHY001"})
     assert dup_s.status_code == 409
@@ -386,6 +392,11 @@ async def test_students_bulk_upload(real_backend):
     assert {"CHM001", "CHM002"} <= rolls
     by_roll = {s["roll_no"]: s for s in lst.json()["data"]}
     assert by_roll["CHM001"]["enrollment"]["class_name"] == "CHM-1"
+
+    # verify bulk imported student can log in using default password password1232!
+    bulk_st_login = await client.post("/api/v1/tenant/auth/login", json={
+        "slug": "green", "identifier": "CHM001", "password": "password1232!"})
+    assert bulk_st_login.status_code == 200, bulk_st_login.text
 
     # re-uploading an existing roll number → DB duplicate reported per row
     csv2 = "name,roll_no\nRavi Kumar,CHM001\nTom Jose,CHM004\n"
