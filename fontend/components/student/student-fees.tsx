@@ -177,8 +177,8 @@ export function StudentFeesPage() {
 
 /** C-ST-20 — printable / downloadable fee receipt for one recorded payment. */
 export function StudentFeeReceiptPage() {
-  const params = useParams<{ paymentId: string }>();
-  const paymentId = params.paymentId;
+  const params = useParams<{ paymentId?: string }>();
+  const paymentId = params?.paymentId ?? "";
   const { user } = useInstitutionAuth();
   const resource = useResource(fetchStudentFees, []);
   const payment = resource.data?.payments.find((row) => row.id === paymentId) ?? null;

@@ -19,9 +19,12 @@ const STATUS_FILTERS = ["", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "REJECTED",
 
 /** C-TC-15 — every submission for one assignment, with review actions. */
 export function TeacherAssignmentSubmissionsPage() {
-  const params = useParams<{ id: string }>();
-  const assignmentId = params.id;
-  const assignment = useResource(() => fetchTeacherAssignment(assignmentId), [assignmentId]);
+  const params = useParams<{ id?: string }>();
+  const assignmentId = params?.id ?? "";
+  const assignment = useResource(
+    () => (assignmentId ? fetchTeacherAssignment(assignmentId) : Promise.reject(new Error("No assignment ID provided"))),
+    [assignmentId],
+  );
   const [status, setStatus] = useState<string>("");
   const resource = useResource(
     () => fetchTeacherSubmissions({ assignmentId, status: status || undefined, limit: 100 }),
@@ -129,9 +132,12 @@ function submissionStatusClass(status: string): string {
 
 /** C-TC-16 — one submission: files, feedback, score, review history. */
 export function TeacherSubmissionDetailPage() {
-  const params = useParams<{ id: string }>();
-  const submissionId = params.id;
-  const resource = useResource(() => fetchTeacherSubmission(submissionId), [submissionId]);
+  const params = useParams<{ id?: string }>();
+  const submissionId = params?.id ?? "";
+  const resource = useResource(
+    () => (submissionId ? fetchTeacherSubmission(submissionId) : Promise.reject(new Error("No submission ID provided"))),
+    [submissionId],
+  );
   const [form, setForm] = useState({ decision: "APPROVED" as TeacherReviewDecision, score: "", feedback: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

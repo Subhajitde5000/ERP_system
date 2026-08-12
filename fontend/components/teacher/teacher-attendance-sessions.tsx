@@ -130,9 +130,12 @@ export function TeacherAttendanceSessionsPage() {
 
 /** C-TC-05 — one session's records; editable until locked. */
 export function TeacherAttendanceSessionDetailPage() {
-  const params = useParams<{ id: string }>();
-  const sessionId = params.id;
-  const resource = useResource(() => fetchAttendanceSession(sessionId), [sessionId]);
+  const params = useParams<{ id?: string }>();
+  const sessionId = params?.id ?? "";
+  const resource = useResource(
+    () => (sessionId ? fetchAttendanceSession(sessionId) : Promise.reject(new Error("No session ID provided"))),
+    [sessionId],
+  );
   const [busy, setBusy] = useState(false);
   const [lockError, setLockError] = useState<string | null>(null);
 

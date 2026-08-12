@@ -168,9 +168,12 @@ function ResultBody({ result, gradeCardHref }: { result: StudentResultDetail; gr
 
 /** C-ST-16 — subject-wise breakdown for one published result. */
 export function StudentResultDetailPage() {
-  const params = useParams<{ id: string }>();
-  const publicationId = params.id;
-  const resource = useResource(() => fetchStudentResult(publicationId), [publicationId]);
+  const params = useParams<{ id?: string }>();
+  const publicationId = params?.id ?? "";
+  const resource = useResource(
+    () => (publicationId ? fetchStudentResult(publicationId) : Promise.reject(new Error("No publication ID provided"))),
+    [publicationId],
+  );
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -184,10 +187,13 @@ export function StudentResultDetailPage() {
 
 /** C-ST-17 — printable / downloadable grade card. */
 export function StudentGradeCardPage() {
-  const params = useParams<{ id: string }>();
-  const publicationId = params.id;
+  const params = useParams<{ id?: string }>();
+  const publicationId = params?.id ?? "";
   const { user } = useInstitutionAuth();
-  const resource = useResource(() => fetchGradeCard(publicationId), [publicationId]);
+  const resource = useResource(
+    () => (publicationId ? fetchGradeCard(publicationId) : Promise.reject(new Error("No publication ID provided"))),
+    [publicationId],
+  );
 
   useEffect(() => {
     document.title = resource.data ? `Grade card — ${resource.data.title}` : "Grade card";

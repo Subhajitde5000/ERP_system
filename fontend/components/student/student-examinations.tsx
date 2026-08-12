@@ -141,10 +141,13 @@ function formatClock(totalSeconds: number): string {
 
 /** C-ST-08 — timed exam-attempt screen with autosave and a countdown. */
 export function StudentExamAttemptPage() {
-  const params = useParams<{ id: string }>();
-  const examId = params.id;
+  const params = useParams<{ id?: string }>();
+  const examId = params?.id ?? "";
   const router = useRouter();
-  const exam = useResource(() => fetchStudentExam(examId), [examId]);
+  const exam = useResource(
+    () => (examId ? fetchStudentExam(examId) : Promise.reject(new Error("No exam ID provided"))),
+    [examId],
+  );
   const [started, setStarted] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [startBusy, setStartBusy] = useState(false);
@@ -423,9 +426,12 @@ function AnswerTextarea({ question, onSave }: { question: StudentAttemptQuestion
 
 /** C-ST-09 — score, grade and answer-key review for a released result. */
 export function StudentExamResultPage() {
-  const params = useParams<{ id: string }>();
-  const examId = params.id;
-  const resource = useResource(() => fetchExamResult(examId), [examId]);
+  const params = useParams<{ id?: string }>();
+  const examId = params?.id ?? "";
+  const resource = useResource(
+    () => (examId ? fetchExamResult(examId) : Promise.reject(new Error("No exam ID provided"))),
+    [examId],
+  );
 
   return (
     <div className="mx-auto max-w-3xl">

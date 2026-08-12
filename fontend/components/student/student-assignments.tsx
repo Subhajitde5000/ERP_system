@@ -119,9 +119,12 @@ function myStatusClass(status: string): string {
 
 /** C-ST-11 — brief, milestones, submit/resubmit with files. */
 export function StudentAssignmentDetailPage() {
-  const params = useParams<{ id: string }>();
-  const assignmentId = params.id;
-  const resource = useResource(() => fetchStudentAssignment(assignmentId), [assignmentId]);
+  const params = useParams<{ id?: string }>();
+  const assignmentId = params?.id ?? "";
+  const resource = useResource(
+    () => (assignmentId ? fetchStudentAssignment(assignmentId) : Promise.reject(new Error("No assignment ID provided"))),
+    [assignmentId],
+  );
   const [submitFor, setSubmitFor] = useState<string | null | undefined>(undefined); // undefined = closed, null = whole assignment
   const data = resource.data;
 
@@ -468,9 +471,12 @@ function SubmissionsHistory({ data }: { data: StudentAssignmentDetail }) {
 
 /** C-ST-12 — milestone progress stepper. */
 export function StudentAssignmentMilestonesPage() {
-  const params = useParams<{ id: string }>();
-  const assignmentId = params.id;
-  const resource = useResource(() => fetchStudentAssignment(assignmentId), [assignmentId]);
+  const params = useParams<{ id?: string }>();
+  const assignmentId = params?.id ?? "";
+  const resource = useResource(
+    () => (assignmentId ? fetchStudentAssignment(assignmentId) : Promise.reject(new Error("No assignment ID provided"))),
+    [assignmentId],
+  );
   const data = resource.data;
 
   return (

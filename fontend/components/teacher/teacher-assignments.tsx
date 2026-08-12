@@ -305,9 +305,12 @@ export function TeacherCreateAssignmentPage() {
 
 /** C-TC-14 — edit an assignment, manage milestones, publish / close. */
 export function TeacherAssignmentDetailPage() {
-  const params = useParams<{ id: string }>();
-  const assignmentId = params.id;
-  const resource = useResource(() => fetchTeacherAssignment(assignmentId), [assignmentId]);
+  const params = useParams<{ id?: string }>();
+  const assignmentId = params?.id ?? "";
+  const resource = useResource(
+    () => (assignmentId ? fetchTeacherAssignment(assignmentId) : Promise.reject(new Error("No assignment ID provided"))),
+    [assignmentId],
+  );
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const data = resource.data;
