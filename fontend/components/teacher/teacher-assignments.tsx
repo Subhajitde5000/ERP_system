@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Ban, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { Ban, Pencil, Plus, RotateCcw, Send, Trash2 } from "lucide-react";
 
 import { Card, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
@@ -16,6 +16,7 @@ import {
   fetchTeacherAssignments,
   fetchTeachingAssignments,
   publishTeacherAssignment,
+  reopenTeacherAssignment,
   updateAssignmentMilestone,
   updateTeacherAssignment,
 } from "@/lib/teacher";
@@ -360,6 +361,16 @@ export function TeacherAssignmentDetailPage() {
                   className="inline-flex h-10 items-center gap-2 rounded-field border border-warning-border px-4 text-sm font-semibold text-warning-text transition hover:bg-warning-light disabled:opacity-60"
                 >
                   <Ban className="h-4 w-4" /> {busy === "close" ? "Closing…" : "Close"}
+                </button>
+              ) : null}
+              {resource.data.status === "CLOSED" ? (
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => run("reopen", () => reopenTeacherAssignment(assignmentId))}
+                  className="inline-flex h-10 items-center gap-2 rounded-field bg-accent px-4 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover disabled:opacity-60"
+                >
+                  <RotateCcw className="h-4 w-4" /> {busy === "reopen" ? "Reopening…" : "Reopen assignment"}
                 </button>
               ) : null}
             </div>

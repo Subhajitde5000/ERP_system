@@ -2656,6 +2656,10 @@ class TeacherService:
             if state != AssignmentStatus.DRAFT.value:
                 raise HTTPException(status.HTTP_409_CONFLICT, detail="Only drafts can be published")
             assignment.status = AssignmentStatus.PUBLISHED
+        elif action == "reopen":
+            if state != AssignmentStatus.CLOSED.value:
+                raise HTTPException(status.HTTP_409_CONFLICT, detail="Only closed assignments can be reopened")
+            assignment.status = AssignmentStatus.PUBLISHED
         else:
             if state != AssignmentStatus.PUBLISHED.value:
                 raise HTTPException(status.HTTP_409_CONFLICT, detail="Only published assignments can be closed")

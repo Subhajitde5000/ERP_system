@@ -659,6 +659,9 @@ export const publishTeacherAssignment = (assignmentId: string) =>
 export const closeTeacherAssignment = (assignmentId: string) =>
   call<TeacherAssignmentDetail>(`/assignments/${assignmentId}/close`, { method: "POST" });
 
+export const reopenTeacherAssignment = (assignmentId: string) =>
+  call<TeacherAssignmentDetail>(`/assignments/${assignmentId}/reopen`, { method: "POST" });
+
 export const addAssignmentMilestone = (assignmentId: string, payload: TeacherMilestoneIn) =>
   call<TeacherAssignmentDetail>(`/assignments/${assignmentId}/milestones`, jsonInit("POST", payload));
 

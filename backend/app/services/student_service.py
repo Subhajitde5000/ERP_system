@@ -1515,10 +1515,10 @@ class StudentService:
                 )
             ).scalar_one()
             state = _value(latest.status) or "SUBMITTED"
-            if state not in (SubmissionStatus.RESUBMIT_REQUESTED.value, SubmissionStatus.REJECTED.value):
+            if state == SubmissionStatus.APPROVED.value:
                 raise HTTPException(
                     status.HTTP_409_CONFLICT,
-                    detail="You already submitted; resubmission opens only when the teacher requests changes",
+                    detail="This submission has already been approved and cannot be resubmitted",
                 )
             if state == SubmissionStatus.REJECTED.value:
                 raise HTTPException(status.HTTP_409_CONFLICT, detail="This submission was rejected")
