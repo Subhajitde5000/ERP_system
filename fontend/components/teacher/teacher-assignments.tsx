@@ -27,6 +27,7 @@ const STATUS_FILTERS = ["", "DRAFT", "PUBLISHED", "CLOSED"] as const;
 /** C-TC-12 — every assignment this teacher created. */
 export function TeacherAssignmentsPage() {
   const [status, setStatus] = useState<string>("");
+  const [busyPublishId, setBusyPublishId] = useState<string | null>(null);
   const resource = useResource(
     () => fetchTeacherAssignments({ status: status || undefined, limit: 100 }),
     [status],
@@ -109,9 +110,31 @@ export function TeacherAssignmentsPage() {
                           </span>
                         </td>
                         <td className="px-5 py-3 text-right">
-                          <Link href={`/teacher/assignments/${assignment.id}`} className="text-xs font-semibold text-accent hover:underline">
-                            {assignment.status === "DRAFT" ? "Edit" : "Open"}
-                          </Link>
+                          <div className="flex items-center justify-end gap-2">
+                            {assignment.status === "DRAFT" ? (
+                              <button
+                                type="button"
+                                disabled={busyPublishId === assignment.id}
+                                onClick={async () => {
+                                  setBusyPublishId(assignment.id);
+                                  try {
+                                    await publishTeacherAssignment(assignment.id);
+                                    await resource.reload();
+                                  } catch (err) {
+                                    alert(err instanceof Error ? err.message : "Could not publish assignment");
+                                  } finally {
+                                    setBusyPublishId(null);
+                                  }
+                                }}
+                                className="inline-flex h-7 items-center gap-1 rounded-field bg-accent px-2.5 text-xs font-semibold text-white shadow-accent hover:bg-accent-hover disabled:opacity-60"
+                              >
+                                <Send className="h-3 w-3" /> {busyPublishId === assignment.id ? "Publishing…" : "Publish"}
+                              </button>
+                            ) : null}
+                            <Link href={`/teacher/assignments/${assignment.id}`} className="text-xs font-semibold text-accent hover:underline">
+                              {assignment.status === "DRAFT" ? "Edit" : "Open"}
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -381,6 +404,22 @@ export function TeacherAssignmentDetailPage() {
       <AsyncState loading={resource.loading} error={resource.error} onRetry={resource.reload} loadingLabel="Loading assignment…">
         {data ? (
           <div className="space-y-5">
+            {data.status === "DRAFT" ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-field border border-warning-border/40 bg-warning-light/40 p-4 text-warning-text">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Send className="h-4 w-4 text-warning-text" />
+                  <span>This assignment is in <strong>Draft mode</strong> and is not visible to students yet.</span>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => run("publish", () => publishTeacherAssignment(assignmentId))}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-field bg-accent px-4 text-xs font-semibold text-white shadow-accent transition hover:bg-accent-hover disabled:opacity-60"
+                >
+                  <Send className="h-3.5 w-3.5" /> {busy === "publish" ? "Publishing…" : "Publish Assignment"}
+                </button>
+              </div>
+            ) : null}
             <Card>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="font-display text-base font-bold text-primary">Details</h2>
