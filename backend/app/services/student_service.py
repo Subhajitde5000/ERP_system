@@ -694,37 +694,55 @@ class StudentService:
         ctx = await StudentService.context_for_user(db, student)
         tenant_id = student.tenant_id
         now = datetime.now(timezone.utc)
-        clauses = [
+        if when not in (None, "", "all", "upcoming", "completed"):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="when must be upcoming, completed or all")
+
+        base_clauses = [
             Exam.tenant_id == tenant_id,
             Exam.class_id == ctx.school_class.id,
             Exam.status.in_((ExamStatus.PUBLISHED, ExamStatus.ONGOING, ExamStatus.COMPLETED, ExamStatus.RESULTS_RELEASED)),
         ]
-        if when == "upcoming":
-            clauses.append(Exam.scheduled_at >= now)
-        elif when == "completed":
-            clauses.append(or_(Exam.scheduled_at < now, Exam.status.in_((ExamStatus.COMPLETED, ExamStatus.RESULTS_RELEASED))))
-        elif when not in (None, "all"):
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="when must be upcoming, completed or all")
-        total = (await db.execute(select(func.count(Exam.id)).where(*clauses))).scalar() or 0
-        rows = (
+        all_rows = (
             await db.execute(
                 select(Exam, Subject)
                 .join(Subject, Subject.id == Exam.subject_id)
-                .where(*clauses)
+                .where(*base_clauses)
                 .order_by(Exam.scheduled_at.desc())
-                .limit(limit)
-                .offset(offset)
             )
         ).all()
-        attempts = await StudentService._attempts_by_exam(db, tenant_id, student.id, [exam.id for exam, _s in rows])
+        attempts = await StudentService._attempts_by_exam(db, tenant_id, student.id, [exam.id for exam, _s in all_rows])
+
+        filtered_items: list[StudentExamRow] = []
+        for exam, subject in all_rows:
+            attempt = attempts.get(exam.id)
+            row = StudentService._exam_row(exam, subject, attempt, now)
+
+            window_end = exam.window_end_at or (exam.scheduled_at + timedelta(minutes=exam.duration_minutes))
+            has_submitted = attempt is not None and _value(attempt.status) in (
+                AttemptStatus.SUBMITTED.value,
+                AttemptStatus.GRADED.value,
+                AttemptStatus.MALPRACTICE.value,
+            )
+            is_past = (
+                now > window_end
+                or _value(exam.status) in (ExamStatus.COMPLETED.value, ExamStatus.RESULTS_RELEASED.value)
+                or has_submitted
+            )
+
+            if when == "upcoming" and is_past:
+                continue
+            if when == "completed" and not is_past:
+                continue
+
+            filtered_items.append(row)
+
+        total = len(filtered_items)
+        paged_items = filtered_items[offset : offset + limit]
         return StudentExamPage(
-            total=int(total),
+            total=total,
             limit=limit,
             offset=offset,
-            items=[
-                StudentService._exam_row(exam, subject, attempts.get(exam.id), now)
-                for exam, subject in rows
-            ],
+            items=paged_items,
         )
 
     @staticmethod
@@ -760,6 +778,12 @@ class StudentService:
             and attempt is None
             and exam.scheduled_at <= now <= window_end
         )
+        my_attempt_status = _value(attempt.status) if attempt else None
+        if (attempt is None or my_attempt_status == AttemptStatus.NOT_STARTED.value) and (
+            now > window_end or state in (ExamStatus.COMPLETED.value, ExamStatus.RESULTS_RELEASED.value)
+        ):
+            my_attempt_status = "NOT_ATTEMPTED"
+
         return StudentExamRow(
             id=exam.id,
             title=exam.title,
@@ -773,7 +797,7 @@ class StudentService:
             scheduled_at=exam.scheduled_at,
             window_end_at=exam.window_end_at,
             status=state,
-            my_attempt_status=_value(attempt.status) if attempt else None,
+            my_attempt_status=my_attempt_status,
             my_score=float(attempt.total_score) if attempt and attempt.total_score is not None and result_available else None,
             can_attempt=can_attempt,
             result_available=result_available,
@@ -1152,7 +1176,11 @@ class StudentService:
             AttemptStatus.SUBMITTED.value,
             AttemptStatus.GRADED.value,
         )
-        if not (released or immediate):
+        review_allowed = exam.allow_review and _value(attempt.status) in (
+            AttemptStatus.SUBMITTED.value,
+            AttemptStatus.GRADED.value,
+        )
+        if not (released or immediate or review_allowed):
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Results are not released yet")
         show_answers = released or exam.allow_review
         answers: list[StudentResultAnswer] = []
@@ -1515,10 +1543,10 @@ class StudentService:
                 )
             ).scalar_one()
             state = _value(latest.status) or "SUBMITTED"
-            if state not in (SubmissionStatus.RESUBMIT_REQUESTED.value, SubmissionStatus.REJECTED.value):
+            if state == SubmissionStatus.APPROVED.value:
                 raise HTTPException(
                     status.HTTP_409_CONFLICT,
-                    detail="You already submitted; resubmission opens only when the teacher requests changes",
+                    detail="This submission has already been approved and cannot be resubmitted",
                 )
             if state == SubmissionStatus.REJECTED.value:
                 raise HTTPException(status.HTTP_409_CONFLICT, detail="This submission was rejected")

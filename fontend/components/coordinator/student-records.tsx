@@ -244,6 +244,9 @@ export function StudentRecordsPage({ isAdmin = false }: { isAdmin?: boolean }) {
             </button>
           </div>
           <form onSubmit={handleBulkUpload} className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Required headers: <code className="rounded bg-muted px-1 font-mono">name, roll_no</code>. Optional: <code className="rounded bg-muted px-1 font-mono">email, gender, date_of_birth, class_code</code>. Default initial password: <code className="rounded bg-muted px-1 font-mono text-primary font-bold">password1232!</code>
+            </p>
             <div className="flex flex-wrap items-center gap-4">
               <input
                 type="file"
@@ -289,7 +292,10 @@ export function StudentRecordsPage({ isAdmin = false }: { isAdmin?: boolean }) {
       {adding && (
         <Card className="mb-6">
           <div className="flex items-center justify-between border-b border-border pb-3 mb-4">
-            <h3 className="font-display font-bold text-primary">Add New Student</h3>
+            <div>
+              <h3 className="font-display font-bold text-primary">Add New Student</h3>
+              <p className="text-xs text-muted-foreground">Default password: <code className="rounded bg-muted px-1 font-mono text-primary font-bold">password1232!</code></p>
+            </div>
             <button type="button" onClick={() => setAdding(false)} className="text-muted-foreground hover:text-foreground">
               <X className="h-4 w-4" />
             </button>

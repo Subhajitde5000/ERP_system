@@ -56,6 +56,7 @@ from app.schemas.teacher import (
     TeacherGradeSubmission,
     TeacherLeaveReview,
     TeacherMilestoneIn,
+    TeacherMilestoneUpdateIn,
     TeacherNoticeCreate,
     TeacherQuestionBankImportIn,
     TeacherQuestionBankItemIn,
@@ -570,6 +571,19 @@ async def close_assignment(
     )
 
 
+@router.post("/assignments/{assignment_id}/reopen", response_model=APIResponseTeacherAssignment)
+async def reopen_assignment(
+    assignment_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_tenant_user_teacher)],
+):
+    return APIResponse(
+        success=True,
+        data=await TeacherService.transition_assignment(db, teacher, assignment_id, "reopen"),
+        message="Assignment reopened",
+    )
+
+
 @router.post("/assignments/{assignment_id}/milestones", response_model=APIResponseTeacherAssignment, status_code=status.HTTP_201_CREATED)
 async def add_milestone(
     assignment_id: uuid.UUID,
@@ -595,6 +609,21 @@ async def delete_milestone(
         success=True,
         data=await TeacherService.delete_milestone(db, teacher, assignment_id, milestone_id),
         message="Milestone removed",
+    )
+
+
+@router.patch("/assignments/{assignment_id}/milestones/{milestone_id}", response_model=APIResponseTeacherAssignment)
+async def update_milestone(
+    assignment_id: uuid.UUID,
+    milestone_id: uuid.UUID,
+    payload: TeacherMilestoneUpdateIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_tenant_user_teacher)],
+):
+    return APIResponse(
+        success=True,
+        data=await TeacherService.update_milestone(db, teacher, assignment_id, milestone_id, payload),
+        message="Milestone updated",
     )
 
 

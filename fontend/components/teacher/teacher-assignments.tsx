@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Ban, Plus, Send, Trash2 } from "lucide-react";
+import { Ban, Pencil, Plus, RotateCcw, Send, Trash2 } from "lucide-react";
 
-import { Card, EmptyState, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
+import { Card, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
 import {
   addAssignmentMilestone,
@@ -16,6 +16,8 @@ import {
   fetchTeacherAssignments,
   fetchTeachingAssignments,
   publishTeacherAssignment,
+  reopenTeacherAssignment,
+  updateAssignmentMilestone,
   updateTeacherAssignment,
 } from "@/lib/teacher";
 import { AsyncState, EmptyTable, dateTime, statusLabel } from "@/components/principal/principal-ui";
@@ -25,6 +27,7 @@ const STATUS_FILTERS = ["", "DRAFT", "PUBLISHED", "CLOSED"] as const;
 /** C-TC-12 — every assignment this teacher created. */
 export function TeacherAssignmentsPage() {
   const [status, setStatus] = useState<string>("");
+  const [busyPublishId, setBusyPublishId] = useState<string | null>(null);
   const resource = useResource(
     () => fetchTeacherAssignments({ status: status || undefined, limit: 100 }),
     [status],
@@ -107,9 +110,31 @@ export function TeacherAssignmentsPage() {
                           </span>
                         </td>
                         <td className="px-5 py-3 text-right">
-                          <Link href={`/teacher/assignments/${assignment.id}`} className="text-xs font-semibold text-accent hover:underline">
-                            {assignment.status === "DRAFT" ? "Edit" : "Open"}
-                          </Link>
+                          <div className="flex items-center justify-end gap-2">
+                            {assignment.status === "DRAFT" ? (
+                              <button
+                                type="button"
+                                disabled={busyPublishId === assignment.id}
+                                onClick={async () => {
+                                  setBusyPublishId(assignment.id);
+                                  try {
+                                    await publishTeacherAssignment(assignment.id);
+                                    await resource.reload();
+                                  } catch (err) {
+                                    alert(err instanceof Error ? err.message : "Could not publish assignment");
+                                  } finally {
+                                    setBusyPublishId(null);
+                                  }
+                                }}
+                                className="inline-flex h-7 items-center gap-1 rounded-field bg-accent px-2.5 text-xs font-semibold text-white shadow-accent hover:bg-accent-hover disabled:opacity-60"
+                              >
+                                <Send className="h-3 w-3" /> {busyPublishId === assignment.id ? "Publishing…" : "Publish"}
+                              </button>
+                            ) : null}
+                            <Link href={`/teacher/assignments/${assignment.id}`} className="text-xs font-semibold text-accent hover:underline">
+                              {assignment.status === "DRAFT" ? "Edit" : "Open"}
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -305,9 +330,12 @@ export function TeacherCreateAssignmentPage() {
 
 /** C-TC-14 — edit an assignment, manage milestones, publish / close. */
 export function TeacherAssignmentDetailPage() {
-  const params = useParams<{ id: string }>();
-  const assignmentId = params.id;
-  const resource = useResource(() => fetchTeacherAssignment(assignmentId), [assignmentId]);
+  const params = useParams<{ id?: string }>();
+  const assignmentId = params?.id ?? "";
+  const resource = useResource(
+    () => (assignmentId ? fetchTeacherAssignment(assignmentId) : Promise.reject(new Error("No assignment ID provided"))),
+    [assignmentId],
+  );
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const data = resource.data;
@@ -358,6 +386,16 @@ export function TeacherAssignmentDetailPage() {
                   <Ban className="h-4 w-4" /> {busy === "close" ? "Closing…" : "Close"}
                 </button>
               ) : null}
+              {resource.data.status === "CLOSED" ? (
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => run("reopen", () => reopenTeacherAssignment(assignmentId))}
+                  className="inline-flex h-10 items-center gap-2 rounded-field bg-accent px-4 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover disabled:opacity-60"
+                >
+                  <RotateCcw className="h-4 w-4" /> {busy === "reopen" ? "Reopening…" : "Reopen assignment"}
+                </button>
+              ) : null}
             </div>
           ) : undefined
         }
@@ -366,6 +404,22 @@ export function TeacherAssignmentDetailPage() {
       <AsyncState loading={resource.loading} error={resource.error} onRetry={resource.reload} loadingLabel="Loading assignment…">
         {data ? (
           <div className="space-y-5">
+            {data.status === "DRAFT" ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-field border border-warning-border/40 bg-warning-light/40 p-4 text-warning-text">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Send className="h-4 w-4 text-warning-text" />
+                  <span>This assignment is in <strong>Draft mode</strong> and is not visible to students yet.</span>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => run("publish", () => publishTeacherAssignment(assignmentId))}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-field bg-accent px-4 text-xs font-semibold text-white shadow-accent transition hover:bg-accent-hover disabled:opacity-60"
+                >
+                  <Send className="h-3.5 w-3.5" /> {busy === "publish" ? "Publishing…" : "Publish Assignment"}
+                </button>
+              </div>
+            ) : null}
             <Card>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="font-display text-base font-bold text-primary">Details</h2>
@@ -457,7 +511,7 @@ export function TeacherAssignmentDetailPage() {
             <MilestonesCard
               assignmentId={assignmentId}
               milestones={data.milestones}
-              editable={data.status === "DRAFT"}
+              editable={data.status !== "CLOSED"}
               onChanged={(detail) => resource.setData({ ...data, ...detail })}
             />
           </div>
@@ -524,43 +578,186 @@ function MilestonesCard({
     }
   }
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ title: "", description: "", marks: "10", due_date: "" });
+
+  function startEditing(milestone: (typeof milestones)[number]) {
+    setEditingId(milestone.id);
+    setEditForm({
+      title: milestone.title,
+      description: milestone.description ?? "",
+      marks: String(milestone.marks),
+      due_date: toDatetimeLocal(milestone.due_date),
+    });
+  }
+
+  async function saveEdit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const detail = await updateAssignmentMilestone(assignmentId, editingId, {
+        title: editForm.title.trim(),
+        description: editForm.description.trim() || null,
+        marks: Number(editForm.marks),
+        due_date: editForm.due_date ? new Date(editForm.due_date).toISOString() : null,
+      });
+      onChanged(detail);
+      setEditingId(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update this milestone.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Card>
-      <h2 className="font-display text-base font-bold text-primary">Milestones</h2>
-      <p className="mt-1 text-xs text-muted-foreground">Stages unlock in order; students submit against each stage.</p>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-display text-base font-bold text-primary">Milestones</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Stages unlock in order; students submit against each stage.</p>
+        </div>
+        {milestones.length ? (
+          <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">{milestones.length} stages</span>
+        ) : null}
+      </div>
+
       {milestones.length ? (
-        <ol className="mt-4 space-y-2">
-          {milestones.map((milestone) => (
-            <li key={milestone.id} className="flex items-start justify-between gap-3 rounded-field border border-border p-3">
-              <div>
-                <p className="text-sm font-semibold text-primary">
-                  {milestone.sort_order + 1}. {milestone.title}
-                  <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
-                </p>
-                {milestone.description ? <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p> : null}
-                {milestone.due_date ? <p className="mt-1 text-[11px] text-muted-foreground">Due {dateTime(milestone.due_date)}</p> : null}
-              </div>
-              {editable ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => remove(milestone.id)}
-                  aria-label={`Remove milestone ${milestone.title}`}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-field border border-border text-muted-foreground hover:border-destructive-border hover:text-destructive-text disabled:opacity-60"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-            </li>
-          ))}
+        <ol className="relative">
+          {milestones.map((milestone, idx) => {
+            const isLast = idx === milestones.length - 1;
+            const isEditing = editingId === milestone.id;
+
+            return (
+              <li key={milestone.id} className="flex gap-4">
+                {/* Connector column */}
+                <div className="flex flex-col items-center">
+                  <div className="relative z-10 mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-accent bg-accent-light text-accent">
+                    <span className="text-xs font-bold">{idx + 1}</span>
+                  </div>
+                  {!isLast && <div className="w-0.5 flex-1 bg-border" style={{ minHeight: "1.5rem" }} />}
+                </div>
+
+                {/* Content */}
+                <div className={`flex-1 ${isLast ? "pb-0" : "pb-5"}`}>
+                  {isEditing ? (
+                    <form onSubmit={saveEdit} className="space-y-3 rounded-field border border-accent bg-accent-light/10 p-3">
+                      <p className="text-xs font-bold text-accent">Edit Stage {idx + 1}</p>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="sm:col-span-2">
+                          <label htmlFor={`edit-stage-title-${milestone.id}`} className={labelClass}>Stage title</label>
+                          <input
+                            id={`edit-stage-title-${milestone.id}`}
+                            className={inputClass}
+                            maxLength={255}
+                            value={editForm.title}
+                            onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor={`edit-stage-marks-${milestone.id}`} className={labelClass}>Marks</label>
+                          <input
+                            id={`edit-stage-marks-${milestone.id}`}
+                            type="number"
+                            min={0}
+                            max={1000}
+                            className={inputClass}
+                            value={editForm.marks}
+                            onChange={(e) => setEditForm({ ...editForm, marks: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label htmlFor={`edit-stage-due-${milestone.id}`} className={labelClass}>Due date (optional)</label>
+                          <input
+                            id={`edit-stage-due-${milestone.id}`}
+                            type="datetime-local"
+                            className={inputClass}
+                            value={editForm.due_date}
+                            onChange={(e) => setEditForm({ ...editForm, due_date: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor={`edit-stage-desc-${milestone.id}`} className={labelClass}>Description (optional)</label>
+                          <input
+                            id={`edit-stage-desc-${milestone.id}`}
+                            className={inputClass}
+                            maxLength={5000}
+                            value={editForm.description}
+                            onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="inline-flex h-8 items-center rounded-field bg-accent px-3 text-xs font-semibold text-white transition hover:bg-accent-hover disabled:opacity-60"
+                        >
+                          Save stage
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                          className="inline-flex h-8 items-center rounded-field border border-border px-3 text-xs font-semibold text-muted-foreground hover:border-accent hover:text-accent"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="flex items-start justify-between gap-3 rounded-field border border-border p-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-primary">
+                          {milestone.title}
+                          <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
+                        </p>
+                        {milestone.description ? <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p> : null}
+                        {milestone.due_date ? <p className="mt-1 text-[11px] text-muted-foreground">Due {dateTime(milestone.due_date)}</p> : null}
+                      </div>
+                      {editable ? (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => startEditing(milestone)}
+                            aria-label={`Edit milestone ${milestone.title}`}
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-field border border-border text-muted-foreground hover:border-accent hover:text-accent disabled:opacity-60"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => remove(milestone.id)}
+                            aria-label={`Remove milestone ${milestone.title}`}
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-field border border-border text-muted-foreground hover:border-destructive-border hover:text-destructive-text disabled:opacity-60"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ol>
       ) : (
-        <div className="mt-4">
-          <EmptyState text="No milestones — this is a single-submission assignment." />
+        <div className="mt-2 rounded-field border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+          No milestones yet — add stages below, or leave empty for a single-submission assignment.
         </div>
       )}
+
       {editable ? (
         <form onSubmit={add} className="mt-4 space-y-3 border-t border-border pt-4">
+          <p className="text-xs font-semibold text-muted-foreground">Add next stage</p>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="sm:col-span-2">
               <label htmlFor="milestone-title" className={labelClass}>Milestone title</label>
@@ -583,7 +780,7 @@ function MilestonesCard({
           </div>
           {error ? <p role="alert" className="text-sm text-destructive-text">{error}</p> : null}
           <button type="submit" disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-field border border-border px-4 text-sm font-semibold text-primary hover:border-accent hover:text-accent disabled:opacity-60">
-            <Plus className="h-4 w-4" /> {busy ? "Adding…" : "Add milestone"}
+            <Plus className="h-4 w-4" /> {busy ? "Adding…" : "Add stage"}
           </button>
         </form>
       ) : null}

@@ -129,9 +129,12 @@ export function StudentContentPage() {
 
 /** C-ST-14 — inline viewer (video/image) or open/download for the rest. View is logged server-side. */
 export function StudentContentPlayerPage() {
-  const params = useParams<{ id: string }>();
-  const contentId = params.id;
-  const resource = useResource(() => fetchStudentContentItem(contentId), [contentId]);
+  const params = useParams<{ id?: string }>();
+  const contentId = params?.id ?? "";
+  const resource = useResource(
+    () => (contentId ? fetchStudentContentItem(contentId) : Promise.reject(new Error("No content ID provided"))),
+    [contentId],
+  );
   const item = resource.data;
 
   return (

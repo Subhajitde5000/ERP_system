@@ -596,6 +596,8 @@ export interface TeacherMilestoneIn {
   unlock_after_milestone_id?: string | null;
 }
 
+export type TeacherMilestoneUpdateIn = Partial<Omit<TeacherMilestoneIn, "unlock_after_milestone_id">>;
+
 export interface TeacherMilestoneOut {
   id: string;
   title: string;
@@ -657,8 +659,14 @@ export const publishTeacherAssignment = (assignmentId: string) =>
 export const closeTeacherAssignment = (assignmentId: string) =>
   call<TeacherAssignmentDetail>(`/assignments/${assignmentId}/close`, { method: "POST" });
 
+export const reopenTeacherAssignment = (assignmentId: string) =>
+  call<TeacherAssignmentDetail>(`/assignments/${assignmentId}/reopen`, { method: "POST" });
+
 export const addAssignmentMilestone = (assignmentId: string, payload: TeacherMilestoneIn) =>
   call<TeacherAssignmentDetail>(`/assignments/${assignmentId}/milestones`, jsonInit("POST", payload));
+
+export const updateAssignmentMilestone = (assignmentId: string, milestoneId: string, payload: TeacherMilestoneUpdateIn) =>
+  call<TeacherAssignmentDetail>(`/assignments/${assignmentId}/milestones/${milestoneId}`, jsonInit("PATCH", payload));
 
 export const deleteAssignmentMilestone = (assignmentId: string, milestoneId: string) =>
   call<TeacherAssignmentDetail>(`/assignments/${assignmentId}/milestones/${milestoneId}`, { method: "DELETE" });
@@ -672,6 +680,7 @@ export interface TeacherSubmissionRow {
   roll_number: string | null;
   milestone_id: string | null;
   milestone_title: string | null;
+  milestone_marks: number | null;
   submitted_at: string;
   is_late: boolean;
   late_by_minutes: number | null;

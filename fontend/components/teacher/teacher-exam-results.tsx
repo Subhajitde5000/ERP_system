@@ -95,7 +95,15 @@ export function TeacherExamResultsPage() {
                           <span className="block text-[11px] font-normal text-muted-foreground">{attempt.roll_number ?? "No roll number"}</span>
                         </td>
                         <td className="px-5 py-3">
-                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${attempt.status === "IN_PROGRESS" ? "bg-accent-light text-accent" : attempt.status === "MALPRACTICE" ? "bg-destructive-light text-destructive-text" : "bg-muted text-muted-foreground"}`}>
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                            attempt.status === "GRADED"
+                              ? "bg-success-light text-success-text"
+                              : attempt.status === "IN_PROGRESS"
+                              ? "bg-accent-light text-accent"
+                              : attempt.status === "MALPRACTICE" || attempt.status === "NOT_ATTEMPTED"
+                              ? "bg-destructive-light text-destructive-text"
+                              : "bg-muted text-muted-foreground"
+                          }`}>
                             {statusLabel(attempt.status)}
                           </span>
                         </td>

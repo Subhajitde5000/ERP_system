@@ -229,9 +229,12 @@ function ThreadComposer({
 
 /** C-TC-22 — one thread: replies, accept answer, pin / lock / delete. */
 export function TeacherThreadDetailPage() {
-  const params = useParams<{ id: string }>();
-  const threadId = params.id;
-  const resource = useResource(() => fetchTeacherThread(threadId), [threadId]);
+  const params = useParams<{ id?: string }>();
+  const threadId = params?.id ?? "";
+  const resource = useResource(
+    () => (threadId ? fetchTeacherThread(threadId) : Promise.reject(new Error("No thread ID provided"))),
+    [threadId],
+  );
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);

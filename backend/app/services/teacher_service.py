@@ -44,6 +44,7 @@ from app.models.lms import (
     ContentItem,
     ContentKind,
     ContentTag,
+    DifficultyLevel,
     DiscussionReply,
     LeaveStatus,
     Milestone,
@@ -99,6 +100,7 @@ from app.schemas.teacher import (
     TeacherLeaveRow,
     TeacherMilestoneIn,
     TeacherMilestoneOut,
+    TeacherMilestoneUpdateIn,
     TeacherNoticeCreate,
     TeacherNoticePage,
     TeacherNoticeRow,
@@ -2154,12 +2156,13 @@ class TeacherService:
 
     @staticmethod
     def _attempt_row(attempt: ExamAttempt, user: User, pending: int) -> TeacherAttemptRow:
+        status_val = _value(attempt.status) or "IN_PROGRESS"
         return TeacherAttemptRow(
             attempt_id=attempt.id,
             student_id=user.id,
             student_name=user.name,
             roll_number=user.student_roll_no,
-            status=_value(attempt.status) or "IN_PROGRESS",
+            status=status_val,
             started_at=attempt.started_at,
             submitted_at=attempt.submitted_at,
             total_score=float(attempt.total_score) if attempt.total_score is not None else None,
@@ -2430,7 +2433,7 @@ class TeacherService:
             await db.execute(
                 select(
                     Submission.assignment_id,
-                    func.count(Submission.id),
+                    func.count(Submission.student_id.distinct()),
                     func.coalesce(func.sum(case((Submission.status.in_(_PENDING_SUBMISSION_STATUSES), 1), else_=0)), 0),
                     func.coalesce(func.sum(case((Submission.reviewed_at.is_not(None), 1), else_=0)), 0),
                 )
@@ -2654,6 +2657,10 @@ class TeacherService:
             if state != AssignmentStatus.DRAFT.value:
                 raise HTTPException(status.HTTP_409_CONFLICT, detail="Only drafts can be published")
             assignment.status = AssignmentStatus.PUBLISHED
+        elif action == "reopen":
+            if state != AssignmentStatus.CLOSED.value:
+                raise HTTPException(status.HTTP_409_CONFLICT, detail="Only closed assignments can be reopened")
+            assignment.status = AssignmentStatus.PUBLISHED
         else:
             if state != AssignmentStatus.PUBLISHED.value:
                 raise HTTPException(status.HTTP_409_CONFLICT, detail="Only published assignments can be closed")
@@ -2760,6 +2767,54 @@ class TeacherService:
         )
         return await TeacherService.assignment_detail(db, teacher, assignment_id)
 
+    @staticmethod
+    async def update_milestone(
+        db: AsyncSession, teacher: User, assignment_id: uuid.UUID, milestone_id: uuid.UUID, payload: TeacherMilestoneUpdateIn
+    ) -> TeacherAssignmentDetail:
+        assignment = await TeacherService._owned_assignment(db, teacher, assignment_id)
+        if (_value(assignment.status) or "DRAFT") == AssignmentStatus.CLOSED.value:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="Closed assignments cannot be edited")
+        milestone = (
+            await db.execute(
+                select(Milestone).where(Milestone.id == milestone_id, Milestone.assignment_id == assignment.id)
+            )
+        ).scalar_one_or_none()
+        if milestone is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Milestone not found")
+        if payload.marks is not None and payload.marks != milestone.marks:
+            existing_marks = (
+                await db.execute(
+                    select(func.coalesce(func.sum(Milestone.marks), 0)).where(
+                        Milestone.assignment_id == assignment.id,
+                        Milestone.id != milestone.id,
+                    )
+                )
+            ).scalar()
+            if int(existing_marks or 0) + payload.marks > assignment.total_marks:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Milestone marks exceed the assignment total_marks",
+                )
+            milestone.marks = payload.marks
+        if payload.title is not None:
+            milestone.title = payload.title.strip()
+        if payload.description is not None:
+            milestone.description = payload.description.strip() if payload.description else None
+        if payload.due_date is not None or "due_date" in payload.model_fields_set:
+            milestone.due_date = payload.due_date
+        await db.flush()
+        AuditService.record(
+            db,
+            actor=teacher,
+            actor_role="TEACHER",
+            action="UPDATE_MILESTONE",
+            entity="Milestone",
+            entity_id=milestone.id,
+            tenant_id=teacher.tenant_id,
+            new_value={"title": milestone.title, "marks": milestone.marks},
+        )
+        return await TeacherService.assignment_detail(db, teacher, assignment_id)
+
     # ── C-TC-15 / C-TC-16 submissions review ────────────────────────────────
 
     @staticmethod
@@ -2835,6 +2890,7 @@ class TeacherService:
             roll_number=(enrollment.roll_number if enrollment and enrollment.roll_number else user.student_roll_no),
             milestone_id=submission.milestone_id,
             milestone_title=milestone.title if milestone else None,
+            milestone_marks=milestone.marks if milestone else None,
             submitted_at=submission.submitted_at,
             is_late=submission.is_late,
             late_by_minutes=submission.late_by_minutes,
@@ -2960,10 +3016,11 @@ class TeacherService:
         submission, assignment, user, enrollment, milestone = row
         if payload.decision == "APPROVED" and payload.score is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A score is required to approve a submission")
-        if payload.score is not None and payload.score > assignment.total_marks:
+        max_allowed = milestone.marks if milestone is not None else assignment.total_marks
+        if payload.score is not None and payload.score > max_allowed:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Score cannot exceed {assignment.total_marks}",
+                detail=f"Score cannot exceed {max_allowed}",
             )
         now = datetime.now(timezone.utc)
         decision_map = {
@@ -2982,7 +3039,7 @@ class TeacherService:
         else:
             submission.score = Decimal(str(payload.score)) if payload.score is not None else None
             submission.grade = (
-                grade_for(float(payload.score) * 100 / assignment.total_marks) if payload.score is not None else None
+                grade_for(float(payload.score) * 100 / max_allowed) if payload.score is not None else None
             )
         db.add(
             SubmissionReview(

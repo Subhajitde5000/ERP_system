@@ -210,9 +210,12 @@ function ThreadComposer({
 
 /** Thread detail with replies, upvotes and the accepted answer. */
 export function StudentThreadDetailPage() {
-  const params = useParams<{ id: string }>();
-  const threadId = params.id;
-  const resource = useResource(() => fetchStudentThread(threadId), [threadId]);
+  const params = useParams<{ id?: string }>();
+  const threadId = params?.id ?? "";
+  const resource = useResource(
+    () => (threadId ? fetchStudentThread(threadId) : Promise.reject(new Error("No thread ID provided"))),
+    [threadId],
+  );
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);

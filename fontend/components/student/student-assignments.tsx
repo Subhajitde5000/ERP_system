@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CheckCircle2, Lock, Plus, Send, Trash2 } from "lucide-react";
+import { CheckCircle2, Clock, Download, ExternalLink, Eye, FileText, Lock, Plus, Send, Trash2, X } from "lucide-react";
 
 import { Card, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
@@ -24,6 +24,14 @@ const STATUS_FILTERS = [
   ["APPROVED", "Approved"],
   ["RESUBMIT_REQUESTED", "Changes requested"],
 ] as const;
+
+function myStatusClass(status: string): string {
+  if (status === "APPROVED") return "bg-success-light text-success-text";
+  if (status === "REJECTED") return "bg-destructive-light text-destructive-text";
+  if (status === "RESUBMIT_REQUESTED") return "bg-warning-light text-warning-text";
+  if (status === "UNDER_REVIEW" || status === "SUBMITTED") return "bg-accent-light text-accent";
+  return "bg-muted text-muted-foreground";
+}
 
 /** C-ST-10 — assignment list with the student's own status on each row. */
 export function StudentAssignmentsPage() {
@@ -109,27 +117,22 @@ export function StudentAssignmentsPage() {
   );
 }
 
-function myStatusClass(status: string): string {
-  if (status === "APPROVED") return "bg-success-light text-success-text";
-  if (status === "REJECTED") return "bg-destructive-light text-destructive-text";
-  if (status === "RESUBMIT_REQUESTED") return "bg-warning-light text-warning-text";
-  if (status === "UNDER_REVIEW" || status === "SUBMITTED") return "bg-accent-light text-accent";
-  return "bg-muted text-muted-foreground";
-}
-
-/** C-ST-11 — brief, milestones, submit/resubmit with files. */
+/** C-ST-11 — brief, milestones chain, submit/resubmit with files. */
 export function StudentAssignmentDetailPage() {
-  const params = useParams<{ id: string }>();
-  const assignmentId = params.id;
-  const resource = useResource(() => fetchStudentAssignment(assignmentId), [assignmentId]);
-  const [submitFor, setSubmitFor] = useState<string | null | undefined>(undefined); // undefined = closed, null = whole assignment
+  const params = useParams<{ id?: string }>();
+  const assignmentId = params?.id ?? "";
+  const resource = useResource(
+    () => (assignmentId ? fetchStudentAssignment(assignmentId) : Promise.reject(new Error("No assignment ID provided"))),
+    [assignmentId],
+  );
+  const [submitFor, setSubmitFor] = useState<string | null | undefined>(undefined);
   const data = resource.data;
 
   const latest = data?.my_submissions[0] ?? null;
   const canSubmit = Boolean(
     data &&
       data.status === "PUBLISHED" &&
-      (!latest || latest.status === "RESUBMIT_REQUESTED"),
+      (!latest || latest.status !== "APPROVED"),
   );
 
   return (
@@ -139,7 +142,9 @@ export function StudentAssignmentDetailPage() {
         {data ? (
           <div className="space-y-5">
             <AssignmentBrief data={data} canSubmit={canSubmit} onSubmitClicked={() => setSubmitFor(null)} />
-            {data.milestones.length ? <MilestonesSection data={data} onSubmitMilestone={(milestoneId) => setSubmitFor(milestoneId)} /> : null}
+            {data.milestones.length ? (
+              <MilestoneChain data={data} onSubmitMilestone={(id) => setSubmitFor(id)} />
+            ) : null}
             {submitFor !== undefined ? (
               <SubmissionComposer
                 key={submitFor ?? "assignment"}
@@ -151,7 +156,7 @@ export function StudentAssignmentDetailPage() {
                 }}
               />
             ) : null}
-            <SubmissionsHistory data={data} />
+            <SubmissionsHistory data={data} onResubmit={(milestoneId) => setSubmitFor(milestoneId)} />
           </div>
         ) : null}
       </AsyncState>
@@ -217,7 +222,7 @@ function AssignmentBrief({
             onClick={onSubmitClicked}
             className="inline-flex h-10 shrink-0 items-center gap-2 rounded-field bg-accent px-4 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover"
           >
-            <Send className="h-4 w-4" /> {data.my_status === "RESUBMIT_REQUESTED" ? "Resubmit work" : "Submit work"}
+            <Send className="h-4 w-4" /> {data.my_submissions.length ? "Resubmit work" : "Submit work"}
           </button>
         ) : null}
       </div>
@@ -225,55 +230,136 @@ function AssignmentBrief({
   );
 }
 
-function MilestonesSection({
+/**
+ * Chain-style milestone stepper — each stage is a card connected by a vertical
+ * line, showing locked / active / done state at a glance.
+ */
+function MilestoneChain({
   data,
   onSubmitMilestone,
 }: {
   data: StudentAssignmentDetail;
   onSubmitMilestone: (milestoneId: string) => void;
 }) {
+  const approved = data.milestones.filter((m) => m.my_status === "APPROVED").length;
+  const submitted = data.milestones.filter((m) => m.my_status && m.my_status !== "APPROVED").length;
+  const total = data.milestones.length;
+  const pct = Math.round((approved / Math.max(1, total)) * 100);
+
   return (
     <Card>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="font-display text-base font-bold text-primary">Milestones</h2>
-        <Link href={`/student/assignments/${data.id}/milestones`} className="text-sm font-semibold text-accent hover:underline">
-          Progress view
-        </Link>
+        <div>
+          <h2 className="font-display text-base font-bold text-primary">Milestones</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {approved}/{total} approved{submitted > 0 ? ` · ${submitted} under review` : ""} · stages unlock one by one
+          </p>
+        </div>
+        {/* progress bar */}
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-accent transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <span className="text-xs font-semibold text-muted-foreground">{pct}%</span>
+        </div>
       </div>
-      <ol className="space-y-3">
-        {data.milestones.map((milestone) => {
+
+      {/* Chain */}
+      <ol className="relative">
+        {data.milestones.map((milestone, idx) => {
           const mine = milestone.my_status;
+          const isApproved = mine === "APPROVED";
+          const isUnderReview = mine === "SUBMITTED" || mine === "UNDER_REVIEW";
+          const isResubmit = mine === "RESUBMIT_REQUESTED";
+          const isLocked = !milestone.unlocked;
           const submittable =
             data.status === "PUBLISHED" &&
             milestone.unlocked &&
-            (!mine || mine === "RESUBMIT_REQUESTED");
+            (!mine || mine !== "APPROVED");
+          const isLast = idx === data.milestones.length - 1;
+
           return (
-            <li key={milestone.id} className="flex flex-wrap items-start justify-between gap-3 rounded-field border border-border p-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-primary">
-                  {milestone.sort_order + 1}. {milestone.title}
-                  <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
-                </p>
-                {milestone.description ? <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p> : null}
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {milestone.unlocked ? "Unlocked" : "Locked — finish the previous stage first"}
-                  {milestone.due_date ? ` · due ${dateTime(milestone.due_date)}` : ""}
-                  {mine ? ` · ${statusLabel(mine)}${milestone.my_score !== null ? ` (${milestone.my_score}/${milestone.marks})` : ""}` : ""}
-                </p>
-              </div>
-              {submittable ? (
-                <button
-                  type="button"
-                  onClick={() => onSubmitMilestone(milestone.id)}
-                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-field border border-accent px-3 text-xs font-semibold text-accent hover:bg-accent-light"
+            <li key={milestone.id} className="flex gap-4">
+              {/* Connector column */}
+              <div className="flex flex-col items-center">
+                {/* Circle */}
+                <div
+                  className={`relative z-10 mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 ${
+                    isApproved
+                      ? "border-success-text bg-success-light text-success-text"
+                      : isUnderReview
+                        ? "border-warning-text bg-warning-light text-warning-text"
+                        : isResubmit
+                          ? "border-destructive-border bg-destructive-light text-destructive-text"
+                          : isLocked
+                            ? "border-border bg-muted text-muted-foreground"
+                            : "border-accent bg-accent-light text-accent"
+                  }`}
                 >
-                  <Send className="h-3.5 w-3.5" /> {mine === "RESUBMIT_REQUESTED" ? "Resubmit" : "Submit"}
-                </button>
-              ) : !milestone.unlocked ? (
-                <Lock className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Locked" />
-              ) : mine === "APPROVED" ? (
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-success-text" aria-label="Approved" />
-              ) : null}
+                  {isApproved ? (
+                    <CheckCircle2 className="h-4 w-4" />
+                  ) : isUnderReview ? (
+                    <Clock className="h-3.5 w-3.5" />
+                  ) : isLocked ? (
+                    <Lock className="h-3.5 w-3.5" />
+                  ) : (
+                    <Send className="h-3 w-3" />
+                  )}
+                </div>
+                {/* Vertical line */}
+                {!isLast && (
+                  <div className={`w-0.5 flex-1 ${isApproved ? "bg-success-text/30" : isUnderReview ? "bg-warning-text/30" : "bg-border"}`} style={{ minHeight: "1.5rem" }} />
+                )}
+              </div>
+
+              {/* Content */}
+              <div className={`flex-1 pb-6 ${isLast ? "pb-0" : ""}`}>
+                <div
+                  className={`rounded-field border p-3 ${
+                    isApproved
+                      ? "border-success-text/20 bg-success-light/30"
+                      : isUnderReview
+                        ? "border-warning-text/20 bg-warning-light/30"
+                        : isResubmit
+                          ? "border-destructive-border/30 bg-destructive-light/20"
+                          : isLocked
+                            ? "border-border bg-muted/30"
+                            : "border-accent/40 bg-accent-light/20"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm font-semibold ${isLocked ? "text-muted-foreground" : "text-primary"}`}>
+                        {milestone.sort_order + 1}. {milestone.title}
+                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
+                      </p>
+                      {milestone.description ? (
+                        <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p>
+                      ) : null}
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {isLocked
+                          ? "Locked — complete the previous stage first"
+                          : mine
+                            ? `${statusLabel(mine)}${milestone.my_score !== null ? ` · ${milestone.my_score}/${milestone.marks} marks` : ""}`
+                            : "Unlocked — ready for your submission"}
+                        {milestone.due_date ? ` · due ${dateTime(milestone.due_date)}` : ""}
+                      </p>
+                    </div>
+                    {submittable ? (
+                      <button
+                        type="button"
+                        onClick={() => onSubmitMilestone(milestone.id)}
+                        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-field bg-accent px-3 text-xs font-semibold text-white shadow-accent transition hover:bg-accent-hover"
+                      >
+                        <Send className="h-3 w-3" /> {mine ? "Resubmit" : "Submit"}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
             </li>
           );
         })}
@@ -421,56 +507,208 @@ function SubmissionComposer({
   );
 }
 
-function SubmissionsHistory({ data }: { data: StudentAssignmentDetail }) {
+function SubmissionsHistory({
+  data,
+  onResubmit,
+}: {
+  data: StudentAssignmentDetail;
+  onResubmit?: (milestoneId: string | null) => void;
+}) {
+  const [previewFile, setPreviewFile] = useState<StudentSubmissionFileOut | null>(null);
+
   if (!data.my_submissions.length) return null;
   return (
     <Card>
       <h2 className="font-display text-base font-bold text-primary">My submissions</h2>
       <ol className="mt-4 space-y-4">
-        {data.my_submissions.map((submission) => (
-          <li key={submission.id} className="rounded-field border border-border p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-primary">
-                v{submission.version} · {dateTime(submission.submitted_at)}
-                {submission.milestone_id
-                  ? ` · ${data.milestones.find((milestone) => milestone.id === submission.milestone_id)?.title ?? "Milestone"}`
-                  : ""}
-              </p>
-              <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${myStatusClass(submission.status)}`}>
-                {statusLabel(submission.status)}
-                {submission.is_late ? " · LATE" : ""}
-              </span>
-            </div>
-            {submission.text_response ? (
-              <p className="mt-2 whitespace-pre-wrap rounded-field bg-muted p-3 text-sm text-muted-foreground">{submission.text_response}</p>
-            ) : null}
-            {submission.files.length ? (
-              <ul className="mt-2 space-y-1">
-                {submission.files.map((file) => (
-                  <li key={file.id} className="text-xs text-muted-foreground">
-                    📎 {file.file_name} ({(file.file_size_bytes / (1024 * 1024)).toFixed(2)} MB)
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {submission.score !== null ? (
-              <p className="mt-2 text-sm font-semibold text-primary">
-                Score: {submission.score}{submission.grade ? ` · Grade ${submission.grade}` : ""}
-              </p>
-            ) : null}
-            {submission.feedback ? <p className="mt-1 text-sm italic text-muted-foreground">Teacher feedback: {submission.feedback}</p> : null}
-          </li>
-        ))}
+        {data.my_submissions.map((submission, index) => {
+          const isLatestForStage = index === 0;
+          const canResubmitThis =
+            isLatestForStage &&
+            data.status === "PUBLISHED" &&
+            submission.status !== "APPROVED" &&
+            onResubmit;
+
+          return (
+            <li key={submission.id} className="rounded-field border border-border p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-primary">
+                  v{submission.version} · {dateTime(submission.submitted_at)}
+                  {submission.milestone_id
+                    ? ` · ${data.milestones.find((milestone) => milestone.id === submission.milestone_id)?.title ?? "Milestone"}`
+                    : ""}
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${myStatusClass(submission.status)}`}>
+                    {statusLabel(submission.status)}
+                    {submission.is_late ? " · LATE" : ""}
+                  </span>
+                  {canResubmitThis ? (
+                    <button
+                      type="button"
+                      onClick={() => onResubmit(submission.milestone_id)}
+                      className="inline-flex h-7 items-center gap-1 rounded-field border border-accent bg-accent-light px-2.5 text-xs font-semibold text-accent transition hover:bg-accent hover:text-white"
+                    >
+                      <Send className="h-3 w-3" /> Resubmit
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {submission.text_response ? (
+                <p className="mt-2 whitespace-pre-wrap rounded-field bg-muted p-3 text-sm text-muted-foreground">{submission.text_response}</p>
+              ) : null}
+              {submission.files.length ? (
+                <div className="mt-3 space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Submitted Files</p>
+                  <ul className="space-y-1.5">
+                    {submission.files.map((file) => (
+                      <li key={file.id} className="flex flex-wrap items-center justify-between gap-2 rounded-field border border-border bg-muted/30 px-3 py-2 text-xs">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <FileText className="h-4 w-4 shrink-0 text-accent" />
+                          <span className="truncate font-medium text-primary">{file.file_name}</span>
+                          <span className="shrink-0 text-muted-foreground">({(file.file_size_bytes / (1024 * 1024)).toFixed(2)} MB)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewFile(file)}
+                            className="inline-flex items-center gap-1 rounded-field border border-border bg-white px-2.5 py-1 text-[11px] font-semibold text-accent hover:bg-accent-light"
+                          >
+                            <Eye className="h-3 w-3" /> Preview
+                          </button>
+                          <a
+                            href={file.file_key.startsWith("http") || file.file_key.startsWith("/") ? file.file_key : `/${file.file_key}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded-field border border-border bg-white px-2.5 py-1 text-[11px] font-semibold text-primary hover:border-accent hover:text-accent"
+                          >
+                            <ExternalLink className="h-3 w-3" /> Open
+                          </a>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {submission.score !== null ? (
+                <p className="mt-2 text-sm font-semibold text-primary">
+                  Score: {submission.score}{submission.grade ? ` · Grade ${submission.grade}` : ""}
+                </p>
+              ) : null}
+              {submission.feedback ? <p className="mt-1 text-sm italic text-muted-foreground">Teacher feedback: {submission.feedback}</p> : null}
+            </li>
+          );
+        })}
       </ol>
+
+      {previewFile ? (
+        <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
+      ) : null}
     </Card>
   );
 }
 
-/** C-ST-12 — milestone progress stepper. */
+function FilePreviewModal({
+  file,
+  onClose,
+}: {
+  file: StudentSubmissionFileOut;
+  onClose: () => void;
+}) {
+  const url = file.file_key.startsWith("http") || file.file_key.startsWith("/") ? file.file_key : `/${file.file_key}`;
+  const isImage = file.mime_type.startsWith("image/") || /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(file.file_name);
+  const isPdf = file.mime_type === "application/pdf" || file.file_name.endsWith(".pdf");
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Preview ${file.file_name}`}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-card bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-border p-4">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-light text-accent">
+              <FileText className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="truncate font-display text-sm font-bold text-primary">{file.file_name}</h3>
+              <p className="text-[11px] text-muted-foreground">
+                {(file.file_size_bytes / (1024 * 1024)).toFixed(2)} MB · {file.mime_type}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close modal"
+            className="flex h-8 w-8 items-center justify-center rounded-field text-muted-foreground hover:bg-muted hover:text-primary"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4">
+          {isImage ? (
+            <div className="flex items-center justify-center rounded-field bg-muted/40 p-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt={file.file_name} className="max-h-[60vh] rounded object-contain shadow-sm" />
+            </div>
+          ) : isPdf ? (
+            <div className="h-[60vh] w-full overflow-hidden rounded-field border border-border">
+              <iframe src={url} title={file.file_name} className="h-full w-full" />
+            </div>
+          ) : (
+            <div className="rounded-field border border-border bg-muted/30 p-6 text-center">
+              <FileText className="mx-auto h-12 w-12 text-muted-foreground/60" />
+              <p className="mt-2 text-sm font-medium text-primary">{file.file_name}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                File path / key: <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px]">{file.file_key}</code>
+              </p>
+              <p className="mt-4 text-xs text-muted-foreground">
+                This document can be opened in a new tab or downloaded directly.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between border-t border-border p-4 bg-muted/20">
+          <span className="text-xs text-muted-foreground">Uploaded {dateTime(file.uploaded_at)}</span>
+          <div className="flex gap-2">
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-9 items-center gap-1.5 rounded-field bg-accent px-4 text-xs font-semibold text-white shadow-accent transition hover:bg-accent-hover"
+            >
+              <ExternalLink className="h-3.5 w-3.5" /> Open / Download
+            </a>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-9 items-center rounded-field border border-border bg-white px-4 text-xs font-semibold text-primary hover:border-accent"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** C-ST-12 — standalone milestone progress page (full stepper, no submit actions). */
 export function StudentAssignmentMilestonesPage() {
-  const params = useParams<{ id: string }>();
-  const assignmentId = params.id;
-  const resource = useResource(() => fetchStudentAssignment(assignmentId), [assignmentId]);
+  const params = useParams<{ id?: string }>();
+  const assignmentId = params?.id ?? "";
+  const resource = useResource(
+    () => (assignmentId ? fetchStudentAssignment(assignmentId) : Promise.reject(new Error("No assignment ID provided"))),
+    [assignmentId],
+  );
   const data = resource.data;
 
   return (
@@ -488,51 +726,91 @@ export function StudentAssignmentMilestonesPage() {
         {data ? (
           data.milestones.length ? (
             <Card>
-              <div
-                className="mb-5 h-2 overflow-hidden rounded-full bg-muted"
-                role="progressbar"
-                aria-label="Milestone progress"
-                aria-valuenow={data.milestones.filter((milestone) => milestone.my_status === "APPROVED").length}
-                aria-valuemin={0}
-                aria-valuemax={data.milestones.length}
-              >
-                <div
-                  className="h-full rounded-full bg-accent transition-all"
-                  style={{
-                    width: `${Math.round(
-                      (data.milestones.filter((milestone) => milestone.my_status === "APPROVED").length / Math.max(1, data.milestones.length)) * 100,
-                    )}%`,
-                  }}
-                />
-              </div>
-              <ol className="relative space-y-6 border-l-2 border-border pl-6">
-                {data.milestones.map((milestone) => {
-                  const approved = milestone.my_status === "APPROVED";
+              {/* Overall progress */}
+              {(() => {
+                const approved = data.milestones.filter((m) => m.my_status === "APPROVED").length;
+                const underReview = data.milestones.filter((m) => m.my_status === "SUBMITTED" || m.my_status === "UNDER_REVIEW").length;
+                const pct = Math.round((approved / data.milestones.length) * 100);
+                return (
+                  <div className="mb-6">
+                    <div className="mb-1 flex items-center justify-between text-xs font-semibold text-muted-foreground">
+                      <span>{approved} of {data.milestones.length} approved{underReview > 0 ? ` · ${underReview} under review` : ""}</span>
+                      <span>{pct}%</span>
+                    </div>
+                    <div
+                      className="h-2 overflow-hidden rounded-full bg-muted"
+                      role="progressbar"
+                      aria-label="Milestone progress"
+                      aria-valuenow={approved}
+                      aria-valuemin={0}
+                      aria-valuemax={data.milestones.length}
+                    >
+                      <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Chain */}
+              <ol className="relative">
+                {data.milestones.map((milestone, idx) => {
+                  const mine = milestone.my_status;
+                  const isApproved = mine === "APPROVED";
+                  const isUnderReview = mine === "SUBMITTED" || mine === "UNDER_REVIEW";
+                  const isResubmit = mine === "RESUBMIT_REQUESTED";
+                  const isLocked = !milestone.unlocked;
+                  const isLast = idx === data.milestones.length - 1;
+
                   return (
-                    <li key={milestone.id} className="relative">
-                      <span
-                        className={`absolute -left-[31px] top-0 flex h-5 w-5 items-center justify-center rounded-full border-2 bg-white ${
-                          approved ? "border-success" : milestone.unlocked ? "border-accent" : "border-border"
-                        }`}
-                        aria-hidden="true"
-                      >
-                        {approved ? <span className="h-2 w-2 rounded-full bg-success" /> : null}
-                      </span>
-                      <p className="text-sm font-semibold text-primary">
-                        {milestone.title}
-                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
-                      </p>
-                      {milestone.description ? <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p> : null}
-                      <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
-                        {!milestone.unlocked
-                          ? "🔒 Locked — previous stage not approved yet"
-                          : milestone.my_status
-                            ? `${statusLabel(milestone.my_status)}${milestone.my_score !== null ? ` · scored ${milestone.my_score}/${milestone.marks}` : ""}${
-                                milestone.my_submitted_at ? ` · submitted ${dateTime(milestone.my_submitted_at)}` : ""
-                              }`
-                            : "Unlocked — ready for your submission"}
-                        {milestone.due_date ? ` · due ${dateTime(milestone.due_date)}` : ""}
-                      </p>
+                    <li key={milestone.id} className="flex gap-4">
+                      {/* Connector */}
+                      <div className="flex flex-col items-center">
+                        <div
+                          className={`relative z-10 mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 ${
+                            isApproved
+                              ? "border-success-text bg-success-light text-success-text"
+                              : isUnderReview
+                                ? "border-warning-text bg-warning-light text-warning-text"
+                                : isResubmit
+                                  ? "border-destructive-border bg-destructive-light text-destructive-text"
+                                  : isLocked
+                                    ? "border-border bg-muted text-muted-foreground"
+                                    : "border-accent bg-accent-light text-accent"
+                          }`}
+                        >
+                          {isApproved ? (
+                            <CheckCircle2 className="h-4 w-4" />
+                          ) : isUnderReview ? (
+                            <Clock className="h-3.5 w-3.5" />
+                          ) : isLocked ? (
+                            <Lock className="h-3.5 w-3.5" />
+                          ) : (
+                            <span className="text-xs font-bold">{idx + 1}</span>
+                          )}
+                        </div>
+                        {!isLast && (
+                          <div className={`w-0.5 flex-1 ${isApproved ? "bg-success-text/30" : isUnderReview ? "bg-warning-text/30" : "bg-border"}`} style={{ minHeight: "1.5rem" }} />
+                        )}
+                      </div>
+
+                      {/* Content */}
+                      <div className={`flex-1 ${isLast ? "pb-0" : "pb-6"}`}>
+                        <p className={`text-sm font-semibold ${isLocked ? "text-muted-foreground" : "text-primary"}`}>
+                          {milestone.title}
+                          <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{milestone.marks} marks</span>
+                        </p>
+                        {milestone.description ? (
+                          <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p>
+                        ) : null}
+                        <p className="mt-1 text-[11px] font-medium text-muted-foreground">
+                          {isLocked
+                            ? "🔒 Locked — previous stage not approved yet"
+                            : milestone.my_status
+                              ? `${statusLabel(milestone.my_status)}${milestone.my_score !== null ? ` · scored ${milestone.my_score}/${milestone.marks}` : ""}${milestone.my_submitted_at ? ` · submitted ${dateTime(milestone.my_submitted_at)}` : ""}`
+                              : "Unlocked — ready for your submission"}
+                          {milestone.due_date ? ` · due ${dateTime(milestone.due_date)}` : ""}
+                        </p>
+                      </div>
                     </li>
                   );
                 })}
