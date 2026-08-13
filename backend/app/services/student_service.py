@@ -779,9 +779,7 @@ class StudentService:
             and exam.scheduled_at <= now <= window_end
         )
         my_attempt_status = _value(attempt.status) if attempt else None
-        if attempt is not None and (attempt.total_score is not None or my_attempt_status == AttemptStatus.GRADED.value):
-            my_attempt_status = AttemptStatus.GRADED.value
-        elif (attempt is None or my_attempt_status == AttemptStatus.NOT_STARTED.value) and (
+        if (attempt is None or my_attempt_status == AttemptStatus.NOT_STARTED.value) and (
             now > window_end or state in (ExamStatus.COMPLETED.value, ExamStatus.RESULTS_RELEASED.value)
         ):
             my_attempt_status = "NOT_ATTEMPTED"
@@ -1178,7 +1176,11 @@ class StudentService:
             AttemptStatus.SUBMITTED.value,
             AttemptStatus.GRADED.value,
         )
-        if not (released or immediate):
+        review_allowed = exam.allow_review and _value(attempt.status) in (
+            AttemptStatus.SUBMITTED.value,
+            AttemptStatus.GRADED.value,
+        )
+        if not (released or immediate or review_allowed):
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Results are not released yet")
         show_answers = released or exam.allow_review
         answers: list[StudentResultAnswer] = []

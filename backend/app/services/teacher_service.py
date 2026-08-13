@@ -2157,8 +2157,6 @@ class TeacherService:
     @staticmethod
     def _attempt_row(attempt: ExamAttempt, user: User, pending: int) -> TeacherAttemptRow:
         status_val = _value(attempt.status) or "IN_PROGRESS"
-        if attempt.total_score is not None or status_val == AttemptStatus.GRADED.value:
-            status_val = AttemptStatus.GRADED.value
         return TeacherAttemptRow(
             attempt_id=attempt.id,
             student_id=user.id,
