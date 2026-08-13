@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Clock, Play, Send } from "lucide-react";
+import { CheckCircle2, Clock, Play, Send } from "lucide-react";
 
 import { Card, PageHeader, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
@@ -510,6 +510,42 @@ export function StudentExamResultPage() {
     () => (examId ? fetchExamResult(examId) : Promise.reject(new Error("No exam ID provided"))),
     [examId],
   );
+
+  const isPendingRelease = Boolean(
+    resource.error && resource.error.toLowerCase().includes("not released")
+  );
+
+  if (isPendingRelease) {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <PageHeader title="Exam submitted" subtitle="Your answers have been successfully recorded." />
+        <Card className="py-8 text-center">
+          <CheckCircle2 className="mx-auto h-12 w-12 text-success-text" />
+          <h2 className="mt-3 font-display text-xl font-bold text-primary">Exam Submitted Successfully!</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your attempt has been submitted. Your teacher will evaluate your answers and release the results soon.
+          </p>
+          <div className="mx-auto mt-4 max-w-md rounded-field bg-muted/60 p-4 text-xs text-muted-foreground">
+            Once results are released by your teacher, your score, grade, and answer review will appear right here.
+          </div>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link
+              href="/student/examinations"
+              className="inline-flex h-11 items-center rounded-field bg-accent px-5 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover"
+            >
+              Back to examinations
+            </Link>
+            <Link
+              href="/student/dashboard"
+              className="inline-flex h-11 items-center rounded-field border border-border px-5 text-sm font-semibold text-muted-foreground hover:border-accent hover:text-accent"
+            >
+              Dashboard
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl">
