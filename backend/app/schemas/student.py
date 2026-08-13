@@ -348,9 +348,56 @@ class StudentSubmissionFileOut(BaseModel):
     uploaded_at: datetime
 
 
+class StudentGroupMember(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+    roll_number: str | None = None
+    is_me: bool = False
+    joined_at: datetime
+
+
+class StudentGroupRow(BaseModel):
+    id: uuid.UUID
+    assignment_id: uuid.UUID
+    name: str
+    created_by: uuid.UUID | None = None
+    creator_name: str | None = None
+    member_count: int = 0
+    is_my_group: bool = False
+    is_submitted: bool = False
+    members: list[StudentGroupMember] = Field(default_factory=list)
+
+
+class StudentGroupCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100)
+
+
+class StudentGroupReuseIn(BaseModel):
+    previous_group_id: uuid.UUID
+
+
+class StudentPreviousGroupOption(BaseModel):
+    group_id: uuid.UUID
+    group_name: str
+    assignment_title: str
+    subject_name: str
+    member_count: int = 0
+    members: list[StudentGroupMember] = Field(default_factory=list)
+
+
+class StudentGroupListOut(BaseModel):
+    min_group_size: int = 2
+    max_group_size: int = 6
+    my_group: StudentGroupRow | None = None
+    groups: list[StudentGroupRow] = Field(default_factory=list)
+    previous_groups: list[StudentPreviousGroupOption] = Field(default_factory=list)
+
+
 class StudentSubmissionOut(BaseModel):
     id: uuid.UUID
     milestone_id: uuid.UUID | None = None
+    group_id: uuid.UUID | None = None
+    group_name: str | None = None
     submitted_at: datetime
     is_late: bool
     status: str
@@ -369,6 +416,9 @@ class StudentAssignmentDetail(StudentAssignmentRow):
     allow_late_submission: bool
     max_file_size_mb: int
     allowed_file_types: list[str]
+    min_group_size: int = 2
+    max_group_size: int = 6
+    my_group: StudentGroupRow | None = None
     instructions_url: str | None = None
     milestones: list[StudentMilestoneProgress] = Field(default_factory=list)
     my_submissions: list[StudentSubmissionOut] = Field(default_factory=list)
@@ -575,6 +625,8 @@ APIResponseStudentPaper = APIResponse[StudentAttemptPaper]
 APIResponseStudentExamResult = APIResponse[StudentExamResult]
 APIResponseStudentAssignments = APIResponse[StudentAssignmentPage]
 APIResponseStudentAssignment = APIResponse[StudentAssignmentDetail]
+APIResponseStudentGroups = APIResponse[StudentGroupListOut]
+APIResponseStudentGroup = APIResponse[StudentGroupRow]
 APIResponseStudentSubmission = APIResponse[StudentSubmissionOut]
 APIResponseStudentContents = APIResponse[StudentContentPage]
 APIResponseStudentContent = APIResponse[StudentContentRow]

@@ -116,6 +116,7 @@ export function TeacherAssignmentSubmissionsPage() {
                           {submission.student_name}
                           <span className="block text-[11px] font-normal text-muted-foreground">
                             {submission.roll_number ?? "No roll number"}
+                            {submission.group_name ? ` · Team: ${submission.group_name}` : ""}
                             {submission.milestone_title ? ` · ${submission.milestone_title}` : ""}
                           </span>
                         </td>

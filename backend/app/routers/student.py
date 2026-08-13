@@ -30,6 +30,8 @@ from app.schemas.student import (
     APIResponseStudentExamResult,
     APIResponseStudentExams,
     APIResponseStudentFees,
+    APIResponseStudentGroup,
+    APIResponseStudentGroups,
     APIResponseStudentLeave,
     APIResponseStudentLeaves,
     APIResponseStudentNotice,
@@ -45,6 +47,8 @@ from app.schemas.student import (
     APIResponseStudentThreads,
     APIResponseStudentTimetable,
     StudentAnswerSave,
+    StudentGroupCreate,
+    StudentGroupReuseIn,
     StudentLeaveCreate,
     StudentProfileUpdate,
     StudentReplyCreate,
@@ -281,6 +285,74 @@ async def submit_assignment(
         data=await StudentService.submit_assignment(db, student, assignment_id, payload),
         message="Assignment submitted",
     )
+
+
+# ── Group project workflows (Student) ───────────────────────────────────
+
+
+@router.get("/assignments/{assignment_id}/groups", response_model=APIResponseStudentGroups)
+async def assignment_groups(
+    assignment_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.assignment_groups(db, student, assignment_id),
+        message="Assignment groups loaded",
+    )
+
+
+@router.post("/assignments/{assignment_id}/groups", response_model=APIResponseStudentGroup, status_code=status.HTTP_201_CREATED)
+async def create_group(
+    assignment_id: uuid.UUID,
+    payload: StudentGroupCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.create_group(db, student, assignment_id, payload),
+        message="Group created",
+    )
+
+
+@router.post("/assignments/{assignment_id}/groups/reuse", response_model=APIResponseStudentGroup, status_code=status.HTTP_201_CREATED)
+async def reuse_group(
+    assignment_id: uuid.UUID,
+    payload: StudentGroupReuseIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.reuse_previous_group(db, student, assignment_id, payload),
+        message="Previous group reused",
+    )
+
+
+@router.post("/assignments/{assignment_id}/groups/{group_id}/join", response_model=APIResponseStudentGroup)
+async def join_group(
+    assignment_id: uuid.UUID,
+    group_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.join_group(db, student, assignment_id, group_id),
+        message="Joined group",
+    )
+
+
+@router.post("/assignments/{assignment_id}/groups/leave")
+async def leave_group(
+    assignment_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    await StudentService.leave_group(db, student, assignment_id)
+    return APIResponse(success=True, data={"message": "Left group"}, message="Left group")
 
 
 # ── C-ST-13 / C-ST-14 content ─────────────────────────────────────────────────

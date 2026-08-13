@@ -13,8 +13,10 @@ import {
   submitStudentAssignment,
   type StudentAssignmentDetail,
   type StudentSubmissionFileIn,
+  type StudentSubmissionFileOut,
 } from "@/lib/student";
 import { AsyncState, EmptyTable, dateTime, statusLabel } from "@/components/principal/principal-ui";
+import { StudentGroupSection } from "@/components/assignment/group-management";
 
 const STATUS_FILTERS = [
   ["", "All"],
@@ -142,6 +144,17 @@ export function StudentAssignmentDetailPage() {
         {data ? (
           <div className="space-y-5">
             <AssignmentBrief data={data} canSubmit={canSubmit} onSubmitClicked={() => setSubmitFor(null)} />
+            {data.assignment_type === "GROUP" ? (
+              <StudentGroupSection
+                assignmentId={data.id}
+                minGroupSize={data.min_group_size}
+                maxGroupSize={data.max_group_size}
+                isClosed={data.status === "CLOSED"}
+                onGroupChanged={async () => {
+                  await resource.reload();
+                }}
+              />
+            ) : null}
             {data.milestones.length ? (
               <MilestoneChain data={data} onSubmitMilestone={(id) => setSubmitFor(id)} />
             ) : null}
@@ -180,6 +193,11 @@ function AssignmentBrief({
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-accent-light px-2.5 py-1 text-[10px] font-bold text-accent">{statusLabel(data.assignment_type)}</span>
             <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${myStatusClass(data.my_status)}`}>{statusLabel(data.my_status)}</span>
+            {data.assignment_type === "GROUP" && data.my_group ? (
+              <span className="rounded-full bg-success-light px-2.5 py-1 text-[10px] font-bold text-success-text">
+                Group: {data.my_group.name}
+              </span>
+            ) : null}
           </div>
           <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
             <div className="flex gap-2">
@@ -198,6 +216,12 @@ function AssignmentBrief({
               <dt className="w-28 shrink-0 font-medium text-muted-foreground">Due</dt>
               <dd className="font-medium text-primary">{dateTime(data.due_date)}</dd>
             </div>
+            {data.assignment_type === "GROUP" ? (
+              <div className="flex gap-2">
+                <dt className="w-28 shrink-0 font-medium text-muted-foreground">Group size</dt>
+                <dd className="font-medium text-primary">{data.min_group_size} to {data.max_group_size} members</dd>
+              </div>
+            ) : null}
             <div className="flex gap-2">
               <dt className="w-28 shrink-0 font-medium text-muted-foreground">Late work</dt>
               <dd className="font-medium text-primary">{data.allow_late_submission ? "Accepted" : "Not accepted"}</dd>

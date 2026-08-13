@@ -810,10 +810,33 @@ CREATE TABLE assignments (
   late_penalty_percent         INTEGER NOT NULL DEFAULT 0,
   max_file_size_mb             INTEGER NOT NULL DEFAULT 10,
   allowed_file_types           TEXT[] NOT NULL DEFAULT '{pdf,doc,docx,zip}',
+  min_group_size               INTEGER NOT NULL DEFAULT 2,
+  max_group_size               INTEGER NOT NULL DEFAULT 6,
   status                       assignment_status NOT NULL DEFAULT 'DRAFT',
   instructions_url             TEXT,
   created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE project_groups (
+
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  assignment_id                UUID NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+  name                         VARCHAR(100) NOT NULL,
+  created_by                   UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_project_groups__assignment_name UNIQUE (assignment_id, name)
+);
+
+CREATE TABLE project_group_members (
+
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  group_id                     UUID NOT NULL REFERENCES project_groups(id) ON DELETE CASCADE,
+  student_id                   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  joined_at                    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_project_group_members__group_student UNIQUE (group_id, student_id)
 );
 
 CREATE TABLE milestones (
@@ -836,6 +859,7 @@ CREATE TABLE submissions (
   assignment_id                UUID NOT NULL REFERENCES assignments(id),
   milestone_id                 UUID REFERENCES milestones(id),
   student_id                   UUID NOT NULL REFERENCES users(id),
+  group_id                     UUID REFERENCES project_groups(id) ON DELETE SET NULL,
   text_response                TEXT,
   submitted_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   is_late                      BOOLEAN NOT NULL DEFAULT FALSE,
@@ -1983,6 +2007,11 @@ CREATE TABLE data_export_jobs (
 CREATE INDEX idx_submission_reviews_submission_id ON submission_reviews (submission_id, attempt_number DESC);
 CREATE INDEX idx_submission_reviews_reviewer_id ON submission_reviews (reviewer_id);
 CREATE INDEX idx_submission_reviews_tenant_id ON submission_reviews (tenant_id);
+CREATE INDEX idx_project_groups_assignment ON project_groups (assignment_id);
+CREATE INDEX idx_project_groups_tenant ON project_groups (tenant_id);
+CREATE INDEX idx_project_group_members_group ON project_group_members (group_id);
+CREATE INDEX idx_project_group_members_student ON project_group_members (student_id);
+CREATE INDEX idx_submissions_group ON submissions (group_id);
 CREATE INDEX idx_users_tenant_id ON users (tenant_id);
 CREATE INDEX idx_users_email ON users (email) WHERE email IS NOT NULL;
 CREATE INDEX idx_users_is_active ON users (tenant_id, is_active);

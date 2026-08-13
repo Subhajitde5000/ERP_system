@@ -582,6 +582,8 @@ export interface TeacherAssignmentCreate {
   late_penalty_percent?: number;
   max_file_size_mb?: number;
   allowed_file_types?: string[];
+  min_group_size?: number;
+  max_group_size?: number;
   instructions_url?: string | null;
   publish?: boolean;
 }
@@ -608,6 +610,26 @@ export interface TeacherMilestoneOut {
   unlock_after_milestone_id: string | null;
 }
 
+export interface TeacherGroupMember {
+  student_id: string;
+  student_name: string;
+  roll_number: string | null;
+  joined_at: string;
+}
+
+export interface TeacherGroupRow {
+  id: string;
+  assignment_id: string;
+  name: string;
+  created_by: string | null;
+  creator_name: string | null;
+  created_at: string;
+  member_count: number;
+  is_submitted: boolean;
+  submission_id?: string | null;
+  members: TeacherGroupMember[];
+}
+
 export interface TeacherAssignmentRow {
   id: string;
   title: string;
@@ -622,6 +644,7 @@ export interface TeacherAssignmentRow {
   status: string;
   milestone_count: number;
   student_count: number;
+  group_count: number;
   submission_count: number;
   pending_review_count: number;
   reviewed_count: number;
@@ -634,6 +657,8 @@ export interface TeacherAssignmentDetail extends TeacherAssignmentRow {
   late_penalty_percent: number;
   max_file_size_mb: number;
   allowed_file_types: string[];
+  min_group_size: number;
+  max_group_size: number;
   instructions_url: string | null;
   created_at: string;
   milestones: TeacherMilestoneOut[];
@@ -671,6 +696,17 @@ export const updateAssignmentMilestone = (assignmentId: string, milestoneId: str
 export const deleteAssignmentMilestone = (assignmentId: string, milestoneId: string) =>
   call<TeacherAssignmentDetail>(`/assignments/${assignmentId}/milestones/${milestoneId}`, { method: "DELETE" });
 
+export const fetchTeacherAssignmentGroups = (assignmentId: string, filters: { limit?: number; offset?: number } = {}) =>
+  call<TeacherPage<TeacherGroupRow>>(
+    `/assignments/${assignmentId}/groups${queryString({ limit: filters.limit, offset: filters.offset })}`,
+  );
+
+export const fetchTeacherAssignmentGroup = (assignmentId: string, groupId: string) =>
+  call<TeacherGroupRow>(`/assignments/${assignmentId}/groups/${groupId}`);
+
+export const removeStudentFromGroup = (assignmentId: string, groupId: string, studentId: string) =>
+  call<TeacherGroupRow>(`/assignments/${assignmentId}/groups/${groupId}/members/${studentId}`, { method: "DELETE" });
+
 // ── Submissions & review ────────────────────────────────────────────────────
 
 export interface TeacherSubmissionRow {
@@ -678,6 +714,8 @@ export interface TeacherSubmissionRow {
   student_id: string;
   student_name: string;
   roll_number: string | null;
+  group_id: string | null;
+  group_name: string | null;
   milestone_id: string | null;
   milestone_title: string | null;
   milestone_marks: number | null;

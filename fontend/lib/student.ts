@@ -381,9 +381,48 @@ export interface StudentSubmissionFileOut extends StudentSubmissionFileIn {
   uploaded_at: string;
 }
 
+export interface StudentGroupMember {
+  student_id: string;
+  student_name: string;
+  roll_number: string | null;
+  is_me: boolean;
+  joined_at: string;
+}
+
+export interface StudentGroupRow {
+  id: string;
+  assignment_id: string;
+  name: string;
+  created_by: string | null;
+  creator_name: string | null;
+  member_count: number;
+  is_my_group: boolean;
+  is_submitted: boolean;
+  members: StudentGroupMember[];
+}
+
+export interface StudentPreviousGroupOption {
+  group_id: string;
+  group_name: string;
+  assignment_title: string;
+  subject_name: string;
+  member_count: number;
+  members: StudentGroupMember[];
+}
+
+export interface StudentGroupListOut {
+  min_group_size: number;
+  max_group_size: number;
+  my_group: StudentGroupRow | null;
+  groups: StudentGroupRow[];
+  previous_groups?: StudentPreviousGroupOption[];
+}
+
 export interface StudentSubmissionOut {
   id: string;
   milestone_id: string | null;
+  group_id: string | null;
+  group_name: string | null;
   submitted_at: string;
   is_late: boolean;
   status: string;
@@ -402,6 +441,9 @@ export interface StudentAssignmentDetail extends StudentAssignmentRow {
   allow_late_submission: boolean;
   max_file_size_mb: number;
   allowed_file_types: string[];
+  min_group_size: number;
+  max_group_size: number;
+  my_group: StudentGroupRow | null;
   instructions_url: string | null;
   milestones: StudentMilestoneProgress[];
   my_submissions: StudentSubmissionOut[];
@@ -423,6 +465,21 @@ export const fetchStudentAssignment = (assignmentId: string) =>
 
 export const submitStudentAssignment = (assignmentId: string, payload: StudentSubmissionCreate) =>
   call<StudentSubmissionOut>(`/assignments/${assignmentId}/submit`, jsonInit("POST", payload));
+
+export const fetchStudentAssignmentGroups = (assignmentId: string) =>
+  call<StudentGroupListOut>(`/assignments/${assignmentId}/groups`);
+
+export const createStudentAssignmentGroup = (assignmentId: string, name: string) =>
+  call<StudentGroupRow>(`/assignments/${assignmentId}/groups`, jsonInit("POST", { name }));
+
+export const reuseStudentAssignmentGroup = (assignmentId: string, previousGroupId: string) =>
+  call<StudentGroupRow>(`/assignments/${assignmentId}/groups/reuse`, jsonInit("POST", { previous_group_id: previousGroupId }));
+
+export const joinStudentAssignmentGroup = (assignmentId: string, groupId: string) =>
+  call<StudentGroupRow>(`/assignments/${assignmentId}/groups/${groupId}/join`, { method: "POST" });
+
+export const leaveStudentAssignmentGroup = (assignmentId: string) =>
+  call<{ message: string }>(`/assignments/${assignmentId}/groups/leave`, { method: "POST" });
 
 // ── C-ST-13 / C-ST-14 content ───────────────────────────────────────────────
 
