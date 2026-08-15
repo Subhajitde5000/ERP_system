@@ -101,6 +101,7 @@ class HostelService:
   await HostelService.access(db,user,True); room=await db.scalar(select(HostelRoom).where(HostelRoom.id==p.room_id,HostelRoom.tenant_id==user.tenant_id).with_for_update()); student=await db.scalar(select(User).where(User.id==p.student_id,User.tenant_id==user.tenant_id,User.is_active.is_(True)))
   if not room: raise missing("Room")
   if not student: raise missing("Student")
+  if not await db.scalar(select(AcademicYear.id).where(AcademicYear.id==p.academic_year_id,AcademicYear.tenant_id==user.tenant_id)): raise missing("Academic year")
   occupied=int(await db.scalar(select(func.count()).select_from(HostelAllotment).where(HostelAllotment.room_id==room.id,HostelAllotment.status==AllotmentStatus.ACTIVE)) or 0)
   if occupied>=room.capacity or p.bed_number>room.capacity: raise HTTPException(409,"Room has no available bed")
   a=HostelAllotment(id=uuid.uuid4(),tenant_id=user.tenant_id,allotted_by=user.id,status=AllotmentStatus.ACTIVE,**p.model_dump()); db.add(a); await HostelService.commit(db,"Student or bed already has an active allotment"); return AllotmentRow(id=a.id,student_id=student.id,student_name=student.name,student_ref=student.student_roll_no or str(student.id)[:8],room_id=room.id,room_number=room.room_number,block_name="",bed_number=a.bed_number,allotted_from=a.allotted_from,allotted_to=a.allotted_to,status=a.status.value)
@@ -141,6 +142,8 @@ class HostelService:
   if level!="RESIDENT": raise HTTPException(403,"Only a resident can request hostel leave")
   if p.from_date<date.today() or p.to_date<p.from_date: raise HTTPException(422,"Invalid leave dates")
   if not await db.scalar(select(HostelAllotment.id).where(HostelAllotment.student_id==user.id,HostelAllotment.tenant_id==user.tenant_id,HostelAllotment.status==AllotmentStatus.ACTIVE)): raise HTTPException(409,"An active room allotment is required")
+  overlap=await db.scalar(select(HostelLeaveRequest.id).where(HostelLeaveRequest.tenant_id==user.tenant_id,HostelLeaveRequest.student_id==user.id,HostelLeaveRequest.status.in_([LeaveStatus.PENDING,LeaveStatus.APPROVED]),HostelLeaveRequest.from_date<=p.to_date,HostelLeaveRequest.to_date>=p.from_date).with_for_update())
+  if overlap: raise HTTPException(409,"Leave dates overlap an existing request")
   x=HostelLeaveRequest(id=uuid.uuid4(),tenant_id=user.tenant_id,student_id=user.id,status=LeaveStatus.PENDING,**p.model_dump()); db.add(x); await HostelService.commit(db,"Leave request overlaps an existing request"); return await HostelService._leave_row(db,x)
  @staticmethod
  async def _leave_row(db,x):

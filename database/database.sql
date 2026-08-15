@@ -1528,7 +1528,7 @@ CREATE TABLE hostel_complaints (
 
 CREATE OR REPLACE FUNCTION validate_hostel_row() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
  IF TG_TABLE_NAME='hostel_rooms' AND NOT EXISTS(SELECT 1 FROM hostel_blocks b WHERE b.id=NEW.block_id AND b.tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Hostel room and block tenants differ'; END IF;
- IF TG_TABLE_NAME='hostel_allotments' AND (NOT EXISTS(SELECT 1 FROM hostel_rooms r WHERE r.id=NEW.room_id AND r.tenant_id=NEW.tenant_id) OR NOT EXISTS(SELECT 1 FROM users u WHERE u.id=NEW.student_id AND u.tenant_id=NEW.tenant_id) OR NEW.bed_number>(SELECT capacity FROM hostel_rooms WHERE id=NEW.room_id)) THEN RAISE EXCEPTION 'Invalid cross-tenant hostel allotment or bed'; END IF;
+ IF TG_TABLE_NAME='hostel_allotments' AND (NOT EXISTS(SELECT 1 FROM hostel_rooms r WHERE r.id=NEW.room_id AND r.tenant_id=NEW.tenant_id) OR NOT EXISTS(SELECT 1 FROM users u WHERE u.id=NEW.student_id AND u.tenant_id=NEW.tenant_id) OR NOT EXISTS(SELECT 1 FROM academic_years y WHERE y.id=NEW.academic_year_id AND y.tenant_id=NEW.tenant_id) OR NEW.bed_number>(SELECT capacity FROM hostel_rooms WHERE id=NEW.room_id)) THEN RAISE EXCEPTION 'Invalid cross-tenant hostel allotment or bed'; END IF;
  IF TG_TABLE_NAME='hostel_attendance' AND NOT EXISTS(SELECT 1 FROM hostel_allotments a WHERE a.student_id=NEW.student_id AND a.room_id=NEW.room_id AND a.tenant_id=NEW.tenant_id AND a.status='ACTIVE') THEN RAISE EXCEPTION 'Attendance requires an active matching allotment'; END IF;
  RETURN NEW; END $$;
 CREATE TRIGGER trg_validate_hostel_room BEFORE INSERT OR UPDATE ON hostel_rooms FOR EACH ROW EXECUTE FUNCTION validate_hostel_row();
