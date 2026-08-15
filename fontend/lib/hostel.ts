@@ -1,4 +1,5 @@
 import type { InstitutionRole } from "@/types/auth";
+import { leadershipCall, queryString } from "@/lib/principal";
 import type { Tone } from "@/types/dashboard";
 import type {
   ComplaintCategory,
@@ -26,8 +27,8 @@ import type {
  *    in the data layer — `canSeeOccupantDetail` decides what is *sent*, not
  *    what is drawn, so a roommate's roll number never reaches the browser.
  *
- * TODO(Dev-B): the backend must apply the same scoping — a student requesting
- * a room they aren't allotted to should 403 regardless of what the UI offers.
+ * The production API applies the same room and child-allotment fence before
+ * returning occupants, attendance, leave or complaint data.
  */
 
 const BASE: Omit<HostelRoomPermissions, "view" | "note"> = {
@@ -220,3 +221,29 @@ export function occupancyTone(occupied: number, capacity: number): Tone {
   if (occupied === 0) return "muted";
   return "warning";
 }
+
+const call=<T>(path:string,init:RequestInit={})=>leadershipCall<T>("hostel",path,init,"HostelAPIError");
+const json=(method:string,body:unknown):RequestInit=>({method,headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+export interface HostelRoomRow { id:string; blockId:string; blockName:string; roomNumber:string; floor:number; capacity:number; occupied:number; roomType:string; monthlyFee:number; amenities:string[]; isActive:boolean }
+export interface HostelBlockRow { id:string; name:string; gender:string; wardenId:string|null; wardenName:string|null; totalRooms:number; totalCapacity:number; occupied:number; isActive:boolean }
+export interface HostelDashboard { blocks:number; rooms:number; capacity:number; occupied:number; available:number; absentToday:number; pendingLeaves:number; openComplaints:number; canManage:boolean; ownRoom:HostelRoomRow|null }
+export interface HostelPage<T>{items:T[];total:number;canManage:boolean;canCreate:boolean}
+export interface HostelLeaveRow {id:string;studentId:string;studentName:string;fromDate:string;toDate:string;reason:string;destination:string|null;contactDuringLeave:string|null;status:string;reviewedByName:string|null;createdAt:string}
+export interface HostelComplaintRow {id:string;studentId:string;studentName:string;roomId:string|null;roomNumber:string|null;category:string;description:string;status:string;resolvedByName:string|null;resolvedAt:string|null;createdAt:string}
+export interface HostelManagementContext {academicYear:{id:string;name:string}|null;students:{id:string;name:string;ref:string}[];rooms:HostelRoomRow[];blocks:{id:string;name:string}[]}
+export const fetchHostelDashboard=()=>call<HostelDashboard>("/dashboard");
+export const fetchHostelManagementContext=()=>call<HostelManagementContext>("/management-context");
+export const fetchHostelBlocks=()=>call<HostelPage<HostelBlockRow>>("/blocks");
+export const createHostelBlock=(body:unknown)=>call<HostelBlockRow>("/blocks",json("POST",body));
+export const fetchHostelRooms=(query="")=>call<HostelPage<HostelRoomRow>>(`/rooms${queryString({query})}`);
+export const fetchHostelRoom=(id:string)=>call<{room:HostelRoomRow;occupants:{studentId:string;studentName:string;bedNumber:number;isSelf:boolean;rollNo?:string;allotmentId?:string}[];canManage:boolean}>(`/rooms/${id}`);
+export const createHostelRoom=(body:unknown)=>call<HostelRoomRow>("/rooms",json("POST",body));
+export const allotHostelRoom=(body:unknown)=>call("/allotments",json("POST",body));
+export const closeHostelAllotment=(id:string,status:"VACATED"|"TRANSFERRED")=>call(`/allotments/${id}/close`,json("POST",{status}));
+export const saveHostelAttendance=(body:unknown)=>call("/attendance",json("PUT",body));
+export const fetchHostelLeaves=()=>call<HostelPage<HostelLeaveRow>>("/leaves");
+export const createHostelLeave=(body:unknown)=>call<HostelLeaveRow>("/leaves",json("POST",body));
+export const reviewHostelLeave=(id:string,status:"APPROVED"|"REJECTED")=>call<HostelLeaveRow>(`/leaves/${id}/review`,json("POST",{status}));
+export const fetchHostelComplaints=()=>call<HostelPage<HostelComplaintRow>>("/complaints");
+export const createHostelComplaint=(body:unknown)=>call<HostelComplaintRow>("/complaints",json("POST",body));
+export const updateHostelComplaint=(id:string,status:"IN_PROGRESS"|"RESOLVED")=>call(`/complaints/${id}`,json("PATCH",{status}));
