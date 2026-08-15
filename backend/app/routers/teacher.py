@@ -32,6 +32,8 @@ from app.schemas.teacher import (
     APIResponseTeacherDashboard,
     APIResponseTeacherExam,
     APIResponseTeacherExams,
+    APIResponseTeacherGroup,
+    APIResponseTeacherGroups,
     APIResponseTeacherLeave,
     APIResponseTeacherLeaves,
     APIResponseTeacherNotice,
@@ -44,6 +46,7 @@ from app.schemas.teacher import (
     APIResponseTeacherSchedule,
     APIResponseTeacherSubmission,
     APIResponseTeacherSubmissions,
+    APIResponseTeacherTeamWorkspace,
     APIResponseTeacherThread,
     APIResponseTeacherThreads,
     AttendanceSessionUpsert,
@@ -624,6 +627,66 @@ async def update_milestone(
         success=True,
         data=await TeacherService.update_milestone(db, teacher, assignment_id, milestone_id, payload),
         message="Milestone updated",
+    )
+
+
+# ── Group project management ─────────────────────────────────────────────
+
+
+@router.get("/assignments/{assignment_id}/groups", response_model=APIResponseTeacherGroups)
+async def list_assignment_groups(
+    assignment_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_tenant_user_teacher)],
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return APIResponse(
+        success=True,
+        data=await TeacherService.list_assignment_groups(db, teacher, assignment_id, limit=limit, offset=offset),
+        message="Assignment groups loaded",
+    )
+
+
+@router.get("/assignments/{assignment_id}/groups/{group_id}", response_model=APIResponseTeacherGroup)
+async def get_assignment_group(
+    assignment_id: uuid.UUID,
+    group_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_tenant_user_teacher)],
+):
+    return APIResponse(
+        success=True,
+        data=await TeacherService.get_assignment_group(db, teacher, assignment_id, group_id),
+        message="Assignment group loaded",
+    )
+
+
+@router.delete("/assignments/{assignment_id}/groups/{group_id}/members/{student_id}", response_model=APIResponseTeacherGroup)
+async def remove_student_from_group(
+    assignment_id: uuid.UUID,
+    group_id: uuid.UUID,
+    student_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_tenant_user_teacher)],
+):
+    return APIResponse(
+        success=True,
+        data=await TeacherService.remove_student_from_group(db, teacher, assignment_id, group_id, student_id),
+        message="Student removed from group",
+    )
+
+
+@router.get("/teams/{group_id}", response_model=APIResponseTeacherTeamWorkspace)
+async def get_teacher_team_workspace(
+    group_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_tenant_user_teacher)],
+):
+    return APIResponse(
+        success=True,
+        data=await TeacherService.get_teacher_team_workspace(db, teacher, group_id),
+        message="Teacher team workspace loaded",
     )
 
 

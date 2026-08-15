@@ -21,6 +21,7 @@ import {
   updateTeacherAssignment,
 } from "@/lib/teacher";
 import { AsyncState, EmptyTable, dateTime, statusLabel } from "@/components/principal/principal-ui";
+import { TeacherGroupsSection } from "@/components/assignment/group-management";
 
 const STATUS_FILTERS = ["", "DRAFT", "PUBLISHED", "CLOSED"] as const;
 
@@ -175,6 +176,8 @@ export function TeacherCreateAssignmentPage() {
     late_penalty_percent: "0",
     max_file_size_mb: "10",
     allowed_file_types: "pdf, doc, docx, zip",
+    min_group_size: "2",
+    max_group_size: "6",
     instructions_url: "",
     publish: true,
   });
@@ -208,6 +211,12 @@ export function TeacherCreateAssignmentPage() {
       setError("Passing marks cannot exceed total marks.");
       return;
     }
+    const minGrp = Number(form.min_group_size);
+    const maxGrp = Number(form.max_group_size);
+    if (form.assignment_type === "GROUP" && minGrp > maxGrp) {
+      setError("Minimum group size cannot exceed maximum group size.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -224,6 +233,8 @@ export function TeacherCreateAssignmentPage() {
         late_penalty_percent: Number(form.late_penalty_percent),
         max_file_size_mb: Number(form.max_file_size_mb),
         allowed_file_types: form.allowed_file_types.split(",").map((ext) => ext.trim().toLowerCase()).filter(Boolean),
+        min_group_size: minGrp,
+        max_group_size: maxGrp,
         instructions_url: form.instructions_url.trim() || null,
         publish: form.publish,
       });
@@ -268,6 +279,36 @@ export function TeacherCreateAssignmentPage() {
                 </select>
               </div>
             </div>
+            {form.assignment_type === "GROUP" ? (
+              <div className="grid gap-4 rounded-field border border-accent/20 bg-accent-light/10 p-3 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="assignment-min-group" className={labelClass}>Minimum students per group</label>
+                  <input
+                    id="assignment-min-group"
+                    type="number"
+                    min={2}
+                    max={50}
+                    className={inputClass}
+                    value={form.min_group_size}
+                    onChange={(event) => setForm({ ...form, min_group_size: event.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="assignment-max-group" className={labelClass}>Maximum students per group</label>
+                  <input
+                    id="assignment-max-group"
+                    type="number"
+                    min={2}
+                    max={50}
+                    className={inputClass}
+                    value={form.max_group_size}
+                    onChange={(event) => setForm({ ...form, max_group_size: event.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <label htmlFor="assignment-total" className={labelClass}>Total marks</label>
@@ -493,6 +534,9 @@ export function TeacherAssignmentDetailPage() {
                   <Meta label="Type" value={statusLabel(data.assignment_type)} />
                   <Meta label="Marks" value={`${data.total_marks} total · pass ${data.passing_marks}`} />
                   <Meta label="Due" value={dateTime(data.due_date)} />
+                  {data.assignment_type === "GROUP" ? (
+                    <Meta label="Group size" value={`${data.min_group_size} to ${data.max_group_size} students`} />
+                  ) : null}
                   <Meta label="Late submissions" value={data.allow_late_submission ? `Allowed (−${data.late_penalty_percent}%)` : "Not allowed"} />
                   <Meta label="File policy" value={`${data.allowed_file_types.map((ext) => `.${ext}`).join(" ")} · up to ${data.max_file_size_mb} MB`} />
                   <Meta label="Status" value={statusLabel(data.status)} />
@@ -508,6 +552,13 @@ export function TeacherAssignmentDetailPage() {
                 </a>
               ) : null}
             </Card>
+            {data.assignment_type === "GROUP" ? (
+              <TeacherGroupsSection
+                assignmentId={assignmentId}
+                minGroupSize={data.min_group_size}
+                maxGroupSize={data.max_group_size}
+              />
+            ) : null}
             <MilestonesCard
               assignmentId={assignmentId}
               milestones={data.milestones}

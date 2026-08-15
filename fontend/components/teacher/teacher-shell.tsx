@@ -12,6 +12,7 @@ import {
   PenSquare,
   Repeat2,
   UserRoundCheck,
+  Users,
 } from "lucide-react";
 
 import {
@@ -29,6 +30,7 @@ const NAVIGATION: InstitutionConsoleNavItem[] = [
   { label: "Examinations", href: "/teacher/examinations", icon: FileSpreadsheet },
   { label: "Question Bank", href: "/teacher/question-bank", icon: Database },
   { label: "Assignments", href: "/teacher/assignments", icon: Repeat2 },
+  { label: "Project Teams", href: "/teacher/teams", icon: Users },
   { label: "Content", href: "/teacher/content", icon: BookOpen },
   { label: "Notices", href: "/teacher/notices", icon: Megaphone },
   { label: "Discussion", href: "/teacher/discussion", icon: MessageSquare },

@@ -13,6 +13,11 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.common import APIResponse
+from app.schemas.student import (
+    StudentGroupMessageOut,
+    StudentGroupResourceOut,
+    StudentGroupTaskOut,
+)
 
 
 # ── Shared shapes ───────────────────────────────────────────────────────────
@@ -452,6 +457,8 @@ class TeacherAssignmentCreate(BaseModel):
     late_penalty_percent: int = Field(default=0, ge=0, le=100)
     max_file_size_mb: int = Field(default=10, ge=1, le=100)
     allowed_file_types: list[str] = Field(default_factory=lambda: ["pdf", "doc", "docx", "zip"])
+    min_group_size: int = Field(default=2, ge=2, le=50)
+    max_group_size: int = Field(default=6, ge=2, le=50)
     instructions_url: str | None = None
     publish: bool = True
 
@@ -474,6 +481,8 @@ class TeacherAssignmentUpdate(BaseModel):
     late_penalty_percent: int | None = Field(default=None, ge=0, le=100)
     max_file_size_mb: int | None = Field(default=None, ge=1, le=100)
     allowed_file_types: list[str] | None = None
+    min_group_size: int | None = Field(default=None, ge=2, le=50)
+    max_group_size: int | None = Field(default=None, ge=2, le=50)
     instructions_url: str | None = None
 
     @field_validator("due_date")
@@ -523,6 +532,48 @@ class TeacherMilestoneOut(BaseModel):
     unlock_after_milestone_id: uuid.UUID | None = None
 
 
+class TeacherGroupMember(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+    roll_number: str | None = None
+    joined_at: datetime
+
+
+class TeacherGroupRow(BaseModel):
+    id: uuid.UUID
+    assignment_id: uuid.UUID
+    name: str
+    created_by: uuid.UUID | None = None
+    creator_name: str | None = None
+    created_at: datetime
+    member_count: int = 0
+    is_submitted: bool = False
+    submission_id: uuid.UUID | None = None
+    tasks_count: int = 0
+    tasks_done_count: int = 0
+    messages_count: int = 0
+    resources_count: int = 0
+    members: list[TeacherGroupMember] = Field(default_factory=list)
+
+
+class TeacherGroupPage(TeacherPage):
+    items: list[TeacherGroupRow]
+
+
+class TeacherTeamWorkspace(BaseModel):
+    group: TeacherGroupRow
+    assignment_id: uuid.UUID
+    assignment_title: str
+    class_name: str
+    subject_code: str
+    subject_name: str
+    due_date: datetime
+    tasks: list[StudentGroupTaskOut] = Field(default_factory=list)
+    messages: list[StudentGroupMessageOut] = Field(default_factory=list)
+    resources: list[StudentGroupResourceOut] = Field(default_factory=list)
+    submission: TeacherSubmissionDetail | None = None
+
+
 class TeacherAssignmentRow(BaseModel):
     id: uuid.UUID
     title: str
@@ -537,6 +588,7 @@ class TeacherAssignmentRow(BaseModel):
     status: str
     milestone_count: int = 0
     student_count: int = 0
+    group_count: int = 0
     submission_count: int = 0
     pending_review_count: int = 0
     reviewed_count: int = 0
@@ -553,6 +605,8 @@ class TeacherAssignmentDetail(TeacherAssignmentRow):
     late_penalty_percent: int
     max_file_size_mb: int
     allowed_file_types: list[str]
+    min_group_size: int = 2
+    max_group_size: int = 6
     instructions_url: str | None = None
     created_at: datetime
     milestones: list[TeacherMilestoneOut] = Field(default_factory=list)
@@ -563,6 +617,8 @@ class TeacherSubmissionRow(BaseModel):
     student_id: uuid.UUID
     student_name: str
     roll_number: str | None = None
+    group_id: uuid.UUID | None = None
+    group_name: str | None = None
     milestone_id: uuid.UUID | None = None
     milestone_title: str | None = None
     milestone_marks: int | None = None
@@ -772,6 +828,9 @@ APIResponseTeacherAttempt = APIResponse[TeacherAttemptDetail]
 APIResponseTeacherAssignmentList = APIResponse[TeacherAssignmentPage]
 APIResponseTeacherAssignment = APIResponse[TeacherAssignmentDetail]
 APIResponseTeacherMilestone = APIResponse[TeacherMilestoneOut]
+APIResponseTeacherGroups = APIResponse[TeacherGroupPage]
+APIResponseTeacherGroup = APIResponse[TeacherGroupRow]
+APIResponseTeacherTeamWorkspace = APIResponse[TeacherTeamWorkspace]
 APIResponseTeacherSubmissions = APIResponse[TeacherSubmissionPage]
 APIResponseTeacherSubmission = APIResponse[TeacherSubmissionDetail]
 APIResponseTeacherContents = APIResponse[TeacherContentPage]

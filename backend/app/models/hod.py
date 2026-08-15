@@ -77,6 +77,8 @@ class Assignment(Base):
     late_penalty_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_file_size_mb: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     allowed_file_types: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
+    min_group_size: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    max_group_size: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
     instructions_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[AssignmentStatus] = mapped_column(
         SAEnum(AssignmentStatus, name="assignment_status"), nullable=False, default=AssignmentStatus.DRAFT
@@ -94,6 +96,7 @@ class Submission(Base):
     assignment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("assignments.id"), nullable=False)
     milestone_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("milestones.id"), nullable=True)
     student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    group_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("project_groups.id"), nullable=True)
     text_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     submitted_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
     is_late: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

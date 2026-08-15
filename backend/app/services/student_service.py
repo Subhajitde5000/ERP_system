@@ -45,6 +45,12 @@ from app.models.lms import (
     FeePayment,
     LeaveStatus,
     Milestone,
+    ProjectGroup,
+    ProjectGroupInvitation,
+    ProjectGroupMember,
+    ProjectGroupMessage,
+    ProjectGroupResource,
+    ProjectGroupTask,
     Question,
     QuestionOption,
     QuestionType,
@@ -87,6 +93,7 @@ from app.schemas.student import (
     StudentContentRow,
     StudentDashboard,
     StudentDiscussionScope,
+    StudentEligibleClassmateOut,
     StudentExamDetail,
     StudentExamPage,
     StudentExamResult,
@@ -94,14 +101,32 @@ from app.schemas.student import (
     StudentFeeAccount as StudentFeeAccountOut,
     StudentFeeInstallment,
     StudentFeePayment,
+    StudentGroupCreate,
+    StudentGroupInviteIn,
+    StudentGroupInviteOut,
+    StudentGroupInviteResponseIn,
+    StudentGroupListOut,
+    StudentGroupMember,
+    StudentGroupMessageIn,
+    StudentGroupMessageOut,
+    StudentGroupResourceIn,
+    StudentGroupResourceOut,
+    StudentGroupReuseIn,
+    StudentGroupRow,
+    StudentGroupTaskIn,
+    StudentGroupTaskOut,
+    StudentGroupTaskUpdateIn,
     StudentLeaveCreate,
     StudentLeavePage,
     StudentLeaveRow,
     StudentMilestoneProgress,
+    StudentMyTeamDetail,
+    StudentMyTeamSummary,
     StudentNextExam,
     StudentNoticePage,
     StudentNoticeRow,
     StudentPendingAssignment,
+    StudentPreviousGroupOption,
     StudentProfile,
     StudentProfileUpdate,
     StudentReplyCreate,
@@ -1326,6 +1351,92 @@ class StudentService:
         )
 
     @staticmethod
+    async def _get_student_group_for_assignment(
+        db: AsyncSession, tenant_id: uuid.UUID, student_id: uuid.UUID, assignment_id: uuid.UUID
+    ) -> StudentGroupRow | None:
+        member_row = (
+            await db.execute(
+                select(ProjectGroupMember.group_id)
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.group_id)
+                .where(
+                    ProjectGroupMember.student_id == student_id,
+                    ProjectGroupMember.tenant_id == tenant_id,
+                    ProjectGroup.assignment_id == assignment_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if member_row is None:
+            return None
+        return await StudentService._build_student_group_row(db, tenant_id, member_row, student_id)
+
+    @staticmethod
+    async def _build_student_group_row(
+        db: AsyncSession, tenant_id: uuid.UUID, group_id: uuid.UUID, current_student_id: uuid.UUID
+    ) -> StudentGroupRow | None:
+        row = (
+            await db.execute(
+                select(ProjectGroup, User)
+                .outerjoin(User, and_(User.id == ProjectGroup.created_by, User.tenant_id == tenant_id))
+                .where(ProjectGroup.id == group_id, ProjectGroup.tenant_id == tenant_id)
+            )
+        ).first()
+        if row is None:
+            return None
+        group, creator = row
+
+        members_rows = (
+            await db.execute(
+                select(ProjectGroupMember, User, Enrollment)
+                .join(User, and_(User.id == ProjectGroupMember.student_id, User.tenant_id == tenant_id))
+                .outerjoin(
+                    Enrollment,
+                    and_(
+                        Enrollment.student_id == ProjectGroupMember.student_id,
+                        Enrollment.tenant_id == tenant_id,
+                    ),
+                )
+                .where(ProjectGroupMember.group_id == group.id)
+                .order_by(ProjectGroupMember.joined_at.asc())
+            )
+        ).all()
+
+        members = [
+            StudentGroupMember(
+                student_id=user.id,
+                student_name=user.name,
+                roll_number=(enrollment.roll_number if enrollment and enrollment.roll_number else user.student_roll_no),
+                is_me=(user.id == current_student_id),
+                joined_at=member.joined_at,
+            )
+            for member, user, enrollment in members_rows
+        ]
+
+        sub = (
+            await db.execute(
+                select(Submission.id).where(
+                    Submission.assignment_id == group.assignment_id,
+                    Submission.tenant_id == tenant_id,
+                    or_(
+                        Submission.group_id == group.id,
+                        Submission.student_id.in_([m.student_id for m in members] if members else [uuid.uuid4()]),
+                    ),
+                )
+            )
+        ).scalar_one_or_none()
+
+        return StudentGroupRow(
+            id=group.id,
+            assignment_id=group.assignment_id,
+            name=group.name,
+            created_by=group.created_by,
+            creator_name=creator.name if creator else None,
+            member_count=len(members),
+            is_my_group=any(m.student_id == current_student_id for m in members),
+            is_submitted=sub is not None,
+            members=members,
+        )
+
+    @staticmethod
     async def assignment_detail(db: AsyncSession, student: User, assignment_id: uuid.UUID) -> StudentAssignmentDetail:
         ctx = await StudentService.context_for_user(db, student)
         row = (
@@ -1344,19 +1455,37 @@ class StudentService:
         if row is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Assignment not found")
         assignment, subject, teacher = row
+
+        my_group: StudentGroupRow | None = None
+        if assignment.assignment_type == "GROUP":
+            my_group = await StudentService._get_student_group_for_assignment(
+                db, student.tenant_id, student.id, assignment.id
+            )
+
         milestones = (
             await db.execute(
                 select(Milestone).where(Milestone.assignment_id == assignment.id).order_by(Milestone.sort_order)
             )
         ).scalars().all()
+
+        submission_clauses = [
+            Submission.tenant_id == student.tenant_id,
+            Submission.assignment_id == assignment.id,
+        ]
+        if my_group:
+            submission_clauses.append(
+                or_(
+                    Submission.group_id == my_group.id,
+                    Submission.student_id == student.id,
+                )
+            )
+        else:
+            submission_clauses.append(Submission.student_id == student.id)
+
         my_submissions = (
             await db.execute(
                 select(Submission)
-                .where(
-                    Submission.tenant_id == student.tenant_id,
-                    Submission.student_id == student.id,
-                    Submission.assignment_id == assignment.id,
-                )
+                .where(*submission_clauses)
                 .order_by(Submission.submitted_at.desc())
             )
         ).scalars().all()
@@ -1398,12 +1527,17 @@ class StudentService:
             allow_late_submission=assignment.allow_late_submission,
             max_file_size_mb=assignment.max_file_size_mb,
             allowed_file_types=list(assignment.allowed_file_types or []),
+            min_group_size=getattr(assignment, "min_group_size", 2) or 2,
+            max_group_size=getattr(assignment, "max_group_size", 6) or 6,
+            my_group=my_group,
             instructions_url=assignment.instructions_url,
             milestones=milestone_progress,
             my_submissions=[
                 StudentSubmissionOut(
                     id=submission.id,
                     milestone_id=submission.milestone_id,
+                    group_id=submission.group_id,
+                    group_name=my_group.name if my_group and submission.group_id == my_group.id else None,
                     submitted_at=submission.submitted_at,
                     is_late=submission.is_late,
                     status=_value(submission.status) or "SUBMITTED",
@@ -1512,17 +1646,46 @@ class StudentService:
                     detail=f"{file.file_name} exceeds the {assignment.max_file_size_mb} MB limit",
                 )
 
+        my_group_for_sub: StudentGroupRow | None = None
+        if assignment.assignment_type == "GROUP":
+            my_group_for_sub = await StudentService._get_student_group_for_assignment(
+                db, student.tenant_id, student.id, assignment.id
+            )
+            if not my_group_for_sub:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    detail="You must create or join a group before submitting this group assignment",
+                )
+            min_size = getattr(assignment, "min_group_size", 2) or 2
+            if my_group_for_sub.member_count < min_size:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Your group has {my_group_for_sub.member_count} member(s). A minimum of {min_size} members is required to submit.",
+                )
+
+        group_id_val = my_group_for_sub.id if my_group_for_sub else None
+
+        sub_check_clauses = [
+            Submission.tenant_id == student.tenant_id,
+            Submission.assignment_id == assignment.id,
+            (Submission.milestone_id == payload.milestone_id)
+            if payload.milestone_id
+            else Submission.milestone_id.is_(None),
+        ]
+        if group_id_val:
+            sub_check_clauses.append(
+                or_(
+                    Submission.group_id == group_id_val,
+                    Submission.student_id == student.id,
+                )
+            )
+        else:
+            sub_check_clauses.append(Submission.student_id == student.id)
+
         previous_versions = (
             await db.execute(
                 select(func.coalesce(func.max(Submission.version), 0), func.count(Submission.id))
-                .where(
-                    Submission.tenant_id == student.tenant_id,
-                    Submission.assignment_id == assignment.id,
-                    Submission.student_id == student.id,
-                    (Submission.milestone_id == payload.milestone_id)
-                    if payload.milestone_id
-                    else Submission.milestone_id.is_(None),
-                )
+                .where(*sub_check_clauses)
             )
         ).one()
         count = int(previous_versions[1] or 0)
@@ -1530,14 +1693,7 @@ class StudentService:
             latest = (
                 await db.execute(
                     select(Submission)
-                    .where(
-                        Submission.tenant_id == student.tenant_id,
-                        Submission.assignment_id == assignment.id,
-                        Submission.student_id == student.id,
-                        (Submission.milestone_id == payload.milestone_id)
-                        if payload.milestone_id
-                        else Submission.milestone_id.is_(None),
-                    )
+                    .where(*sub_check_clauses)
                     .order_by(Submission.version.desc())
                     .limit(1)
                 )
@@ -1556,6 +1712,7 @@ class StudentService:
             assignment_id=assignment.id,
             milestone_id=payload.milestone_id,
             student_id=student.id,
+            group_id=group_id_val,
             text_response=payload.text_response.strip() if payload.text_response else None,
             submitted_at=now,
             is_late=is_late,
@@ -1588,6 +1745,7 @@ class StudentService:
             new_value={
                 "assignment_id": str(assignment.id),
                 "milestone_id": str(payload.milestone_id) if payload.milestone_id else None,
+                "group_id": str(group_id_val) if group_id_val else None,
                 "version": submission.version,
                 "files": len(payload.files),
             },
@@ -1596,6 +1754,8 @@ class StudentService:
         return StudentSubmissionOut(
             id=submission.id,
             milestone_id=submission.milestone_id,
+            group_id=submission.group_id,
+            group_name=my_group_for_sub.name if my_group_for_sub else None,
             submitted_at=submission.submitted_at,
             is_late=submission.is_late,
             status=_value(submission.status) or "SUBMITTED",
@@ -1607,6 +1767,1415 @@ class StudentService:
             text_response=submission.text_response,
             files=files.get(submission.id, []),
         )
+
+    # ── Group project workflows (Student) ───────────────────────────────────
+
+    @staticmethod
+    async def assignment_groups(
+        db: AsyncSession, student: User, assignment_id: uuid.UUID
+    ) -> StudentGroupListOut:
+        ctx = await StudentService.context_for_user(db, student)
+        assignment = (
+            await db.execute(
+                select(Assignment).where(
+                    Assignment.id == assignment_id,
+                    Assignment.tenant_id == student.tenant_id,
+                    Assignment.class_id == ctx.school_class.id,
+                    Assignment.status.in_((AssignmentStatus.PUBLISHED, AssignmentStatus.CLOSED)),
+                )
+            )
+        ).scalar_one_or_none()
+        if assignment is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+        groups = (
+            await db.execute(
+                select(ProjectGroup)
+                .where(
+                    ProjectGroup.assignment_id == assignment.id,
+                    ProjectGroup.tenant_id == student.tenant_id,
+                )
+                .order_by(ProjectGroup.created_at.asc())
+            )
+        ).scalars().all()
+
+        group_rows: list[StudentGroupRow] = []
+        my_group: StudentGroupRow | None = None
+
+        for group in groups:
+            row = await StudentService._build_student_group_row(
+                db, student.tenant_id, group.id, student.id
+            )
+            if row:
+                group_rows.append(row)
+                if row.is_my_group:
+                    my_group = row
+
+        # Find previous groups this student belonged to across other assignments in the same class
+        previous_groups: list[StudentPreviousGroupOption] = []
+        prev_group_memberships = (
+            await db.execute(
+                select(ProjectGroup, Assignment, Subject)
+                .join(ProjectGroupMember, ProjectGroupMember.group_id == ProjectGroup.id)
+                .join(Assignment, Assignment.id == ProjectGroup.assignment_id)
+                .join(Subject, Subject.id == Assignment.subject_id)
+                .where(
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                    ProjectGroup.assignment_id != assignment.id,
+                    Assignment.class_id == ctx.school_class.id,
+                )
+                .order_by(ProjectGroup.created_at.desc())
+                .limit(10)
+            )
+        ).all()
+
+        seen_prev_names: set[str] = set()
+        for prev_group, prev_assignment, prev_subject in prev_group_memberships:
+            if prev_group.name.lower() in seen_prev_names:
+                continue
+            seen_prev_names.add(prev_group.name.lower())
+
+            prev_members_rows = (
+                await db.execute(
+                    select(ProjectGroupMember, User, Enrollment)
+                    .join(User, and_(User.id == ProjectGroupMember.student_id, User.tenant_id == student.tenant_id))
+                    .outerjoin(
+                        Enrollment,
+                        and_(
+                            Enrollment.student_id == ProjectGroupMember.student_id,
+                            Enrollment.tenant_id == student.tenant_id,
+                        ),
+                    )
+                    .where(ProjectGroupMember.group_id == prev_group.id)
+                    .order_by(ProjectGroupMember.joined_at.asc())
+                )
+            ).all()
+
+            prev_members = [
+                StudentGroupMember(
+                    student_id=user.id,
+                    student_name=user.name,
+                    roll_number=(enrollment.roll_number if enrollment and enrollment.roll_number else user.student_roll_no),
+                    is_me=(user.id == student.id),
+                    joined_at=pm.joined_at,
+                )
+                for pm, user, enrollment in prev_members_rows
+            ]
+
+            previous_groups.append(
+                StudentPreviousGroupOption(
+                    group_id=prev_group.id,
+                    group_name=prev_group.name,
+                    assignment_title=prev_assignment.title,
+                    subject_name=prev_subject.name,
+                    member_count=len(prev_members),
+                    members=prev_members,
+                )
+            )
+
+        return StudentGroupListOut(
+            min_group_size=getattr(assignment, "min_group_size", 2) or 2,
+            max_group_size=getattr(assignment, "max_group_size", 6) or 6,
+            my_group=my_group,
+            groups=group_rows,
+            previous_groups=previous_groups,
+        )
+
+    @staticmethod
+    async def reuse_previous_group(
+        db: AsyncSession, student: User, assignment_id: uuid.UUID, payload: StudentGroupReuseIn
+    ) -> StudentGroupRow:
+        ctx = await StudentService.context_for_user(db, student)
+        assignment = (
+            await db.execute(
+                select(Assignment).where(
+                    Assignment.id == assignment_id,
+                    Assignment.tenant_id == student.tenant_id,
+                    Assignment.class_id == ctx.school_class.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if assignment is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+        if (_value(assignment.status) or "") == AssignmentStatus.CLOSED.value:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="This assignment is closed")
+        if assignment.assignment_type != "GROUP":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="This is not a group assignment")
+
+        # Check if student is already in a group for this assignment
+        existing_membership = (
+            await db.execute(
+                select(ProjectGroupMember)
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.group_id)
+                .where(
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                    ProjectGroup.assignment_id == assignment.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing_membership is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="You are already in a group for this assignment. Leave your current group first.",
+            )
+
+        prev_group = (
+            await db.execute(
+                select(ProjectGroup).where(
+                    ProjectGroup.id == payload.previous_group_id,
+                    ProjectGroup.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if prev_group is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Previous group not found")
+
+        was_member = (
+            await db.execute(
+                select(ProjectGroupMember).where(
+                    ProjectGroupMember.group_id == prev_group.id,
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if was_member is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You were not a member of that group")
+
+        prev_member_ids = (
+            await db.execute(
+                select(ProjectGroupMember.student_id).where(
+                    ProjectGroupMember.group_id == prev_group.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalars().all()
+
+        base_name = prev_group.name.strip()
+        new_name = base_name
+        existing_names = set(
+            (
+                await db.execute(
+                    select(func.lower(ProjectGroup.name)).where(
+                        ProjectGroup.assignment_id == assignment.id,
+                        ProjectGroup.tenant_id == student.tenant_id,
+                    )
+                )
+            ).scalars().all()
+        )
+        suffix = 1
+        while new_name.lower() in existing_names:
+            suffix += 1
+            new_name = f"{base_name} ({suffix})"
+
+        new_group = ProjectGroup(
+            id=uuid.uuid4(),
+            tenant_id=student.tenant_id,
+            assignment_id=assignment.id,
+            name=new_name,
+            created_by=student.id,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(new_group)
+        await db.flush()
+
+        db.add(
+            ProjectGroupMember(
+                id=uuid.uuid4(),
+                tenant_id=student.tenant_id,
+                group_id=new_group.id,
+                student_id=student.id,
+                joined_at=datetime.now(timezone.utc),
+            )
+        )
+
+        already_grouped = set(
+            (
+                await db.execute(
+                    select(ProjectGroupMember.student_id)
+                    .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.group_id)
+                    .where(
+                        ProjectGroup.assignment_id == assignment.id,
+                        ProjectGroup.tenant_id == student.tenant_id,
+                    )
+                )
+            ).scalars().all()
+        )
+
+        max_size = getattr(assignment, "max_group_size", 6) or 6
+        added_count = 1
+        for member_id in prev_member_ids:
+            if member_id == student.id:
+                continue
+            if member_id in already_grouped:
+                continue
+            if added_count >= max_size:
+                break
+            db.add(
+                ProjectGroupMember(
+                    id=uuid.uuid4(),
+                    tenant_id=student.tenant_id,
+                    group_id=new_group.id,
+                    student_id=member_id,
+                    joined_at=datetime.now(timezone.utc),
+                )
+            )
+            added_count += 1
+
+        await db.flush()
+        AuditService.record(
+            db,
+            actor=student,
+            actor_role="STUDENT",
+            action="REUSE_PROJECT_GROUP",
+            entity="ProjectGroup",
+            entity_id=new_group.id,
+            tenant_id=student.tenant_id,
+            new_value={"name": new_group.name, "assignment_id": str(assignment.id), "from_group_id": str(prev_group.id)},
+        )
+        row = await StudentService._build_student_group_row(db, student.tenant_id, new_group.id, student.id)
+        if row is None:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve created group")
+        return row
+
+    @staticmethod
+    async def create_group(
+        db: AsyncSession, student: User, assignment_id: uuid.UUID, payload: StudentGroupCreate
+    ) -> StudentGroupRow:
+        ctx = await StudentService.context_for_user(db, student)
+        assignment = (
+            await db.execute(
+                select(Assignment).where(
+                    Assignment.id == assignment_id,
+                    Assignment.tenant_id == student.tenant_id,
+                    Assignment.class_id == ctx.school_class.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if assignment is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+        if (_value(assignment.status) or "") == AssignmentStatus.CLOSED.value:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="This assignment is closed")
+        if assignment.assignment_type != "GROUP":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="This is not a group assignment")
+
+        clean_name = payload.name.strip()
+        if not clean_name:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Group name is required")
+
+        # Check if student is already in a group for this assignment
+        existing_membership = (
+            await db.execute(
+                select(ProjectGroupMember)
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.group_id)
+                .where(
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                    ProjectGroup.assignment_id == assignment.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing_membership is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="You are already in a group for this assignment. Leave your current group first.",
+            )
+
+        # Check if name is already taken for this assignment
+        existing_name = (
+            await db.execute(
+                select(ProjectGroup).where(
+                    ProjectGroup.assignment_id == assignment.id,
+                    ProjectGroup.tenant_id == student.tenant_id,
+                    func.lower(ProjectGroup.name) == clean_name.lower(),
+                )
+            )
+        ).scalar_one_or_none()
+        if existing_name is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail=f"A group named '{clean_name}' already exists for this assignment",
+            )
+
+        group = ProjectGroup(
+            id=uuid.uuid4(),
+            tenant_id=student.tenant_id,
+            assignment_id=assignment.id,
+            name=clean_name,
+            created_by=student.id,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(group)
+        await db.flush()
+
+        member = ProjectGroupMember(
+            id=uuid.uuid4(),
+            tenant_id=student.tenant_id,
+            group_id=group.id,
+            student_id=student.id,
+            joined_at=datetime.now(timezone.utc),
+        )
+        db.add(member)
+        await db.flush()
+
+        AuditService.record(
+            db,
+            actor=student,
+            actor_role="STUDENT",
+            action="CREATE_PROJECT_GROUP",
+            entity="ProjectGroup",
+            entity_id=group.id,
+            tenant_id=student.tenant_id,
+            new_value={"name": group.name, "assignment_id": str(assignment.id)},
+        )
+
+        res = await StudentService._build_student_group_row(db, student.tenant_id, group.id, student.id)
+        if res is None:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to load created group")
+        return res
+
+    @staticmethod
+    async def join_group(
+        db: AsyncSession, student: User, assignment_id: uuid.UUID, group_id: uuid.UUID
+    ) -> StudentGroupRow:
+        ctx = await StudentService.context_for_user(db, student)
+        assignment = (
+            await db.execute(
+                select(Assignment).where(
+                    Assignment.id == assignment_id,
+                    Assignment.tenant_id == student.tenant_id,
+                    Assignment.class_id == ctx.school_class.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if assignment is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+        if (_value(assignment.status) or "") == AssignmentStatus.CLOSED.value:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="This assignment is closed")
+        if assignment.assignment_type != "GROUP":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="This is not a group assignment")
+
+        # Check if student is already in a group for this assignment
+        existing_membership = (
+            await db.execute(
+                select(ProjectGroupMember)
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.group_id)
+                .where(
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                    ProjectGroup.assignment_id == assignment.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing_membership is not None:
+            if existing_membership.group_id == group_id:
+                return (await StudentService._build_student_group_row(db, student.tenant_id, group_id, student.id)) or StudentGroupRow(
+                    id=group_id, assignment_id=assignment_id, name="", created_at=datetime.now(timezone.utc)
+                )
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="You must leave your current group before joining another group",
+            )
+
+        group = (
+            await db.execute(
+                select(ProjectGroup).where(
+                    ProjectGroup.id == group_id,
+                    ProjectGroup.assignment_id == assignment.id,
+                    ProjectGroup.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if group is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Group not found")
+
+        # Check member count limit
+        max_size = getattr(assignment, "max_group_size", 6) or 6
+        current_count = (
+            await db.execute(
+                select(func.count(ProjectGroupMember.id)).where(ProjectGroupMember.group_id == group.id)
+            )
+        ).scalar() or 0
+        if current_count >= max_size:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail=f"This group is full (maximum {max_size} members allowed)",
+            )
+
+        # Check if group already submitted
+        has_sub = (
+            await db.execute(
+                select(Submission.id).where(
+                    Submission.group_id == group.id,
+                    Submission.assignment_id == assignment.id,
+                    Submission.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if has_sub is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="Cannot join a group that has already submitted the assignment",
+            )
+
+        member = ProjectGroupMember(
+            id=uuid.uuid4(),
+            tenant_id=student.tenant_id,
+            group_id=group.id,
+            student_id=student.id,
+            joined_at=datetime.now(timezone.utc),
+        )
+        db.add(member)
+        await db.flush()
+
+        AuditService.record(
+            db,
+            actor=student,
+            actor_role="STUDENT",
+            action="JOIN_PROJECT_GROUP",
+            entity="ProjectGroupMember",
+            entity_id=member.id,
+            tenant_id=student.tenant_id,
+            new_value={"group_id": str(group.id), "assignment_id": str(assignment.id)},
+        )
+
+        res = await StudentService._build_student_group_row(db, student.tenant_id, group.id, student.id)
+        if res is None:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to load group")
+        return res
+
+    @staticmethod
+    async def leave_group(db: AsyncSession, student: User, assignment_id: uuid.UUID) -> None:
+        ctx = await StudentService.context_for_user(db, student)
+        assignment = (
+            await db.execute(
+                select(Assignment).where(
+                    Assignment.id == assignment_id,
+                    Assignment.tenant_id == student.tenant_id,
+                    Assignment.class_id == ctx.school_class.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if assignment is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+        if (_value(assignment.status) or "") == AssignmentStatus.CLOSED.value:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="This assignment is closed")
+
+        member = (
+            await db.execute(
+                select(ProjectGroupMember, ProjectGroup)
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.group_id)
+                .where(
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                    ProjectGroup.assignment_id == assignment.id,
+                )
+            )
+        ).first()
+        if member is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="You are not in a group for this assignment")
+
+        group_member, group = member
+
+        # Check if group already submitted
+        has_sub = (
+            await db.execute(
+                select(Submission.id).where(
+                    Submission.group_id == group.id,
+                    Submission.assignment_id == assignment.id,
+                    Submission.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if has_sub is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="Cannot leave a group that has already submitted the assignment",
+            )
+
+        await db.delete(group_member)
+        await db.flush()
+
+        remaining_count = (
+            await db.execute(
+                select(func.count(ProjectGroupMember.id)).where(ProjectGroupMember.group_id == group.id)
+            )
+        ).scalar() or 0
+
+        if remaining_count == 0:
+            await db.delete(group)
+            await db.flush()
+
+        AuditService.record(
+            db,
+            actor=student,
+            actor_role="STUDENT",
+            action="LEAVE_PROJECT_GROUP",
+            entity="ProjectGroupMember",
+            entity_id=group_member.id,
+            tenant_id=student.tenant_id,
+            old_value={"group_id": str(group.id), "assignment_id": str(assignment.id)},
+        )
+
+    @staticmethod
+    async def list_my_teams(db: AsyncSession, student: User) -> list[StudentMyTeamSummary]:
+        ctx = await StudentService.context_for_user(db, student)
+
+        memberships = (
+            await db.execute(
+                select(ProjectGroup, Assignment, Subject, User)
+                .join(ProjectGroupMember, ProjectGroupMember.group_id == ProjectGroup.id)
+                .join(Assignment, Assignment.id == ProjectGroup.assignment_id)
+                .join(Subject, Subject.id == Assignment.subject_id)
+                .outerjoin(User, and_(User.id == Assignment.teacher_id, User.tenant_id == student.tenant_id))
+                .where(
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+                .order_by(Assignment.due_date.asc())
+            )
+        ).all()
+
+        results: list[StudentMyTeamSummary] = []
+        for group, assignment, subject, teacher in memberships:
+            group_row = await StudentService._build_student_group_row(
+                db, student.tenant_id, group.id, student.id
+            )
+            if not group_row:
+                continue
+
+            sub = (
+                await db.execute(
+                    select(Submission)
+                    .where(
+                        Submission.assignment_id == assignment.id,
+                        Submission.tenant_id == student.tenant_id,
+                        or_(
+                            Submission.group_id == group.id,
+                            Submission.student_id.in_([m.student_id for m in group_row.members] if group_row.members else [uuid.uuid4()]),
+                        ),
+                    )
+                    .order_by(Submission.version.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
+            results.append(
+                StudentMyTeamSummary(
+                    group_id=group.id,
+                    assignment_id=assignment.id,
+                    group_name=group.name,
+                    assignment_title=assignment.title,
+                    subject_code=subject.code,
+                    subject_name=subject.name,
+                    teacher_name=teacher.name if teacher else None,
+                    due_date=assignment.due_date,
+                    is_leader=(group.created_by == student.id),
+                    member_count=group_row.member_count,
+                    min_group_size=getattr(assignment, "min_group_size", 2) or 2,
+                    max_group_size=getattr(assignment, "max_group_size", 6) or 6,
+                    is_submitted=sub is not None,
+                    submission_status=_value(sub.status) if sub else None,
+                    score=sub.score if sub else None,
+                    total_marks=assignment.total_marks,
+                    members=group_row.members,
+                )
+            )
+
+        return results
+
+    @staticmethod
+    async def get_team_workspace(
+        db: AsyncSession, student: User, group_id: uuid.UUID
+    ) -> StudentMyTeamDetail:
+        membership = (
+            await db.execute(
+                select(ProjectGroupMember).where(
+                    ProjectGroupMember.group_id == group_id,
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if membership is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Team / Group not found or you are not a member")
+
+        group_row = await StudentService._build_student_group_row(
+            db, student.tenant_id, group_id, student.id
+        )
+        if group_row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Group not found")
+
+        assignment_detail = await StudentService.assignment_detail(
+            db, student, group_row.assignment_id
+        )
+
+        task_rows = (
+            await db.execute(
+                select(ProjectGroupTask, User)
+                .outerjoin(User, and_(User.id == ProjectGroupTask.assigned_to, User.tenant_id == student.tenant_id))
+                .where(
+                    ProjectGroupTask.group_id == group_id,
+                    ProjectGroupTask.tenant_id == student.tenant_id,
+                )
+                .order_by(ProjectGroupTask.created_at.asc())
+            )
+        ).all()
+
+        tasks = [
+            StudentGroupTaskOut(
+                id=task.id,
+                group_id=task.group_id,
+                title=task.title,
+                description=task.description,
+                assigned_to=task.assigned_to,
+                assignee_name=assignee.name if assignee else None,
+                status=task.status,
+                due_date=task.due_date,
+                created_by=task.created_by,
+                creator_name=None,
+                created_at=task.created_at,
+                updated_at=task.updated_at,
+            )
+            for task, assignee in task_rows
+        ]
+
+        msg_rows = (
+            await db.execute(
+                select(ProjectGroupMessage, User)
+                .join(User, and_(User.id == ProjectGroupMessage.sender_id, User.tenant_id == student.tenant_id))
+                .where(
+                    ProjectGroupMessage.group_id == group_id,
+                    ProjectGroupMessage.tenant_id == student.tenant_id,
+                )
+                .order_by(ProjectGroupMessage.created_at.asc())
+            )
+        ).all()
+
+        messages = [
+            StudentGroupMessageOut(
+                id=msg.id,
+                group_id=msg.group_id,
+                sender_id=msg.sender_id,
+                sender_name=sender.name,
+                is_me=(msg.sender_id == student.id),
+                message=msg.message,
+                created_at=msg.created_at,
+            )
+            for msg, sender in msg_rows
+        ]
+
+        res_rows = (
+            await db.execute(
+                select(ProjectGroupResource, User)
+                .outerjoin(User, and_(User.id == ProjectGroupResource.created_by, User.tenant_id == student.tenant_id))
+                .where(
+                    ProjectGroupResource.group_id == group_id,
+                    ProjectGroupResource.tenant_id == student.tenant_id,
+                )
+                .order_by(ProjectGroupResource.created_at.desc())
+            )
+        ).all()
+
+        resources = [
+            StudentGroupResourceOut(
+                id=res.id,
+                group_id=res.group_id,
+                title=res.title,
+                url=res.url,
+                resource_type=res.resource_type,
+                created_by=res.created_by,
+                creator_name=creator.name if creator else None,
+                created_at=res.created_at,
+            )
+            for res, creator in res_rows
+        ]
+
+        # Pending Invitations for this team
+        invite_rows = (
+            await db.execute(
+                select(ProjectGroupInvitation, User, Enrollment, ProjectGroup, Assignment, Subject)
+                .join(User, and_(User.id == ProjectGroupInvitation.student_id, User.tenant_id == student.tenant_id))
+                .outerjoin(
+                    Enrollment,
+                    and_(
+                        Enrollment.student_id == ProjectGroupInvitation.student_id,
+                        Enrollment.tenant_id == student.tenant_id,
+                    ),
+                )
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupInvitation.group_id)
+                .join(Assignment, Assignment.id == ProjectGroup.assignment_id)
+                .join(Subject, Subject.id == Assignment.subject_id)
+                .where(
+                    ProjectGroupInvitation.group_id == group_id,
+                    ProjectGroupInvitation.tenant_id == student.tenant_id,
+                    ProjectGroupInvitation.status == "PENDING",
+                )
+                .order_by(ProjectGroupInvitation.created_at.desc())
+            )
+        ).all()
+
+        invitations = [
+            StudentGroupInviteOut(
+                id=inv.id,
+                group_id=inv.group_id,
+                group_name=grp.name,
+                assignment_id=asgn.id,
+                assignment_title=asgn.title,
+                subject_name=subj.name,
+                student_id=target_user.id,
+                student_name=target_user.name,
+                student_roll_number=enroll.roll_number if enroll and enroll.roll_number else target_user.student_roll_no,
+                invited_by=inv.invited_by,
+                inviter_name=student.name,
+                status=inv.status,
+                created_at=inv.created_at,
+            )
+            for inv, target_user, enroll, grp, asgn, subj in invite_rows
+        ]
+
+        return StudentMyTeamDetail(
+            group=group_row,
+            assignment=assignment_detail,
+            tasks=tasks,
+            messages=messages,
+            resources=resources,
+            pending_invitations=invitations,
+        )
+
+    @staticmethod
+    async def create_team_task(
+        db: AsyncSession, student: User, group_id: uuid.UUID, payload: StudentGroupTaskIn
+    ) -> StudentGroupTaskOut:
+        membership = (
+            await db.execute(
+                select(ProjectGroupMember).where(
+                    ProjectGroupMember.group_id == group_id,
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if membership is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You are not a member of this team")
+
+        task = ProjectGroupTask(
+            id=uuid.uuid4(),
+            tenant_id=student.tenant_id,
+            group_id=group_id,
+            title=payload.title.strip(),
+            description=payload.description.strip() if payload.description else None,
+            assigned_to=payload.assigned_to,
+            status="TODO",
+            due_date=payload.due_date,
+            created_by=student.id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(task)
+        await db.flush()
+
+        assignee_name: str | None = None
+        if task.assigned_to:
+            assignee = (
+                await db.execute(select(User.name).where(User.id == task.assigned_to))
+            ).scalar_one_or_none()
+            assignee_name = assignee
+
+        return StudentGroupTaskOut(
+            id=task.id,
+            group_id=task.group_id,
+            title=task.title,
+            description=task.description,
+            assigned_to=task.assigned_to,
+            assignee_name=assignee_name,
+            status=task.status,
+            due_date=task.due_date,
+            created_by=task.created_by,
+            creator_name=student.name,
+            created_at=task.created_at,
+            updated_at=task.updated_at,
+        )
+
+    @staticmethod
+    async def update_team_task(
+        db: AsyncSession, student: User, group_id: uuid.UUID, task_id: uuid.UUID, payload: StudentGroupTaskUpdateIn
+    ) -> StudentGroupTaskOut:
+        membership = (
+            await db.execute(
+                select(ProjectGroupMember).where(
+                    ProjectGroupMember.group_id == group_id,
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if membership is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You are not a member of this team")
+
+        task = (
+            await db.execute(
+                select(ProjectGroupTask).where(
+                    ProjectGroupTask.id == task_id,
+                    ProjectGroupTask.group_id == group_id,
+                    ProjectGroupTask.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if task is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+        if payload.title is not None:
+            task.title = payload.title.strip()
+        if payload.description is not None:
+            task.description = payload.description.strip() if payload.description else None
+        if payload.assigned_to is not None:
+            task.assigned_to = payload.assigned_to
+        if payload.status is not None:
+            task.status = payload.status
+        if payload.due_date is not None:
+            task.due_date = payload.due_date
+        task.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+
+        assignee_name: str | None = None
+        if task.assigned_to:
+            assignee = (
+                await db.execute(select(User.name).where(User.id == task.assigned_to))
+            ).scalar_one_or_none()
+            assignee_name = assignee
+
+        return StudentGroupTaskOut(
+            id=task.id,
+            group_id=task.group_id,
+            title=task.title,
+            description=task.description,
+            assigned_to=task.assigned_to,
+            assignee_name=assignee_name,
+            status=task.status,
+            due_date=task.due_date,
+            created_by=task.created_by,
+            creator_name=None,
+            created_at=task.created_at,
+            updated_at=task.updated_at,
+        )
+
+    @staticmethod
+    async def delete_team_task(
+        db: AsyncSession, student: User, group_id: uuid.UUID, task_id: uuid.UUID
+    ) -> None:
+        membership = (
+            await db.execute(
+                select(ProjectGroupMember).where(
+                    ProjectGroupMember.group_id == group_id,
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if membership is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You are not a member of this team")
+
+        task = (
+            await db.execute(
+                select(ProjectGroupTask).where(
+                    ProjectGroupTask.id == task_id,
+                    ProjectGroupTask.group_id == group_id,
+                    ProjectGroupTask.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if task is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+        await db.delete(task)
+        await db.flush()
+
+    @staticmethod
+    async def post_team_message(
+        db: AsyncSession, student: User, group_id: uuid.UUID, payload: StudentGroupMessageIn
+    ) -> StudentGroupMessageOut:
+        membership = (
+            await db.execute(
+                select(ProjectGroupMember).where(
+                    ProjectGroupMember.group_id == group_id,
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if membership is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You are not a member of this team")
+
+        msg = ProjectGroupMessage(
+            id=uuid.uuid4(),
+            tenant_id=student.tenant_id,
+            group_id=group_id,
+            sender_id=student.id,
+            message=payload.message.strip(),
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(msg)
+        await db.flush()
+
+        return StudentGroupMessageOut(
+            id=msg.id,
+            group_id=msg.group_id,
+            sender_id=msg.sender_id,
+            sender_name=student.name,
+            is_me=True,
+            message=msg.message,
+            created_at=msg.created_at,
+        )
+
+    @staticmethod
+    async def add_team_resource(
+        db: AsyncSession, student: User, group_id: uuid.UUID, payload: StudentGroupResourceIn
+    ) -> StudentGroupResourceOut:
+        membership = (
+            await db.execute(
+                select(ProjectGroupMember).where(
+                    ProjectGroupMember.group_id == group_id,
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if membership is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You are not a member of this team")
+
+        resource = ProjectGroupResource(
+            id=uuid.uuid4(),
+            tenant_id=student.tenant_id,
+            group_id=group_id,
+            title=payload.title.strip(),
+            url=payload.url.strip(),
+            resource_type=payload.resource_type.upper() if payload.resource_type else "LINK",
+            created_by=student.id,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(resource)
+        await db.flush()
+
+        return StudentGroupResourceOut(
+            id=resource.id,
+            group_id=resource.group_id,
+            title=resource.title,
+            url=resource.url,
+            resource_type=resource.resource_type,
+            created_by=resource.created_by,
+            creator_name=student.name,
+            created_at=resource.created_at,
+        )
+
+    @staticmethod
+    async def delete_team_resource(
+        db: AsyncSession, student: User, group_id: uuid.UUID, resource_id: uuid.UUID
+    ) -> None:
+        membership = (
+            await db.execute(
+                select(ProjectGroupMember).where(
+                    ProjectGroupMember.group_id == group_id,
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if membership is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You are not a member of this team")
+
+        resource = (
+            await db.execute(
+                select(ProjectGroupResource).where(
+                    ProjectGroupResource.id == resource_id,
+                    ProjectGroupResource.group_id == group_id,
+                    ProjectGroupResource.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if resource is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Resource not found")
+
+        await db.delete(resource)
+        await db.flush()
+
+    @staticmethod
+    async def list_eligible_classmates_to_invite(
+        db: AsyncSession, student: User, group_id: uuid.UUID
+    ) -> list[StudentEligibleClassmateOut]:
+        group = (
+            await db.execute(
+                select(ProjectGroup).where(
+                    ProjectGroup.id == group_id,
+                    ProjectGroup.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if not group:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Group not found")
+
+        assignment = (
+            await db.execute(
+                select(Assignment).where(
+                    Assignment.id == group.assignment_id,
+                    Assignment.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if not assignment:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+        # Students enrolled in this class
+        enrolled_students = (
+            await db.execute(
+                select(User, Enrollment)
+                .join(Enrollment, and_(Enrollment.student_id == User.id, Enrollment.tenant_id == student.tenant_id))
+                .where(
+                    Enrollment.class_id == assignment.class_id,
+                    Enrollment.status == "ACTIVE",
+                    User.tenant_id == student.tenant_id,
+                    User.id != student.id,
+                )
+                .order_by(User.name.asc())
+            )
+        ).all()
+
+        # Students already in any group for this assignment
+        grouped_student_ids = set(
+            (
+                await db.execute(
+                    select(ProjectGroupMember.student_id)
+                    .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.group_id)
+                    .where(
+                        ProjectGroup.assignment_id == assignment.id,
+                        ProjectGroupMember.tenant_id == student.tenant_id,
+                    )
+                )
+            ).scalars().all()
+        )
+
+        # Students with pending invites for THIS group
+        invited_student_ids = set(
+            (
+                await db.execute(
+                    select(ProjectGroupInvitation.student_id).where(
+                        ProjectGroupInvitation.group_id == group_id,
+                        ProjectGroupInvitation.tenant_id == student.tenant_id,
+                        ProjectGroupInvitation.status == "PENDING",
+                    )
+                )
+            ).scalars().all()
+        )
+
+        results: list[StudentEligibleClassmateOut] = []
+        for user, enrollment in enrolled_students:
+            results.append(
+                StudentEligibleClassmateOut(
+                    student_id=user.id,
+                    student_name=user.name,
+                    roll_number=enrollment.roll_number if enrollment and enrollment.roll_number else user.student_roll_no,
+                    already_in_group=(user.id in grouped_student_ids),
+                    has_pending_invite=(user.id in invited_student_ids),
+                )
+            )
+        return results
+
+    @staticmethod
+    async def invite_team_member(
+        db: AsyncSession, student: User, group_id: uuid.UUID, payload: StudentGroupInviteIn
+    ) -> StudentGroupInviteOut:
+        group = (
+            await db.execute(
+                select(ProjectGroup).where(
+                    ProjectGroup.id == group_id,
+                    ProjectGroup.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if not group:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Group not found")
+
+        if group.created_by != student.id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the team leader can invite members")
+
+        assignment_row = (
+            await db.execute(
+                select(Assignment, Subject)
+                .join(Subject, Subject.id == Assignment.subject_id)
+                .where(
+                    Assignment.id == group.assignment_id,
+                    Assignment.tenant_id == student.tenant_id,
+                )
+            )
+        ).first()
+        if not assignment_row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+        asgn, subj = assignment_row
+
+        # Check max group size
+        current_member_count = (
+            await db.execute(
+                select(func.count(ProjectGroupMember.id)).where(
+                    ProjectGroupMember.group_id == group_id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar() or 0
+
+        max_size = getattr(asgn, "max_group_size", 6) or 6
+        if current_member_count >= max_size:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"Team is already full (maximum {max_size} members)")
+
+        # Target student
+        target_row = (
+            await db.execute(
+                select(User, Enrollment)
+                .outerjoin(
+                    Enrollment,
+                    and_(
+                        Enrollment.student_id == User.id,
+                        Enrollment.tenant_id == student.tenant_id,
+                        Enrollment.class_id == asgn.class_id,
+                    ),
+                )
+                .where(
+                    User.id == payload.student_id,
+                    User.tenant_id == student.tenant_id,
+                )
+            )
+        ).first()
+        if not target_row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Student not found in this class")
+        t_user, t_enroll = target_row
+
+        # Check if already in ANY group for this assignment
+        existing_group_member = (
+            await db.execute(
+                select(ProjectGroupMember)
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.group_id)
+                .where(
+                    ProjectGroup.assignment_id == asgn.id,
+                    ProjectGroupMember.student_id == payload.student_id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing_group_member:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="This student is already a member of a team for this project")
+
+        # Check if already invited
+        existing_invite = (
+            await db.execute(
+                select(ProjectGroupInvitation).where(
+                    ProjectGroupInvitation.group_id == group_id,
+                    ProjectGroupInvitation.student_id == payload.student_id,
+                    ProjectGroupInvitation.tenant_id == student.tenant_id,
+                    ProjectGroupInvitation.status == "PENDING",
+                )
+            )
+        ).scalar_one_or_none()
+        if existing_invite:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="An invitation is already pending for this student")
+
+        invitation = ProjectGroupInvitation(
+            tenant_id=student.tenant_id,
+            group_id=group_id,
+            student_id=payload.student_id,
+            invited_by=student.id,
+            status="PENDING",
+        )
+        db.add(invitation)
+        await db.commit()
+        await db.refresh(invitation)
+
+        return StudentGroupInviteOut(
+            id=invitation.id,
+            group_id=group.id,
+            group_name=group.name,
+            assignment_id=asgn.id,
+            assignment_title=asgn.title,
+            subject_name=subj.name,
+            student_id=t_user.id,
+            student_name=t_user.name,
+            student_roll_number=t_enroll.roll_number if t_enroll and t_enroll.roll_number else t_user.student_roll_no,
+            invited_by=student.id,
+            inviter_name=student.name,
+            status=invitation.status,
+            created_at=invitation.created_at,
+        )
+
+    @staticmethod
+    async def cancel_team_invitation(
+        db: AsyncSession, student: User, group_id: uuid.UUID, invite_id: uuid.UUID
+    ) -> None:
+        group = (
+            await db.execute(
+                select(ProjectGroup).where(
+                    ProjectGroup.id == group_id,
+                    ProjectGroup.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if not group:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Group not found")
+
+        if group.created_by != student.id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the team leader can cancel invitations")
+
+        invite = (
+            await db.execute(
+                select(ProjectGroupInvitation).where(
+                    ProjectGroupInvitation.id == invite_id,
+                    ProjectGroupInvitation.group_id == group_id,
+                    ProjectGroupInvitation.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if not invite:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+
+        invite.status = "CANCELLED"
+        invite.responded_at = datetime.now(timezone.utc)
+        await db.commit()
+
+    @staticmethod
+    async def list_my_team_invitations(
+        db: AsyncSession, student: User
+    ) -> list[StudentGroupInviteOut]:
+        invitations_raw = (
+            await db.execute(
+                select(ProjectGroupInvitation, ProjectGroup, Assignment, Subject, User)
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupInvitation.group_id)
+                .join(Assignment, Assignment.id == ProjectGroup.assignment_id)
+                .join(Subject, Subject.id == Assignment.subject_id)
+                .join(User, and_(User.id == ProjectGroupInvitation.invited_by, User.tenant_id == student.tenant_id))
+                .where(
+                    ProjectGroupInvitation.student_id == student.id,
+                    ProjectGroupInvitation.tenant_id == student.tenant_id,
+                    ProjectGroupInvitation.status == "PENDING",
+                )
+                .order_by(ProjectGroupInvitation.created_at.desc())
+            )
+        ).all()
+
+        results: list[StudentGroupInviteOut] = []
+        for inv, grp, asgn, subj, inviter in invitations_raw:
+            results.append(
+                StudentGroupInviteOut(
+                    id=inv.id,
+                    group_id=grp.id,
+                    group_name=grp.name,
+                    assignment_id=asgn.id,
+                    assignment_title=asgn.title,
+                    subject_name=subj.name,
+                    student_id=student.id,
+                    student_name=student.name,
+                    student_roll_number=student.student_roll_no,
+                    invited_by=inviter.id,
+                    inviter_name=inviter.name,
+                    status=inv.status,
+                    created_at=inv.created_at,
+                )
+            )
+        return results
+
+    @staticmethod
+    async def respond_to_team_invitation(
+        db: AsyncSession, student: User, invite_id: uuid.UUID, payload: StudentGroupInviteResponseIn
+    ) -> str:
+        invite = (
+            await db.execute(
+                select(ProjectGroupInvitation, ProjectGroup, Assignment)
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupInvitation.group_id)
+                .join(Assignment, Assignment.id == ProjectGroup.assignment_id)
+                .where(
+                    ProjectGroupInvitation.id == invite_id,
+                    ProjectGroupInvitation.student_id == student.id,
+                    ProjectGroupInvitation.tenant_id == student.tenant_id,
+                    ProjectGroupInvitation.status == "PENDING",
+                )
+            )
+        ).first()
+        if not invite:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Invitation not found or already processed")
+
+        invitation, group, assignment = invite
+
+        if payload.action == "REJECT":
+            invitation.status = "REJECTED"
+            invitation.responded_at = datetime.now(timezone.utc)
+            await db.commit()
+            return "Invitation declined"
+
+        # Action is ACCEPT
+        # Check current member count
+        member_count = (
+            await db.execute(
+                select(func.count(ProjectGroupMember.id)).where(
+                    ProjectGroupMember.group_id == group.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar() or 0
+
+        max_size = getattr(assignment, "max_group_size", 6) or 6
+        if member_count >= max_size:
+            invitation.status = "CANCELLED"
+            invitation.responded_at = datetime.now(timezone.utc)
+            await db.commit()
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="This team has already reached its maximum capacity")
+
+        # Check if student is already in another group for this assignment
+        existing_membership = (
+            await db.execute(
+                select(ProjectGroupMember)
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.group_id)
+                .where(
+                    ProjectGroup.assignment_id == assignment.id,
+                    ProjectGroupMember.student_id == student.id,
+                    ProjectGroupMember.tenant_id == student.tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing_membership:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="You are already in a team for this project. Please leave your current team first.",
+            )
+
+        # Add member to group
+        new_member = ProjectGroupMember(
+            tenant_id=student.tenant_id,
+            group_id=group.id,
+            student_id=student.id,
+        )
+        db.add(new_member)
+        invitation.status = "ACCEPTED"
+        invitation.responded_at = datetime.now(timezone.utc)
+
+        # Cancel any other pending invitations for this student on this assignment
+        other_invites = (
+            await db.execute(
+                select(ProjectGroupInvitation)
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupInvitation.group_id)
+                .where(
+                    ProjectGroup.assignment_id == assignment.id,
+                    ProjectGroupInvitation.student_id == student.id,
+                    ProjectGroupInvitation.tenant_id == student.tenant_id,
+                    ProjectGroupInvitation.status == "PENDING",
+                    ProjectGroupInvitation.id != invitation.id,
+                )
+            )
+        ).scalars().all()
+
+        for oi in other_invites:
+            oi.status = "CANCELLED"
+            oi.responded_at = datetime.now(timezone.utc)
+
+        await db.commit()
+        return "Joined team successfully"
 
     # ── C-ST-13 / C-ST-14 content ───────────────────────────────────────────
 
@@ -1635,7 +3204,7 @@ class StudentService:
             clauses.append(ContentItem.subject_id == subject_id)
         if chapter and chapter.strip():
             clauses.append(func.lower(ContentItem.chapter) == chapter.strip().lower())
-        if content_type:
+        if content_type and content_type.strip().upper() != "ALL":
             wanted = content_type.strip().upper()
             if wanted not in ContentKind.__members__:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown content type")
