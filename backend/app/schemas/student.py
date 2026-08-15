@@ -393,6 +393,132 @@ class StudentGroupListOut(BaseModel):
     previous_groups: list[StudentPreviousGroupOption] = Field(default_factory=list)
 
 
+# ── Team Collaboration & Workspace Facilities ───────────────────────────────
+
+class StudentGroupTaskIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=5000)
+    assigned_to: uuid.UUID | None = None
+    due_date: datetime | None = None
+
+
+class StudentGroupTaskUpdateIn(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=5000)
+    assigned_to: uuid.UUID | None = None
+    status: str | None = None
+    due_date: datetime | None = None
+
+
+class StudentGroupTaskOut(BaseModel):
+    id: uuid.UUID
+    group_id: uuid.UUID
+    title: str
+    description: str | None = None
+    assigned_to: uuid.UUID | None = None
+    assignee_name: str | None = None
+    status: str = "TODO"
+    due_date: datetime | None = None
+    created_by: uuid.UUID | None = None
+    creator_name: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class StudentGroupMessageIn(BaseModel):
+    message: str = Field(..., min_length=1, max_length=5000)
+
+
+class StudentGroupMessageOut(BaseModel):
+    id: uuid.UUID
+    group_id: uuid.UUID
+    sender_id: uuid.UUID
+    sender_name: str
+    is_me: bool = False
+    message: str
+    created_at: datetime
+
+
+class StudentGroupResourceIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    url: str = Field(..., min_length=1, max_length=2000)
+    resource_type: str = "LINK"
+
+
+class StudentGroupResourceOut(BaseModel):
+    id: uuid.UUID
+    group_id: uuid.UUID
+    title: str
+    url: str
+    resource_type: str = "LINK"
+    created_by: uuid.UUID | None = None
+    creator_name: str | None = None
+    created_at: datetime
+
+
+class StudentMyTeamSummary(BaseModel):
+    group_id: uuid.UUID
+    assignment_id: uuid.UUID
+    group_name: str
+    assignment_title: str
+    subject_code: str
+    subject_name: str
+    teacher_name: str | None = None
+    due_date: datetime
+    is_leader: bool = False
+    member_count: int = 0
+    min_group_size: int = 2
+    max_group_size: int = 6
+    is_submitted: bool = False
+    submission_status: str | None = None
+    score: float | None = None
+    total_marks: int = 50
+    members: list[StudentGroupMember] = Field(default_factory=list)
+
+
+class StudentMyTeamDetail(BaseModel):
+    group: StudentGroupRow
+    assignment: StudentAssignmentDetail
+    tasks: list[StudentGroupTaskOut] = Field(default_factory=list)
+    messages: list[StudentGroupMessageOut] = Field(default_factory=list)
+    resources: list[StudentGroupResourceOut] = Field(default_factory=list)
+    pending_invitations: list["StudentGroupInviteOut"] = Field(default_factory=list)
+
+
+# ── Team Invitations (Leader Invite Teammates) ───────────────────────────────
+
+class StudentGroupInviteIn(BaseModel):
+    student_id: uuid.UUID
+
+
+class StudentGroupInviteResponseIn(BaseModel):
+    action: Literal["ACCEPT", "REJECT"]
+
+
+class StudentEligibleClassmateOut(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+    roll_number: str | None = None
+    already_in_group: bool = False
+    has_pending_invite: bool = False
+
+
+class StudentGroupInviteOut(BaseModel):
+    id: uuid.UUID
+    group_id: uuid.UUID
+    group_name: str
+    assignment_id: uuid.UUID
+    assignment_title: str
+    subject_name: str
+    student_id: uuid.UUID
+    student_name: str
+    student_roll_number: str | None = None
+    invited_by: uuid.UUID
+    inviter_name: str
+    status: str = "PENDING"
+    created_at: datetime
+
+
 class StudentSubmissionOut(BaseModel):
     id: uuid.UUID
     milestone_id: uuid.UUID | None = None
@@ -627,6 +753,17 @@ APIResponseStudentAssignments = APIResponse[StudentAssignmentPage]
 APIResponseStudentAssignment = APIResponse[StudentAssignmentDetail]
 APIResponseStudentGroups = APIResponse[StudentGroupListOut]
 APIResponseStudentGroup = APIResponse[StudentGroupRow]
+APIResponseStudentTeams = APIResponse[list[StudentMyTeamSummary]]
+APIResponseStudentTeamDetail = APIResponse[StudentMyTeamDetail]
+APIResponseStudentGroupTask = APIResponse[StudentGroupTaskOut]
+APIResponseStudentGroupTasks = APIResponse[list[StudentGroupTaskOut]]
+APIResponseStudentGroupMessage = APIResponse[StudentGroupMessageOut]
+APIResponseStudentGroupMessages = APIResponse[list[StudentGroupMessageOut]]
+APIResponseStudentGroupResource = APIResponse[StudentGroupResourceOut]
+APIResponseStudentGroupResources = APIResponse[list[StudentGroupResourceOut]]
+APIResponseStudentGroupInvite = APIResponse[StudentGroupInviteOut]
+APIResponseStudentGroupInvites = APIResponse[list[StudentGroupInviteOut]]
+APIResponseStudentEligibleClassmates = APIResponse[list[StudentEligibleClassmateOut]]
 APIResponseStudentSubmission = APIResponse[StudentSubmissionOut]
 APIResponseStudentContents = APIResponse[StudentContentPage]
 APIResponseStudentContent = APIResponse[StudentContentRow]

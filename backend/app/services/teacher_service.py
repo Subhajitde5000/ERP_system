@@ -50,6 +50,9 @@ from app.models.lms import (
     Milestone,
     ProjectGroup,
     ProjectGroupMember,
+    ProjectGroupMessage,
+    ProjectGroupResource,
+    ProjectGroupTask,
     Question,
     QuestionBankItem,
     QuestionOption,
@@ -68,9 +71,18 @@ from app.models.principal import (
     Notice,
     NoticePriority,
     NoticeScope,
+    ResultPublication,
+    StaffLeaveRequest,
+    StudentResult,
     TimetableSlot,
 )
+from app.models.tenant import Tenant
 from app.models.user import User
+from app.schemas.student import (
+    StudentGroupMessageOut,
+    StudentGroupResourceOut,
+    StudentGroupTaskOut,
+)
 from app.schemas.teacher import (
     AttendanceRosterEntry,
     AttendanceSessionUpsert,
@@ -129,6 +141,7 @@ from app.schemas.teacher import (
     TeacherSubmissionReviewIn,
     TeacherSubmissionRow,
     TeacherTargetOption,
+    TeacherTeamWorkspace,
     TeacherThreadCreate,
     TeacherThreadDetail,
     TeacherThreadModeration,
@@ -2938,6 +2951,40 @@ class TeacherService:
                     if any(m.student_id == sub_sid for m in mems):
                         submission_by_group[gid] = sub_id
 
+        # Task counts per group
+        tasks_stat_rows = (
+            await db.execute(
+                select(
+                    ProjectGroupTask.group_id,
+                    func.count(ProjectGroupTask.id).label("total_tasks"),
+                    func.count(case((ProjectGroupTask.status == "DONE", 1))).label("done_tasks"),
+                )
+                .where(ProjectGroupTask.group_id.in_(group_ids), ProjectGroupTask.tenant_id == tenant_id)
+                .group_by(ProjectGroupTask.group_id)
+            )
+        ).all()
+        tasks_by_group = {row[0]: (row[1], row[2]) for row in tasks_stat_rows}
+
+        # Message counts per group
+        msgs_stat_rows = (
+            await db.execute(
+                select(ProjectGroupMessage.group_id, func.count(ProjectGroupMessage.id))
+                .where(ProjectGroupMessage.group_id.in_(group_ids), ProjectGroupMessage.tenant_id == tenant_id)
+                .group_by(ProjectGroupMessage.group_id)
+            )
+        ).all()
+        msgs_by_group = {row[0]: row[1] for row in msgs_stat_rows}
+
+        # Resource counts per group
+        res_stat_rows = (
+            await db.execute(
+                select(ProjectGroupResource.group_id, func.count(ProjectGroupResource.id))
+                .where(ProjectGroupResource.group_id.in_(group_ids), ProjectGroupResource.tenant_id == tenant_id)
+                .group_by(ProjectGroupResource.group_id)
+            )
+        ).all()
+        res_by_group = {row[0]: row[1] for row in res_stat_rows}
+
         items = [
             TeacherGroupRow(
                 id=group.id,
@@ -2949,6 +2996,10 @@ class TeacherService:
                 member_count=len(members_by_group.get(group.id, [])),
                 is_submitted=group.id in submission_by_group,
                 submission_id=submission_by_group.get(group.id),
+                tasks_count=tasks_by_group.get(group.id, (0, 0))[0],
+                tasks_done_count=tasks_by_group.get(group.id, (0, 0))[1],
+                messages_count=msgs_by_group.get(group.id, 0),
+                resources_count=res_by_group.get(group.id, 0),
                 members=members_by_group.get(group.id, []),
             )
             for group, creator in groups
@@ -3024,6 +3075,31 @@ class TeacherService:
             )
         ).scalar_one_or_none()
 
+        task_counts = (
+            await db.execute(
+                select(
+                    func.count(ProjectGroupTask.id),
+                    func.count(case((ProjectGroupTask.status == "DONE", 1))),
+                ).where(ProjectGroupTask.group_id == group.id, ProjectGroupTask.tenant_id == tenant_id)
+            )
+        ).first()
+
+        msg_count = (
+            await db.execute(
+                select(func.count(ProjectGroupMessage.id)).where(
+                    ProjectGroupMessage.group_id == group.id, ProjectGroupMessage.tenant_id == tenant_id
+                )
+            )
+        ).scalar() or 0
+
+        res_count = (
+            await db.execute(
+                select(func.count(ProjectGroupResource.id)).where(
+                    ProjectGroupResource.group_id == group.id, ProjectGroupResource.tenant_id == tenant_id
+                )
+            )
+        ).scalar() or 0
+
         return TeacherGroupRow(
             id=group.id,
             assignment_id=group.assignment_id,
@@ -3034,7 +3110,150 @@ class TeacherService:
             member_count=len(members),
             is_submitted=sub is not None,
             submission_id=sub,
+            tasks_count=task_counts[0] if task_counts else 0,
+            tasks_done_count=task_counts[1] if task_counts else 0,
+            messages_count=msg_count,
+            resources_count=res_count,
             members=members,
+        )
+
+    @staticmethod
+    async def get_teacher_team_workspace(
+        db: AsyncSession,
+        teacher: User,
+        group_id: uuid.UUID,
+    ) -> TeacherTeamWorkspace:
+        tenant_id = teacher.tenant_id
+
+        group_row_data = (
+            await db.execute(
+                select(ProjectGroup, Assignment, SchoolClass, Subject)
+                .join(Assignment, Assignment.id == ProjectGroup.assignment_id)
+                .join(SchoolClass, SchoolClass.id == Assignment.class_id)
+                .join(Subject, Subject.id == Assignment.subject_id)
+                .where(
+                    ProjectGroup.id == group_id,
+                    ProjectGroup.tenant_id == tenant_id,
+                )
+            )
+        ).first()
+
+        if group_row_data is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Group not found")
+
+        group, assignment, school_class, subject = group_row_data
+
+        # Verify teacher has access to this class or assignment
+        await TeacherService._owned_assignment(db, teacher, assignment.id)
+
+        group_row = await TeacherService.get_assignment_group(db, teacher, assignment.id, group.id)
+
+        # Tasks
+        task_rows = (
+            await db.execute(
+                select(ProjectGroupTask, User)
+                .outerjoin(User, and_(User.id == ProjectGroupTask.assigned_to, User.tenant_id == tenant_id))
+                .where(
+                    ProjectGroupTask.group_id == group_id,
+                    ProjectGroupTask.tenant_id == tenant_id,
+                )
+                .order_by(ProjectGroupTask.created_at.asc())
+            )
+        ).all()
+
+        tasks = [
+            StudentGroupTaskOut(
+                id=task.id,
+                group_id=task.group_id,
+                title=task.title,
+                description=task.description,
+                assigned_to=task.assigned_to,
+                assignee_name=assignee.name if assignee else None,
+                status=task.status,
+                due_date=task.due_date,
+                created_by=task.created_by,
+                creator_name=None,
+                created_at=task.created_at,
+                updated_at=task.updated_at,
+            )
+            for task, assignee in task_rows
+        ]
+
+        # Messages
+        msg_rows = (
+            await db.execute(
+                select(ProjectGroupMessage, User)
+                .join(User, and_(User.id == ProjectGroupMessage.sender_id, User.tenant_id == tenant_id))
+                .where(
+                    ProjectGroupMessage.group_id == group_id,
+                    ProjectGroupMessage.tenant_id == tenant_id,
+                )
+                .order_by(ProjectGroupMessage.created_at.asc())
+            )
+        ).all()
+
+        messages = [
+            StudentGroupMessageOut(
+                id=msg.id,
+                group_id=msg.group_id,
+                sender_id=msg.sender_id,
+                sender_name=sender.name,
+                is_me=False,
+                message=msg.message,
+                created_at=msg.created_at,
+            )
+            for msg, sender in msg_rows
+        ]
+
+        # Resources
+        res_rows = (
+            await db.execute(
+                select(ProjectGroupResource, User)
+                .outerjoin(User, and_(User.id == ProjectGroupResource.created_by, User.tenant_id == tenant_id))
+                .where(
+                    ProjectGroupResource.group_id == group_id,
+                    ProjectGroupResource.tenant_id == tenant_id,
+                )
+                .order_by(ProjectGroupResource.created_at.desc())
+            )
+        ).all()
+
+        resources = [
+            StudentGroupResourceOut(
+                id=res.id,
+                group_id=res.group_id,
+                title=res.title,
+                url=res.url,
+                resource_type=res.resource_type,
+                created_by=res.created_by,
+                creator_name=creator.name if creator else None,
+                created_at=res.created_at,
+            )
+            for res, creator in res_rows
+        ]
+
+        # Submission detail if submitted
+        submission_detail = None
+        if group_row.submission_id:
+            try:
+                submission_detail = await TeacherService.submission_detail(
+                    db, teacher, group_row.submission_id
+                )
+            except Exception:
+                submission_detail = None
+
+        return TeacherTeamWorkspace(
+            group=group_row,
+            assignment_id=assignment.id,
+            assignment_title=assignment.title,
+            class_name=school_class.name,
+            subject_code=subject.code,
+            subject_name=subject.name,
+            due_date=assignment.due_date,
+            tasks=tasks,
+            messages=messages,
+            resources=resources,
+            submission=submission_detail,
         )
 
     @staticmethod

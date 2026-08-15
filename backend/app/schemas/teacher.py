@@ -13,6 +13,11 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.common import APIResponse
+from app.schemas.student import (
+    StudentGroupMessageOut,
+    StudentGroupResourceOut,
+    StudentGroupTaskOut,
+)
 
 
 # ── Shared shapes ───────────────────────────────────────────────────────────
@@ -544,11 +549,29 @@ class TeacherGroupRow(BaseModel):
     member_count: int = 0
     is_submitted: bool = False
     submission_id: uuid.UUID | None = None
+    tasks_count: int = 0
+    tasks_done_count: int = 0
+    messages_count: int = 0
+    resources_count: int = 0
     members: list[TeacherGroupMember] = Field(default_factory=list)
 
 
 class TeacherGroupPage(TeacherPage):
     items: list[TeacherGroupRow]
+
+
+class TeacherTeamWorkspace(BaseModel):
+    group: TeacherGroupRow
+    assignment_id: uuid.UUID
+    assignment_title: str
+    class_name: str
+    subject_code: str
+    subject_name: str
+    due_date: datetime
+    tasks: list[StudentGroupTaskOut] = Field(default_factory=list)
+    messages: list[StudentGroupMessageOut] = Field(default_factory=list)
+    resources: list[StudentGroupResourceOut] = Field(default_factory=list)
+    submission: TeacherSubmissionDetail | None = None
 
 
 class TeacherAssignmentRow(BaseModel):
@@ -807,6 +830,7 @@ APIResponseTeacherAssignment = APIResponse[TeacherAssignmentDetail]
 APIResponseTeacherMilestone = APIResponse[TeacherMilestoneOut]
 APIResponseTeacherGroups = APIResponse[TeacherGroupPage]
 APIResponseTeacherGroup = APIResponse[TeacherGroupRow]
+APIResponseTeacherTeamWorkspace = APIResponse[TeacherTeamWorkspace]
 APIResponseTeacherSubmissions = APIResponse[TeacherSubmissionPage]
 APIResponseTeacherSubmission = APIResponse[TeacherSubmissionDetail]
 APIResponseTeacherContents = APIResponse[TeacherContentPage]

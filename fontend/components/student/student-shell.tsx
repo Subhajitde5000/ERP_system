@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Repeat2,
   UserRound,
+  Users,
 } from "lucide-react";
 
 import {
@@ -27,6 +28,7 @@ const NAVIGATION: InstitutionConsoleNavItem[] = [
   { label: "Timetable", href: "/student/timetable", icon: CalendarDays },
   { label: "Examinations", href: "/student/examinations", icon: FileSpreadsheet },
   { label: "Assignments", href: "/student/assignments", icon: Repeat2 },
+  { label: "Project Teams", href: "/student/teams", icon: Users },
   { label: "Content", href: "/student/content", icon: BookOpen },
   { label: "Results", href: "/student/results", icon: GraduationCap },
   { label: "Notices", href: "/student/notices", icon: Megaphone },

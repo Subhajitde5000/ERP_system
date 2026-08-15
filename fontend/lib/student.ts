@@ -479,7 +479,156 @@ export const joinStudentAssignmentGroup = (assignmentId: string, groupId: string
   call<StudentGroupRow>(`/assignments/${assignmentId}/groups/${groupId}/join`, { method: "POST" });
 
 export const leaveStudentAssignmentGroup = (assignmentId: string) =>
-  call<{ message: string }>(`/assignments/${assignmentId}/groups/leave`, { method: "POST" });
+  call<void>(`/assignments/${assignmentId}/groups/leave`, { method: "POST" });
+
+// ── Team Workspace & Collaboration Facilities ───────────────────────────────
+
+export interface StudentGroupTaskOut {
+  id: string;
+  group_id: string;
+  title: string;
+  description: string | null;
+  assigned_to: string | null;
+  assignee_name: string | null;
+  status: "TODO" | "IN_PROGRESS" | "DONE" | string;
+  due_date: string | null;
+  created_by: string | null;
+  creator_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StudentGroupTaskIn {
+  title: string;
+  description?: string | null;
+  assigned_to?: string | null;
+  due_date?: string | null;
+}
+
+export interface StudentGroupTaskUpdateIn {
+  title?: string | null;
+  description?: string | null;
+  assigned_to?: string | null;
+  status?: string | null;
+  due_date?: string | null;
+}
+
+export interface StudentGroupMessageOut {
+  id: string;
+  group_id: string;
+  sender_id: string;
+  sender_name: string;
+  is_me: boolean;
+  message: string;
+  created_at: string;
+}
+
+export interface StudentGroupResourceOut {
+  id: string;
+  group_id: string;
+  title: string;
+  url: string;
+  resource_type: string;
+  created_by: string | null;
+  creator_name: string | null;
+  created_at: string;
+}
+
+export interface StudentGroupResourceIn {
+  title: string;
+  url: string;
+  resource_type?: string;
+}
+
+export interface StudentMyTeamSummary {
+  group_id: string;
+  assignment_id: string;
+  group_name: string;
+  assignment_title: string;
+  subject_code: string;
+  subject_name: string;
+  teacher_name: string | null;
+  due_date: string;
+  is_leader: boolean;
+  member_count: number;
+  min_group_size: number;
+  max_group_size: number;
+  is_submitted: boolean;
+  submission_status: string | null;
+  score: number | null;
+  total_marks: number;
+  members: StudentGroupMember[];
+}
+
+export interface StudentEligibleClassmateOut {
+  student_id: string;
+  student_name: string;
+  roll_number: string | null;
+  already_in_group: boolean;
+  has_pending_invite: boolean;
+}
+
+export interface StudentGroupInviteOut {
+  id: string;
+  group_id: string;
+  group_name: string;
+  assignment_id: string;
+  assignment_title: string;
+  subject_name: string;
+  student_id: string;
+  student_name: string;
+  student_roll_number: string | null;
+  invited_by: string;
+  inviter_name: string;
+  status: string;
+  created_at: string;
+}
+
+export interface StudentMyTeamDetail {
+  group: StudentGroupRow;
+  assignment: StudentAssignmentDetail;
+  tasks: StudentGroupTaskOut[];
+  messages: StudentGroupMessageOut[];
+  resources: StudentGroupResourceOut[];
+  pending_invitations: StudentGroupInviteOut[];
+}
+
+export const fetchMyTeams = () => call<StudentMyTeamSummary[]>("/teams");
+
+export const fetchTeamWorkspace = (groupId: string) => call<StudentMyTeamDetail>(`/teams/${groupId}`);
+
+export const createTeamTask = (groupId: string, payload: StudentGroupTaskIn) =>
+  call<StudentGroupTaskOut>(`/teams/${groupId}/tasks`, jsonInit("POST", payload));
+
+export const updateTeamTask = (groupId: string, taskId: string, payload: StudentGroupTaskUpdateIn) =>
+  call<StudentGroupTaskOut>(`/teams/${groupId}/tasks/${taskId}`, jsonInit("PATCH", payload));
+
+export const deleteTeamTask = (groupId: string, taskId: string) =>
+  call<void>(`/teams/${groupId}/tasks/${taskId}`, { method: "DELETE" });
+
+export const postTeamMessage = (groupId: string, message: string) =>
+  call<StudentGroupMessageOut>(`/teams/${groupId}/messages`, jsonInit("POST", { message }));
+
+export const addTeamResource = (groupId: string, payload: StudentGroupResourceIn) =>
+  call<StudentGroupResourceOut>(`/teams/${groupId}/resources`, jsonInit("POST", payload));
+
+export const deleteTeamResource = (groupId: string, resourceId: string) =>
+  call<void>(`/teams/${groupId}/resources/${resourceId}`, { method: "DELETE" });
+
+export const fetchEligibleClassmates = (groupId: string) =>
+  call<StudentEligibleClassmateOut[]>(`/teams/${groupId}/eligible-members`);
+
+export const inviteTeamMember = (groupId: string, studentId: string) =>
+  call<StudentGroupInviteOut>(`/teams/${groupId}/invitations`, jsonInit("POST", { student_id: studentId }));
+
+export const cancelTeamInvitation = (groupId: string, inviteId: string) =>
+  call<void>(`/teams/${groupId}/invitations/${inviteId}`, { method: "DELETE" });
+
+export const fetchMyInvitations = () =>
+  call<StudentGroupInviteOut[]>("/invitations");
+
+export const respondToInvitation = (inviteId: string, action: "ACCEPT" | "REJECT") =>
+  call<void>(`/invitations/${inviteId}/respond`, jsonInit("POST", { action }));
 
 // ── C-ST-13 / C-ST-14 content ───────────────────────────────────────────────
 

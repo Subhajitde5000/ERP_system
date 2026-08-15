@@ -839,6 +839,55 @@ CREATE TABLE project_group_members (
   CONSTRAINT uq_project_group_members__group_student UNIQUE (group_id, student_id)
 );
 
+CREATE TABLE project_group_tasks (
+
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  group_id                     UUID NOT NULL REFERENCES project_groups(id) ON DELETE CASCADE,
+  title                        VARCHAR(255) NOT NULL,
+  description                  TEXT,
+  assigned_to                  UUID REFERENCES users(id) ON DELETE SET NULL,
+  status                       VARCHAR(30) NOT NULL DEFAULT 'TODO',
+  due_date                     TIMESTAMPTZ,
+  created_by                   UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE project_group_messages (
+
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  group_id                     UUID NOT NULL REFERENCES project_groups(id) ON DELETE CASCADE,
+  sender_id                    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message                      TEXT NOT NULL,
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE project_group_resources (
+
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  group_id                     UUID NOT NULL REFERENCES project_groups(id) ON DELETE CASCADE,
+  title                        VARCHAR(255) NOT NULL,
+  url                          TEXT NOT NULL,
+  resource_type                VARCHAR(50) NOT NULL DEFAULT 'LINK',
+  created_by                   UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE project_group_invitations (
+
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  group_id                     UUID NOT NULL REFERENCES project_groups(id) ON DELETE CASCADE,
+  student_id                   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  invited_by                   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status                       VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  responded_at                 TIMESTAMPTZ
+);
+
 CREATE TABLE milestones (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2011,6 +2060,15 @@ CREATE INDEX idx_project_groups_assignment ON project_groups (assignment_id);
 CREATE INDEX idx_project_groups_tenant ON project_groups (tenant_id);
 CREATE INDEX idx_project_group_members_group ON project_group_members (group_id);
 CREATE INDEX idx_project_group_members_student ON project_group_members (student_id);
+CREATE INDEX idx_project_group_tasks_group ON project_group_tasks (group_id);
+CREATE INDEX idx_project_group_tasks_tenant ON project_group_tasks (tenant_id);
+CREATE INDEX idx_project_group_tasks_assigned ON project_group_tasks (assigned_to);
+CREATE INDEX idx_project_group_messages_group ON project_group_messages (group_id, created_at);
+CREATE INDEX idx_project_group_resources_group ON project_group_resources (group_id);
+CREATE INDEX idx_project_group_invitations_group ON project_group_invitations (group_id);
+CREATE INDEX idx_project_group_invitations_student ON project_group_invitations (student_id);
+CREATE INDEX idx_project_group_invitations_tenant ON project_group_invitations (tenant_id);
+CREATE INDEX idx_project_group_invitations_status ON project_group_invitations (student_id, status);
 CREATE INDEX idx_submissions_group ON submissions (group_id);
 CREATE INDEX idx_users_tenant_id ON users (tenant_id);
 CREATE INDEX idx_users_email ON users (email) WHERE email IS NOT NULL;

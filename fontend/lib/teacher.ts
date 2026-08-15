@@ -610,6 +610,12 @@ export interface TeacherMilestoneOut {
   unlock_after_milestone_id: string | null;
 }
 
+import type {
+  StudentGroupMessageOut,
+  StudentGroupResourceOut,
+  StudentGroupTaskOut,
+} from "./student";
+
 export interface TeacherGroupMember {
   student_id: string;
   student_name: string;
@@ -627,7 +633,25 @@ export interface TeacherGroupRow {
   member_count: number;
   is_submitted: boolean;
   submission_id?: string | null;
+  tasks_count?: number;
+  tasks_done_count?: number;
+  messages_count?: number;
+  resources_count?: number;
   members: TeacherGroupMember[];
+}
+
+export interface TeacherTeamWorkspace {
+  group: TeacherGroupRow;
+  assignment_id: string;
+  assignment_title: string;
+  class_name: string;
+  subject_code: string;
+  subject_name: string;
+  due_date: string;
+  tasks: StudentGroupTaskOut[];
+  messages: StudentGroupMessageOut[];
+  resources: StudentGroupResourceOut[];
+  submission: TeacherSubmissionDetail | null;
 }
 
 export interface TeacherAssignmentRow {
@@ -706,6 +730,9 @@ export const fetchTeacherAssignmentGroup = (assignmentId: string, groupId: strin
 
 export const removeStudentFromGroup = (assignmentId: string, groupId: string, studentId: string) =>
   call<TeacherGroupRow>(`/assignments/${assignmentId}/groups/${groupId}/members/${studentId}`, { method: "DELETE" });
+
+export const fetchTeacherTeamWorkspace = (groupId: string) =>
+  call<TeacherTeamWorkspace>(`/teams/${groupId}`);
 
 // ── Submissions & review ────────────────────────────────────────────────────
 

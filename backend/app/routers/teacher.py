@@ -46,6 +46,7 @@ from app.schemas.teacher import (
     APIResponseTeacherSchedule,
     APIResponseTeacherSubmission,
     APIResponseTeacherSubmissions,
+    APIResponseTeacherTeamWorkspace,
     APIResponseTeacherThread,
     APIResponseTeacherThreads,
     AttendanceSessionUpsert,
@@ -673,6 +674,19 @@ async def remove_student_from_group(
         success=True,
         data=await TeacherService.remove_student_from_group(db, teacher, assignment_id, group_id, student_id),
         message="Student removed from group",
+    )
+
+
+@router.get("/teams/{group_id}", response_model=APIResponseTeacherTeamWorkspace)
+async def get_teacher_team_workspace(
+    group_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_tenant_user_teacher)],
+):
+    return APIResponse(
+        success=True,
+        data=await TeacherService.get_teacher_team_workspace(db, teacher, group_id),
+        message="Teacher team workspace loaded",
     )
 
 

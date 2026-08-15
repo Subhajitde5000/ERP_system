@@ -26,11 +26,17 @@ from app.schemas.student import (
     APIResponseStudentContent,
     APIResponseStudentContents,
     APIResponseStudentDashboard,
+    APIResponseStudentEligibleClassmates,
     APIResponseStudentExam,
     APIResponseStudentExamResult,
     APIResponseStudentExams,
     APIResponseStudentFees,
     APIResponseStudentGroup,
+    APIResponseStudentGroupInvite,
+    APIResponseStudentGroupInvites,
+    APIResponseStudentGroupMessage,
+    APIResponseStudentGroupResource,
+    APIResponseStudentGroupTask,
     APIResponseStudentGroups,
     APIResponseStudentLeave,
     APIResponseStudentLeaves,
@@ -43,12 +49,20 @@ from app.schemas.student import (
     APIResponseStudentScopes,
     APIResponseStudentSubmission,
     APIResponseStudentTabSwitch,
+    APIResponseStudentTeamDetail,
+    APIResponseStudentTeams,
     APIResponseStudentThread,
     APIResponseStudentThreads,
     APIResponseStudentTimetable,
     StudentAnswerSave,
     StudentGroupCreate,
+    StudentGroupInviteIn,
+    StudentGroupInviteResponseIn,
+    StudentGroupMessageIn,
+    StudentGroupResourceIn,
     StudentGroupReuseIn,
+    StudentGroupTaskIn,
+    StudentGroupTaskUpdateIn,
     StudentLeaveCreate,
     StudentProfileUpdate,
     StudentReplyCreate,
@@ -353,6 +367,173 @@ async def leave_group(
 ):
     await StudentService.leave_group(db, student, assignment_id)
     return APIResponse(success=True, data={"message": "Left group"}, message="Left group")
+
+
+# ── Team Workspace & Collaboration Facilities ───────────────────────────────
+
+@router.get("/teams", response_model=APIResponseStudentTeams)
+async def list_my_teams(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.list_my_teams(db, student),
+        message="My teams loaded",
+    )
+
+
+@router.get("/teams/{group_id}", response_model=APIResponseStudentTeamDetail)
+async def get_team_workspace(
+    group_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.get_team_workspace(db, student, group_id),
+        message="Team workspace loaded",
+    )
+
+
+@router.post("/teams/{group_id}/tasks", response_model=APIResponseStudentGroupTask, status_code=status.HTTP_201_CREATED)
+async def create_team_task(
+    group_id: uuid.UUID,
+    payload: StudentGroupTaskIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.create_team_task(db, student, group_id, payload),
+        message="Task created",
+    )
+
+
+@router.patch("/teams/{group_id}/tasks/{task_id}", response_model=APIResponseStudentGroupTask)
+async def update_team_task(
+    group_id: uuid.UUID,
+    task_id: uuid.UUID,
+    payload: StudentGroupTaskUpdateIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.update_team_task(db, student, group_id, task_id, payload),
+        message="Task updated",
+    )
+
+
+@router.delete("/teams/{group_id}/tasks/{task_id}", response_model=APIResponse)
+async def delete_team_task(
+    group_id: uuid.UUID,
+    task_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    await StudentService.delete_team_task(db, student, group_id, task_id)
+    return APIResponse(success=True, data=None, message="Task deleted")
+
+
+@router.post("/teams/{group_id}/messages", response_model=APIResponseStudentGroupMessage, status_code=status.HTTP_201_CREATED)
+async def post_team_message(
+    group_id: uuid.UUID,
+    payload: StudentGroupMessageIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.post_team_message(db, student, group_id, payload),
+        message="Message posted",
+    )
+
+
+@router.post("/teams/{group_id}/resources", response_model=APIResponseStudentGroupResource, status_code=status.HTTP_201_CREATED)
+async def add_team_resource(
+    group_id: uuid.UUID,
+    payload: StudentGroupResourceIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.add_team_resource(db, student, group_id, payload),
+        message="Resource added",
+    )
+
+
+@router.delete("/teams/{group_id}/resources/{resource_id}", response_model=APIResponse)
+async def delete_team_resource(
+    group_id: uuid.UUID,
+    resource_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    await StudentService.delete_team_resource(db, student, group_id, resource_id)
+    return APIResponse(success=True, data=None, message="Resource deleted")
+
+
+@router.get("/teams/{group_id}/eligible-members", response_model=APIResponseStudentEligibleClassmates)
+async def list_eligible_classmates_to_invite(
+    group_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.list_eligible_classmates_to_invite(db, student, group_id),
+        message="Eligible classmates loaded",
+    )
+
+
+@router.post("/teams/{group_id}/invitations", response_model=APIResponseStudentGroupInvite, status_code=status.HTTP_201_CREATED)
+async def invite_team_member(
+    group_id: uuid.UUID,
+    payload: StudentGroupInviteIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.invite_team_member(db, student, group_id, payload),
+        message="Invitation sent",
+    )
+
+
+@router.delete("/teams/{group_id}/invitations/{invite_id}", response_model=APIResponse)
+async def cancel_team_invitation(
+    group_id: uuid.UUID,
+    invite_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    await StudentService.cancel_team_invitation(db, student, group_id, invite_id)
+    return APIResponse(success=True, data=None, message="Invitation cancelled")
+
+
+@router.get("/invitations", response_model=APIResponseStudentGroupInvites)
+async def list_my_team_invitations(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    return APIResponse(
+        success=True,
+        data=await StudentService.list_my_team_invitations(db, student),
+        message="My invitations loaded",
+    )
+
+
+@router.post("/invitations/{invite_id}/respond", response_model=APIResponse)
+async def respond_to_team_invitation(
+    invite_id: uuid.UUID,
+    payload: StudentGroupInviteResponseIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[User, Depends(get_current_tenant_user_student)],
+):
+    msg = await StudentService.respond_to_team_invitation(db, student, invite_id, payload)
+    return APIResponse(success=True, data=None, message=msg)
 
 
 # ── C-ST-13 / C-ST-14 content ─────────────────────────────────────────────────
