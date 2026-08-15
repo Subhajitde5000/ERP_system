@@ -13,10 +13,8 @@
  * is `('PRESENT','ABSENT','LATE','EXCUSED')` — `ON_LEAVE` is not a member and
  * `LATE`/`EXCUSED` are meaningless for a nightly roll-call.
  *
- * We follow the column's documented semantics, since night attendance really
- * does need "away on approved leave". TODO(Dev-A): either add `ON_LEAVE` to
- * `attendance_status` or give the hostel its own
- * `hostel_attendance_status` enum.
+ * Night attendance now uses the dedicated `hostel_attendance_status` enum,
+ * keeping academic attendance semantics separate from approved hostel leave.
  */
 export type HostelAttendanceStatus = "PRESENT" | "ABSENT" | "ON_LEAVE";
 

@@ -22,6 +22,7 @@ from app.routers.exam_controller import router as exam_controller_router
 from app.routers.teacher import router as teacher_router
 from app.routers.student import router as student_router
 from app.routers.library import router as library_router
+from app.routers.hostel import router as hostel_router
 
 __all__ = [
     "platform_auth_router",
@@ -42,4 +43,5 @@ __all__ = [
     "teacher_router",
     "student_router",
     "library_router",
+    "hostel_router",
 ]

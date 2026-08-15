@@ -55,6 +55,7 @@ from app.models.hod import (
     Submission,
 )
 from app.models.library import Book, BookCondition, BookCopy, BookIssue, EResource
+from app.models.hostel import HostelBlock, HostelRoom, HostelAllotment, HostelAttendance, HostelLeaveRequest, HostelComplaint, HostelAttendanceStatus
 from app.models.coordinator import (
     AcademicEvent,
     AcademicEventScope,
@@ -204,6 +205,13 @@ __all__ = [
     "BookCopy",
     "BookIssue",
     "EResource",
+    "HostelBlock",
+    "HostelRoom",
+    "HostelAllotment",
+    "HostelAttendance",
+    "HostelLeaveRequest",
+    "HostelComplaint",
+    "HostelAttendanceStatus",
     "SubmissionFile",
     "SubmissionReview",
 ]

@@ -86,6 +86,7 @@ CREATE TYPE result_outcome AS ENUM ('PASS', 'FAIL', 'WITHHELD', 'ABSENT');
 CREATE TYPE slot_type AS ENUM ('CLASS', 'BREAK', 'LAB', 'ACTIVITY');
 CREATE TYPE book_condition AS ENUM ('GOOD', 'FAIR', 'DAMAGED', 'LOST');
 CREATE TYPE allotment_status AS ENUM ('ACTIVE', 'VACATED', 'TRANSFERRED');
+CREATE TYPE hostel_attendance_status AS ENUM ('PRESENT', 'ABSENT', 'ON_LEAVE');
 CREATE TYPE complaint_status AS ENUM ('OPEN', 'IN_PROGRESS', 'RESOLVED');
 CREATE TYPE drive_status AS ENUM ('UPCOMING', 'OPEN', 'ONGOING', 'COMPLETED', 'CANCELLED');
 CREATE TYPE application_status AS ENUM ('APPLIED', 'SHORTLISTED', 'REJECTED', 'PLACED', 'WITHDRAWN');
@@ -1438,20 +1439,21 @@ CREATE TRIGGER trg_refresh_book_copy_counts AFTER INSERT OR UPDATE OR DELETE ON 
 CREATE TABLE hostel_blocks (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id                    UUID NOT NULL REFERENCES tenants(id),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   name                         VARCHAR(100) NOT NULL,
   gender                       gender NOT NULL,
   warden_id                    UUID REFERENCES users(id),
   total_rooms                  INTEGER NOT NULL DEFAULT 0,
   total_capacity               INTEGER NOT NULL DEFAULT 0,
-  is_active                    BOOLEAN NOT NULL DEFAULT TRUE
+  is_active                    BOOLEAN NOT NULL DEFAULT TRUE,
+  CONSTRAINT uq_hostel_blocks_tenant_name UNIQUE (tenant_id, name)
 );
 
 CREATE TABLE hostel_rooms (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id                    UUID NOT NULL REFERENCES tenants(id),
-  block_id                     UUID NOT NULL REFERENCES hostel_blocks(id),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  block_id                     UUID NOT NULL REFERENCES hostel_blocks(id) ON DELETE CASCADE,
   room_number                  VARCHAR(20) NOT NULL,
   floor                        SMALLINT NOT NULL DEFAULT 0,
   capacity                     SMALLINT NOT NULL DEFAULT 2,
@@ -1459,32 +1461,34 @@ CREATE TABLE hostel_rooms (
   monthly_fee                  NUMERIC(10,2) NOT NULL,
   amenities                    TEXT[],
   is_active                    BOOLEAN NOT NULL DEFAULT TRUE,
-  CONSTRAINT uq_hostel_rooms__block_id_room_number UNIQUE (block_id, room_number)
+  CONSTRAINT uq_hostel_rooms__block_id_room_number UNIQUE (block_id, room_number),
+  CONSTRAINT ck_hostel_rooms_capacity CHECK (capacity > 0 AND monthly_fee >= 0 AND floor >= 0)
 );
 
 CREATE TABLE hostel_allotments (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id                    UUID NOT NULL REFERENCES tenants(id),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   student_id                   UUID NOT NULL REFERENCES users(id),
   room_id                      UUID NOT NULL REFERENCES hostel_rooms(id),
   academic_year_id             UUID NOT NULL REFERENCES academic_years(id),
-  bed_number                   SMALLINT,
+  bed_number                   SMALLINT NOT NULL,
   allotted_from                DATE NOT NULL,
   allotted_to                  DATE,
   allotted_by                  UUID REFERENCES users(id),
   status                       allotment_status NOT NULL DEFAULT 'ACTIVE',
-  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_hostel_allotment_dates CHECK (allotted_to IS NULL OR allotted_to >= allotted_from)
 );
 
 CREATE TABLE hostel_attendance (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id                    UUID NOT NULL REFERENCES tenants(id),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   room_id                      UUID NOT NULL REFERENCES hostel_rooms(id),
   student_id                   UUID NOT NULL REFERENCES users(id),
   date                         DATE NOT NULL,
-  status                       attendance_status NOT NULL,
+  status                       hostel_attendance_status NOT NULL,
   marked_by                    UUID REFERENCES users(id),
   marked_at                    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT uq_hostel_attendance__student_id_date UNIQUE (student_id, date)
@@ -1493,7 +1497,7 @@ CREATE TABLE hostel_attendance (
 CREATE TABLE hostel_leave_requests (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id                    UUID NOT NULL REFERENCES tenants(id),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   student_id                   UUID NOT NULL REFERENCES users(id),
   from_date                    DATE NOT NULL,
   to_date                      DATE NOT NULL,
@@ -1503,13 +1507,14 @@ CREATE TABLE hostel_leave_requests (
   status                       leave_status NOT NULL DEFAULT 'PENDING',
   reviewed_by                  UUID REFERENCES users(id),
   reviewed_at                  TIMESTAMPTZ,
-  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_hostel_leave_dates CHECK (to_date >= from_date)
 );
 
 CREATE TABLE hostel_complaints (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id                    UUID NOT NULL REFERENCES tenants(id),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   student_id                   UUID NOT NULL REFERENCES users(id),
   room_id                      UUID REFERENCES hostel_rooms(id),
   category                     VARCHAR(50) NOT NULL,
@@ -1517,8 +1522,20 @@ CREATE TABLE hostel_complaints (
   status                       complaint_status NOT NULL DEFAULT 'OPEN',
   resolved_by                  UUID REFERENCES users(id),
   resolved_at                  TIMESTAMPTZ,
-  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_hostel_complaint_category CHECK (category IN ('MAINTENANCE','FOOD','SECURITY','OTHER'))
 );
+
+CREATE OR REPLACE FUNCTION validate_hostel_row() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
+ IF TG_TABLE_NAME='hostel_rooms' AND NOT EXISTS(SELECT 1 FROM hostel_blocks b WHERE b.id=NEW.block_id AND b.tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Hostel room and block tenants differ'; END IF;
+ IF TG_TABLE_NAME='hostel_allotments' AND (NOT EXISTS(SELECT 1 FROM hostel_rooms r WHERE r.id=NEW.room_id AND r.tenant_id=NEW.tenant_id) OR NOT EXISTS(SELECT 1 FROM users u WHERE u.id=NEW.student_id AND u.tenant_id=NEW.tenant_id) OR NEW.bed_number>(SELECT capacity FROM hostel_rooms WHERE id=NEW.room_id)) THEN RAISE EXCEPTION 'Invalid cross-tenant hostel allotment or bed'; END IF;
+ IF TG_TABLE_NAME='hostel_attendance' AND NOT EXISTS(SELECT 1 FROM hostel_allotments a WHERE a.student_id=NEW.student_id AND a.room_id=NEW.room_id AND a.tenant_id=NEW.tenant_id AND a.status='ACTIVE') THEN RAISE EXCEPTION 'Attendance requires an active matching allotment'; END IF;
+ RETURN NEW; END $$;
+CREATE TRIGGER trg_validate_hostel_room BEFORE INSERT OR UPDATE ON hostel_rooms FOR EACH ROW EXECUTE FUNCTION validate_hostel_row();
+CREATE TRIGGER trg_validate_hostel_allotment BEFORE INSERT OR UPDATE ON hostel_allotments FOR EACH ROW EXECUTE FUNCTION validate_hostel_row();
+CREATE TRIGGER trg_validate_hostel_attendance BEFORE INSERT OR UPDATE ON hostel_attendance FOR EACH ROW EXECUTE FUNCTION validate_hostel_row();
+CREATE OR REPLACE FUNCTION refresh_hostel_block_counts() RETURNS TRIGGER LANGUAGE plpgsql AS $$ DECLARE target UUID:=COALESCE(NEW.block_id,OLD.block_id); BEGIN UPDATE hostel_blocks b SET total_rooms=(SELECT count(*) FROM hostel_rooms r WHERE r.block_id=target AND r.is_active),total_capacity=(SELECT coalesce(sum(capacity),0) FROM hostel_rooms r WHERE r.block_id=target AND r.is_active) WHERE id=target; IF TG_OP='UPDATE' AND OLD.block_id<>NEW.block_id THEN UPDATE hostel_blocks b SET total_rooms=(SELECT count(*) FROM hostel_rooms r WHERE r.block_id=OLD.block_id AND r.is_active),total_capacity=(SELECT coalesce(sum(capacity),0) FROM hostel_rooms r WHERE r.block_id=OLD.block_id AND r.is_active) WHERE id=OLD.block_id; END IF; IF TG_OP='DELETE' THEN RETURN OLD; END IF; RETURN NEW; END $$;
+CREATE TRIGGER trg_refresh_hostel_block_counts AFTER INSERT OR UPDATE OR DELETE ON hostel_rooms FOR EACH ROW EXECUTE FUNCTION refresh_hostel_block_counts();
 
 CREATE TABLE vehicles (
 
@@ -2272,18 +2289,23 @@ CREATE INDEX IF NOT EXISTS idx_hostel_allotments_allotted_by ON hostel_allotment
 CREATE INDEX IF NOT EXISTS idx_hostel_allotments_room_id ON hostel_allotments (room_id);
 CREATE INDEX IF NOT EXISTS idx_hostel_allotments_student_id ON hostel_allotments (student_id);
 CREATE INDEX IF NOT EXISTS idx_hostel_allotments_tenant_id ON hostel_allotments (tenant_id);
+CREATE UNIQUE INDEX uq_hostel_active_student ON hostel_allotments (student_id) WHERE status = 'ACTIVE';
+CREATE UNIQUE INDEX uq_hostel_active_bed ON hostel_allotments (room_id, bed_number) WHERE status = 'ACTIVE';
 CREATE INDEX IF NOT EXISTS idx_hostel_attendance_marked_by ON hostel_attendance (marked_by);
 CREATE INDEX IF NOT EXISTS idx_hostel_attendance_room_id ON hostel_attendance (room_id);
 CREATE INDEX IF NOT EXISTS idx_hostel_attendance_tenant_id ON hostel_attendance (tenant_id);
+CREATE INDEX idx_hostel_attendance_tenant_date ON hostel_attendance (tenant_id, date);
 CREATE INDEX IF NOT EXISTS idx_hostel_blocks_tenant_id ON hostel_blocks (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_hostel_blocks_warden_id ON hostel_blocks (warden_id);
 CREATE INDEX IF NOT EXISTS idx_hostel_complaints_resolved_by ON hostel_complaints (resolved_by);
 CREATE INDEX IF NOT EXISTS idx_hostel_complaints_room_id ON hostel_complaints (room_id);
 CREATE INDEX IF NOT EXISTS idx_hostel_complaints_student_id ON hostel_complaints (student_id);
 CREATE INDEX IF NOT EXISTS idx_hostel_complaints_tenant_id ON hostel_complaints (tenant_id);
+CREATE INDEX idx_hostel_complaints_tenant_status ON hostel_complaints (tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_hostel_leave_requests_reviewed_by ON hostel_leave_requests (reviewed_by);
 CREATE INDEX IF NOT EXISTS idx_hostel_leave_requests_student_id ON hostel_leave_requests (student_id);
 CREATE INDEX IF NOT EXISTS idx_hostel_leave_requests_tenant_id ON hostel_leave_requests (tenant_id);
+CREATE INDEX idx_hostel_leaves_tenant_status ON hostel_leave_requests (tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_hostel_rooms_tenant_id ON hostel_rooms (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_interview_rounds_application_id ON interview_rounds (application_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_categories_parent_id ON inventory_categories (parent_id);
