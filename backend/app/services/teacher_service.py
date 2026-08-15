@@ -867,7 +867,7 @@ class TeacherService:
             AttendanceLeave.tenant_id == tenant_id,
             AttendanceLeave.class_id.in_(scope.class_ids),
         ]
-        if status_filter:
+        if status_filter and status_filter.strip().upper() != "ALL":
             wanted = status_filter.strip().upper()
             if wanted not in LeaveStatus.__members__:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown leave status")
@@ -994,7 +994,7 @@ class TeacherService:
         await TeacherService.scope_for_user(db, teacher)
         tenant_id = teacher.tenant_id
         clauses = [Exam.tenant_id == tenant_id, Exam.created_by == teacher.id]
-        if status_filter:
+        if status_filter and status_filter.strip().upper() != "ALL":
             wanted = status_filter.strip().upper()
             if wanted not in ExamStatus.__members__:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown exam status")
@@ -2406,7 +2406,7 @@ class TeacherService:
         await TeacherService.scope_for_user(db, teacher)
         tenant_id = teacher.tenant_id
         clauses = [Assignment.tenant_id == tenant_id, Assignment.teacher_id == teacher.id]
-        if status_filter:
+        if status_filter and status_filter.strip().upper() != "ALL":
             wanted = status_filter.strip().upper()
             if wanted not in AssignmentStatus.__members__:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown assignment status")
@@ -3355,7 +3355,7 @@ class TeacherService:
             await TeacherService.scope_for_user(db, teacher)
         if milestone_id is not None:
             clauses.append(Submission.milestone_id == milestone_id)
-        if status_filter:
+        if status_filter and status_filter.strip().upper() != "ALL":
             wanted = status_filter.strip().upper()
             if wanted not in SubmissionStatus.__members__:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown submission status")
@@ -3623,7 +3623,7 @@ class TeacherService:
             clauses.append(ContentItem.subject_id == subject_id)
         if class_id is not None:
             clauses.append(ContentItem.class_id == class_id)
-        if content_type:
+        if content_type and content_type.strip().upper() != "ALL":
             wanted = content_type.strip().upper()
             if wanted not in ContentKind.__members__:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown content type")

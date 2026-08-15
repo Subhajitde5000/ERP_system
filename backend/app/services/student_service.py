@@ -3204,7 +3204,7 @@ class StudentService:
             clauses.append(ContentItem.subject_id == subject_id)
         if chapter and chapter.strip():
             clauses.append(func.lower(ContentItem.chapter) == chapter.strip().lower())
-        if content_type:
+        if content_type and content_type.strip().upper() != "ALL":
             wanted = content_type.strip().upper()
             if wanted not in ContentKind.__members__:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown content type")
