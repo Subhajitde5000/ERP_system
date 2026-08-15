@@ -42,15 +42,23 @@ BEGIN
   IF TG_TABLE_NAME = 'book_copies' AND NOT EXISTS (
     SELECT 1 FROM books b WHERE b.id = NEW.book_id AND b.tenant_id = NEW.tenant_id
   ) THEN RAISE EXCEPTION 'Library copy tenant does not match book tenant'; END IF;
-  IF TG_TABLE_NAME = 'book_issues' AND NOT EXISTS (
-    SELECT 1 FROM book_copies c WHERE c.id = NEW.copy_id AND c.book_id = NEW.book_id AND c.tenant_id = NEW.tenant_id
-  ) THEN RAISE EXCEPTION 'Library issue copy, book and tenant do not match'; END IF;
+  IF TG_TABLE_NAME = 'book_issues' AND (
+    NOT EXISTS (SELECT 1 FROM book_copies c WHERE c.id = NEW.copy_id AND c.book_id = NEW.book_id AND c.tenant_id = NEW.tenant_id)
+    OR NOT EXISTS (SELECT 1 FROM users u WHERE u.id = NEW.borrower_id AND u.tenant_id = NEW.tenant_id)
+    OR NOT EXISTS (SELECT 1 FROM users u WHERE u.id = NEW.issued_by AND u.tenant_id = NEW.tenant_id)
+    OR (NEW.returned_to IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = NEW.returned_to AND u.tenant_id = NEW.tenant_id))
+  ) THEN RAISE EXCEPTION 'Library issue references do not belong to its tenant'; END IF;
+  IF TG_TABLE_NAME = 'e_resources' AND NOT EXISTS (
+    SELECT 1 FROM users u WHERE u.id = NEW.uploaded_by AND u.tenant_id = NEW.tenant_id
+  ) THEN RAISE EXCEPTION 'Library resource uploader does not belong to its tenant'; END IF;
   RETURN NEW;
 END $$;
 DROP TRIGGER IF EXISTS trg_validate_book_copy ON book_copies;
 CREATE TRIGGER trg_validate_book_copy BEFORE INSERT OR UPDATE ON book_copies FOR EACH ROW EXECUTE FUNCTION validate_library_row();
 DROP TRIGGER IF EXISTS trg_validate_book_issue ON book_issues;
 CREATE TRIGGER trg_validate_book_issue BEFORE INSERT OR UPDATE ON book_issues FOR EACH ROW EXECUTE FUNCTION validate_library_row();
+DROP TRIGGER IF EXISTS trg_validate_e_resource ON e_resources;
+CREATE TRIGGER trg_validate_e_resource BEFORE INSERT OR UPDATE ON e_resources FOR EACH ROW EXECUTE FUNCTION validate_library_row();
 
 -- Counters are derived from copies, never trusted application input.
 CREATE OR REPLACE FUNCTION refresh_book_copy_counts() RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -68,7 +76,8 @@ BEGIN
       updated_at = NOW()
     WHERE b.id = OLD.book_id;
   END IF;
-  RETURN COALESCE(NEW, OLD);
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
 END $$;
 DROP TRIGGER IF EXISTS trg_refresh_book_copy_counts ON book_copies;
 CREATE TRIGGER trg_refresh_book_copy_counts AFTER INSERT OR UPDATE OR DELETE ON book_copies FOR EACH ROW EXECUTE FUNCTION refresh_book_copy_counts();

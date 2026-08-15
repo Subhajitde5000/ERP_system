@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -146,8 +146,10 @@ class LibraryService:
         book = await LibraryService._book(db, user, book_id)
         if not can_manage and not book.is_active:
             raise _not_found()
-        own = await LibraryService._loan_query(db, user, borrower_id=user.id, book_id=book.id, active=True, limit=1)
         if not can_manage:
+            own = await LibraryService._loan_query(
+                db, user, borrower_id=user.id, book_id=book.id, active=True, limit=1
+            )
             return BookDetail(book=LibraryService.book_row(book), own_loan=own[0] if own else None, can_manage=False)
         copies = list((await db.execute(select(BookCopy).where(BookCopy.tenant_id == user.tenant_id, BookCopy.book_id == book.id).order_by(BookCopy.accession_number))).scalars().all())
         issues = await LibraryService._loan_query(db, user, book_id=book.id, limit=200)
