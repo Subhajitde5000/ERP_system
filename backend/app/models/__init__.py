@@ -54,6 +54,7 @@ from app.models.hod import (
     MentorAssignment,
     Submission,
 )
+from app.models.library import Book, BookCondition, BookCopy, BookIssue, EResource
 from app.models.coordinator import (
     AcademicEvent,
     AcademicEventScope,
@@ -198,6 +199,11 @@ __all__ = [
     "Scholarship",
     "ScholarshipGrant",
     "StudentFeeAccount",
+    "Book",
+    "BookCondition",
+    "BookCopy",
+    "BookIssue",
+    "EResource",
     "SubmissionFile",
     "SubmissionReview",
 ]

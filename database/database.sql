@@ -1324,7 +1324,7 @@ CREATE TABLE support_ticket_messages (
 CREATE TABLE books (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id                    UUID NOT NULL REFERENCES tenants(id),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   title                        VARCHAR(500) NOT NULL,
   authors                      TEXT[] NOT NULL,
   isbn                         VARCHAR(20),
@@ -1333,19 +1333,22 @@ CREATE TABLE books (
   publication_year             SMALLINT,
   subject_area                 VARCHAR(255),
   language                     VARCHAR(50) NOT NULL DEFAULT 'English',
-  total_copies                 INTEGER NOT NULL DEFAULT 1,
-  available_copies             INTEGER NOT NULL DEFAULT 1,
+  total_copies                 INTEGER NOT NULL DEFAULT 0,
+  available_copies             INTEGER NOT NULL DEFAULT 0,
   cover_image_url              TEXT,
   location_code                VARCHAR(50),
   is_active                    BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_books_copy_counts CHECK (total_copies >= 0 AND available_copies BETWEEN 0 AND total_copies),
+  CONSTRAINT ck_books_publication_year CHECK (publication_year IS NULL OR publication_year BETWEEN 1000 AND 2100)
 );
 
 CREATE TABLE book_copies (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  book_id                      UUID NOT NULL REFERENCES books(id),
-  tenant_id                    UUID NOT NULL REFERENCES tenants(id),
+  book_id                      UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   accession_number             VARCHAR(50) NOT NULL,
   condition                    book_condition NOT NULL DEFAULT 'GOOD',
   is_available                 BOOLEAN NOT NULL DEFAULT TRUE,
@@ -1356,7 +1359,7 @@ CREATE TABLE book_copies (
 CREATE TABLE book_issues (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id                    UUID NOT NULL REFERENCES tenants(id),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   copy_id                      UUID NOT NULL REFERENCES book_copies(id),
   book_id                      UUID NOT NULL REFERENCES books(id),
   borrower_id                  UUID NOT NULL REFERENCES users(id),
@@ -1368,21 +1371,61 @@ CREATE TABLE book_issues (
   fine_amount                  NUMERIC(8,2) NOT NULL DEFAULT 0,
   fine_paid                    BOOLEAN NOT NULL DEFAULT FALSE,
   fine_paid_at                 TIMESTAMPTZ,
-  notes                        TEXT
+  notes                        TEXT,
+  CONSTRAINT ck_book_issues_dates CHECK (due_date >= issued_at::date AND (returned_at IS NULL OR returned_at >= issued_at)),
+  CONSTRAINT ck_book_issues_fine CHECK (fine_amount >= 0 AND (NOT fine_paid OR returned_at IS NOT NULL))
 );
 
 CREATE TABLE e_resources (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id                    UUID NOT NULL REFERENCES tenants(id),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   title                        VARCHAR(500) NOT NULL,
   resource_type                VARCHAR(50) NOT NULL,
   url                          TEXT,
   file_key                     TEXT,
   subject_area                 VARCHAR(255),
   uploaded_by                  UUID NOT NULL REFERENCES users(id),
-  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_e_resources_source CHECK ((url IS NOT NULL) <> (file_key IS NOT NULL)),
+  CONSTRAINT ck_e_resources_type CHECK (resource_type IN ('EBOOK', 'JOURNAL', 'PAPER', 'LINK'))
 );
+
+-- Library rows carry redundant tenant/book keys for fast tenant-scoped reads;
+-- these triggers enforce that the redundant keys can never disagree.
+CREATE OR REPLACE FUNCTION validate_library_row() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_TABLE_NAME = 'book_copies' AND NOT EXISTS (
+    SELECT 1 FROM books b WHERE b.id = NEW.book_id AND b.tenant_id = NEW.tenant_id
+  ) THEN RAISE EXCEPTION 'Library copy tenant does not match book tenant'; END IF;
+  IF TG_TABLE_NAME = 'book_issues' AND NOT EXISTS (
+    SELECT 1 FROM book_copies c WHERE c.id = NEW.copy_id AND c.book_id = NEW.book_id AND c.tenant_id = NEW.tenant_id
+  ) THEN RAISE EXCEPTION 'Library issue copy, book and tenant do not match'; END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER trg_validate_book_copy BEFORE INSERT OR UPDATE ON book_copies FOR EACH ROW EXECUTE FUNCTION validate_library_row();
+CREATE TRIGGER trg_validate_book_issue BEFORE INSERT OR UPDATE ON book_issues FOR EACH ROW EXECUTE FUNCTION validate_library_row();
+
+-- Catalogue counters are derived from physical copies, including every path
+-- that writes directly to PostgreSQL (imports and maintenance scripts).
+CREATE OR REPLACE FUNCTION refresh_book_copy_counts() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE target UUID := COALESCE(NEW.book_id, OLD.book_id);
+BEGIN
+  UPDATE books b SET
+    total_copies = (SELECT COUNT(*) FROM book_copies c WHERE c.book_id = target),
+    available_copies = (SELECT COUNT(*) FROM book_copies c WHERE c.book_id = target AND c.is_available AND c.condition IN ('GOOD','FAIR')),
+    updated_at = NOW()
+  WHERE b.id = target;
+  IF TG_OP = 'UPDATE' AND OLD.book_id <> NEW.book_id THEN
+    UPDATE books b SET
+      total_copies = (SELECT COUNT(*) FROM book_copies c WHERE c.book_id = OLD.book_id),
+      available_copies = (SELECT COUNT(*) FROM book_copies c WHERE c.book_id = OLD.book_id AND c.is_available AND c.condition IN ('GOOD','FAIR')),
+      updated_at = NOW()
+    WHERE b.id = OLD.book_id;
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END $$;
+CREATE TRIGGER trg_refresh_book_copy_counts AFTER INSERT OR UPDATE OR DELETE ON book_copies FOR EACH ROW EXECUTE FUNCTION refresh_book_copy_counts();
 
 CREATE TABLE hostel_blocks (
 
@@ -2168,7 +2211,11 @@ CREATE INDEX IF NOT EXISTS idx_book_issues_copy_id ON book_issues (copy_id);
 CREATE INDEX IF NOT EXISTS idx_book_issues_issued_by ON book_issues (issued_by);
 CREATE INDEX IF NOT EXISTS idx_book_issues_returned_to ON book_issues (returned_to);
 CREATE INDEX IF NOT EXISTS idx_book_issues_tenant_id ON book_issues (tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_book_issues_active_copy ON book_issues (copy_id) WHERE returned_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_book_issues_tenant_due_active ON book_issues (tenant_id, due_date) WHERE returned_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_books_tenant_id ON books (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_books_tenant_title ON books (tenant_id, title);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_books_tenant_isbn ON books (tenant_id, isbn) WHERE isbn IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_classes_academic_year_id ON classes (academic_year_id);
 CREATE INDEX IF NOT EXISTS idx_classes_class_teacher_id ON classes (class_teacher_id);
 CREATE INDEX IF NOT EXISTS idx_classes_department_id ON classes (department_id);
@@ -2189,6 +2236,7 @@ CREATE INDEX IF NOT EXISTS idx_discussion_threads_tenant_id ON discussion_thread
 CREATE INDEX IF NOT EXISTS idx_drive_eligibility_drive_id ON drive_eligibility (drive_id);
 CREATE INDEX IF NOT EXISTS idx_drivers_tenant_id ON drivers (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_e_resources_tenant_id ON e_resources (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_e_resources_tenant_subject ON e_resources (tenant_id, subject_area);
 CREATE INDEX IF NOT EXISTS idx_e_resources_uploaded_by ON e_resources (uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_exam_attempts_student_id ON exam_attempts (student_id);
 CREATE INDEX IF NOT EXISTS idx_exam_attempts_tenant_id ON exam_attempts (tenant_id);
