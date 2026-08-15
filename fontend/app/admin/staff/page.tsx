@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   CheckCircle2,
@@ -11,6 +11,8 @@ import {
   Phone,
   Plus,
   Power,
+  Search,
+  SlidersHorizontal,
   Trash2,
   Upload,
   UserPlus,
@@ -77,6 +79,12 @@ export default function StaffPage() {
   // Details Modal State
   const [detailMember, setDetailMember] = useState<StaffMember | null>(null);
 
+  // Search & Filter State
+  const [search, setSearch] = useState("");
+  const [filterRole, setFilterRole] = useState("");
+  const [filterDepartment, setFilterDepartment] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"" | "active" | "inactive">("");
+
   const load = useCallback(async () => {
     try {
       const [staffRows, departmentRows] = await Promise.all([fetchStaff(), fetchDepartments()]);
@@ -91,6 +99,32 @@ export default function StaffPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Derived filtered list
+  const filteredStaff = useMemo(() => {
+    if (!staff) return [];
+    const q = search.trim().toLowerCase();
+    return staff.filter((s) => {
+      if (q) {
+        const haystack = [s.name, s.email ?? "", s.phone ?? ""].join(" ").toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      if (filterRole && !s.roles.includes(filterRole)) return false;
+      if (filterDepartment && s.department_id !== filterDepartment) return false;
+      if (filterStatus === "active" && !s.is_active) return false;
+      if (filterStatus === "inactive" && s.is_active) return false;
+      return true;
+    });
+  }, [staff, search, filterRole, filterDepartment, filterStatus]);
+
+  const hasActiveFilters = search || filterRole || filterDepartment || filterStatus;
+
+  function clearFilters() {
+    setSearch("");
+    setFilterRole("");
+    setFilterDepartment("");
+    setFilterStatus("");
+  }
 
   async function invite(e: React.FormEvent) {
     e.preventDefault();
@@ -404,9 +438,98 @@ export default function StaffPage() {
 
       {error ? <div className="mb-4"><ErrorState message={error} /></div> : null}
 
-      {staff === null ? <Loading /> : staff.length === 0 ? <EmptyState text="No staff yet. Invite your first team member." /> : (
+      {/* Search & Filter Bar */}
+      {staff !== null && staff.length > 0 ? (
+        <Card className="mb-4 !p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Search input */}
+            <div className="relative min-w-0 flex-1" style={{ minWidth: "180px" }}>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <input
+                type="search"
+                placeholder="Search by name, email or phone…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-10 w-full rounded-field border border-[#E2E8F0] bg-white pl-9 pr-3.5 text-sm text-primary outline-none transition placeholder:text-[#94A3B8] focus:border-accent focus:ring-3 focus:ring-accent/15"
+                aria-label="Search staff"
+              />
+            </div>
+
+            {/* Filter divider */}
+            <span className="hidden items-center gap-1.5 text-xs font-medium text-muted-foreground sm:flex">
+              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" /> Filters
+            </span>
+
+            {/* Role filter */}
+            <select
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              className="h-10 rounded-field border border-[#E2E8F0] bg-white px-3 text-sm text-primary outline-none transition focus:border-accent focus:ring-3 focus:ring-accent/15"
+              aria-label="Filter by role"
+            >
+              <option value="">All roles</option>
+              {STAFF_INVITABLE_ROLES.map((r) => (
+                <option key={r} value={r}>{roleLabel(r)}</option>
+              ))}
+            </select>
+
+            {/* Department filter */}
+            {departments.length > 0 ? (
+              <select
+                value={filterDepartment}
+                onChange={(e) => setFilterDepartment(e.target.value)}
+                className="h-10 rounded-field border border-[#E2E8F0] bg-white px-3 text-sm text-primary outline-none transition focus:border-accent focus:ring-3 focus:ring-accent/15"
+                aria-label="Filter by department"
+              >
+                <option value="">All departments</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            ) : null}
+
+            {/* Status filter */}
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as "" | "active" | "inactive")}
+              className="h-10 rounded-field border border-[#E2E8F0] bg-white px-3 text-sm text-primary outline-none transition focus:border-accent focus:ring-3 focus:ring-accent/15"
+              aria-label="Filter by status"
+            >
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+
+            {/* Clear filters */}
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex h-10 items-center gap-1.5 rounded-field border border-border bg-white px-3 text-xs font-semibold text-muted-foreground transition hover:border-destructive-border hover:text-destructive-text"
+              >
+                <X className="h-3.5 w-3.5" /> Clear
+              </button>
+            ) : null}
+          </div>
+
+          {/* Result count */}
+          <p className="mt-2.5 text-xs text-muted-foreground">
+            {hasActiveFilters
+              ? `${filteredStaff.length} of ${staff.length} staff member${staff.length === 1 ? "" : "s"} match`
+              : `${staff.length} staff member${staff.length === 1 ? "" : "s"} total`}
+          </p>
+        </Card>
+      ) : null}
+
+      {staff === null ? (
+        <Loading />
+      ) : staff.length === 0 ? (
+        <EmptyState text="No staff yet. Invite your first team member." />
+      ) : filteredStaff.length === 0 ? (
+        <EmptyState text="No staff members match your search or filters." />
+      ) : (
         <ul className="space-y-4">
-          {staff.map((s) => (
+          {filteredStaff.map((s) => (
             <li key={s.id}>
               <Card className="!p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
