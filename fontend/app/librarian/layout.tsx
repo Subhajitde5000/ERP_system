@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { InstitutionAuthProvider, useInstitutionAuth } from "@/hooks/use-institution-auth";
-import { LibraryShell } from "@/components/library/library-shell";
+import { LibraryShell } from "@/components/librarian/library-shell";
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useInstitutionAuth();

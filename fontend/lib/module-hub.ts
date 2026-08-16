@@ -7,7 +7,7 @@ export type { ModuleHub };
  * Optional-module landing pages — the `/{module}/dashboard` entries in
  * `complete_webpage_developer_assignment.md`:
  *
- *   C-LB-01 `/library/dashboard`     C-HW-01 `/hostel/dashboard`
+ *   C-LB-01 `/librarian/dashboard`   C-HW-01 `/hostel/dashboard`
  *   C-TR-01 `/transport/dashboard`   C-PL-01 `/placement/dashboard`
  *   C-HR-01 `/hr/dashboard`          C-AD-01 `/admission/dashboard`
  *   C-SM-01 `/inventory/dashboard`

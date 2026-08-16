@@ -94,7 +94,7 @@ const NAV_MAIN: NavItem[] = [
  */
 const NAV_MODULES: NavItem[] = [
   { label: "Fees", href: "/fees", icon: BadgeIndianRupee, module: "finance" },
-  { label: "Library", href: "/library/dashboard", icon: Library, module: "library" },
+  { label: "Library", href: "/librarian/dashboard", icon: Library, module: "library" },
   { label: "Hostel", href: "/hostel/dashboard", icon: Building2, module: "hostel" },
   { label: "Transport", href: "/transport/dashboard", icon: Bus, module: "transport" },
   { label: "Placement", href: "/placement/dashboard", icon: Handshake, module: "placement" },
@@ -273,21 +273,21 @@ const NAV_ADMIN: NavItem[] = [
     // gets these: every other role reaches the catalogue through the module
     // hub, and a circulation queue in fifteen other sidebars would be noise.
     label: "Catalogue",
-    href: "/library/books",
+    href: "/librarian/books",
     icon: Library,
     module: "library",
     roles: ["LIBRARIAN"],
   },
   {
     label: "Issued books",
-    href: "/library/issues",
+    href: "/librarian/issues",
     icon: BookMarked,
     module: "library",
     roles: ["LIBRARIAN"],
   },
   {
     label: "Overdue",
-    href: "/library/overdue",
+    href: "/librarian/overdue",
     icon: ShieldAlert,
     module: "library",
     roles: ["LIBRARIAN"],

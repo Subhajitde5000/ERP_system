@@ -477,7 +477,7 @@ export function LibrarySection({
               <div className="min-w-0 flex-1">
                 {/* The catalogue entry lives on PAGE 24 */}
                 <Link
-                  href={`/library/books/${b.bookId}`}
+                  href={`/librarian/books/${b.bookId}`}
                   className="block truncate rounded text-[13px] font-medium text-foreground underline-offset-2 hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15"
                 >
                   {b.title}

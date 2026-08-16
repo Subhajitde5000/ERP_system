@@ -661,7 +661,7 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Overdue Books",
         span: 7,
         action: "Send reminder",
-        link: { label: "Full list", href: "/library/overdue" },
+        link: { label: "Full list", href: "/librarian/overdue" },
         columns: [
           { key: "student", label: "Student" },
           { key: "book", label: "Book" },
@@ -689,10 +689,10 @@ const DASHBOARDS: Record<InstitutionRole, DashboardConfig> = {
         title: "Quick Actions",
         span: 12,
         items: [
-          { label: "Issue Book", icon: BookOpen, href: "/library/issues/new", primary: true },
-          { label: "Return Book", icon: RefreshCw, href: "/library/issues" },
-          { label: "Add Book", icon: BookPlus, href: "/library/books" },
-          { label: "E-Resources", icon: MonitorPlay, href: "/library/e-resources" },
+          { label: "Issue Book", icon: BookOpen, href: "/librarian/issues/new", primary: true },
+          { label: "Return Book", icon: RefreshCw, href: "/librarian/issues" },
+          { label: "Add Book", icon: BookPlus, href: "/librarian/books" },
+          { label: "E-Resources", icon: MonitorPlay, href: "/librarian/e-resources" },
         ],
       },
     ],
