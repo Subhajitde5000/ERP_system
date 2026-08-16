@@ -26,6 +26,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, case, delete, func, or_, select, update
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.academic import AcademicYear, Department, SchoolClass, Subject
@@ -1339,14 +1340,10 @@ class TeacherService:
         ).scalars().first()
 
         if existing:
-            existing.usage_count += 1
+            # Only bump usage count — never overwrite existing bank content from
+            # an auto-save; that would silently corrupt the shared bank entry.
+            existing.usage_count = (existing.usage_count or 0) + 1
             existing.updated_at = datetime.now(timezone.utc)
-            if options:
-                existing.options = options
-            if explanation:
-                existing.explanation = explanation.strip()
-            if difficulty:
-                existing.difficulty = DifficultyLevel(difficulty) if difficulty else None
             await db.flush()
             return existing
 
@@ -1397,33 +1394,37 @@ class TeacherService:
         db.add(question)
         await db.flush()
         options = await TeacherService._replace_options(db, question.id, payload.options)
-        
-        # Auto-save question into Question Bank
-        options_dicts = [
-            {
-                "text": opt.text.strip(),
-                "is_correct": opt.is_correct,
-                "image_url": opt.image_url,
-                "sort_order": opt.sort_order,
-            }
-            for opt in options
-        ]
-        bank_item = await TeacherService._save_to_question_bank(
-            db,
-            teacher,
-            subject_id=exam.subject_id,
-            class_id=exam.class_id,
-            text=question.text,
-            question_type=payload.question_type,
-            default_marks=question.marks,
-            negative_marks=question.negative_marks,
-            options=options_dicts,
-            image_url=question.image_url,
-            explanation=question.explanation,
-            difficulty=_value(question.difficulty),
-        )
-        question.bank_item_id = bank_item.id
-        await db.flush()
+
+        # Auto-save into Question Bank — isolated so a bank error never blocks
+        # the question from being added to the exam.
+        try:
+            options_dicts = [
+                {
+                    "text": opt.text.strip(),
+                    "is_correct": opt.is_correct,
+                    "image_url": opt.image_url,
+                    "sort_order": opt.sort_order,
+                }
+                for opt in options
+            ]
+            bank_item = await TeacherService._save_to_question_bank(
+                db,
+                teacher,
+                subject_id=exam.subject_id,
+                class_id=exam.class_id,
+                text=question.text,
+                question_type=payload.question_type,
+                default_marks=question.marks,
+                negative_marks=question.negative_marks,
+                options=options_dicts,
+                image_url=question.image_url,
+                explanation=question.explanation,
+                difficulty=_value(question.difficulty),
+            )
+            question.bank_item_id = bank_item.id
+            await db.flush()
+        except Exception:
+            pass  # Bank save is best-effort; exam question is already persisted
 
         AuditService.record(
             db,
@@ -1515,31 +1516,36 @@ class TeacherService:
                 )
             ).scalars().all()
 
-        options_dicts = [
-            {
-                "text": opt.text.strip(),
-                "is_correct": opt.is_correct,
-                "image_url": opt.image_url,
-                "sort_order": opt.sort_order,
-            }
-            for opt in options
-        ]
-        bank_item = await TeacherService._save_to_question_bank(
-            db,
-            teacher,
-            subject_id=exam.subject_id,
-            class_id=exam.class_id,
-            text=question.text,
-            question_type=_value(question.question_type) or "MCQ",
-            default_marks=question.marks,
-            negative_marks=question.negative_marks,
-            options=options_dicts,
-            image_url=question.image_url,
-            explanation=question.explanation,
-            difficulty=_value(question.difficulty),
-        )
-        question.bank_item_id = bank_item.id
-        await db.flush()
+        # Auto-save into Question Bank — isolated so a bank error never blocks
+        # the question update.
+        try:
+            options_dicts = [
+                {
+                    "text": opt.text.strip(),
+                    "is_correct": opt.is_correct,
+                    "image_url": opt.image_url,
+                    "sort_order": opt.sort_order,
+                }
+                for opt in options
+            ]
+            bank_item = await TeacherService._save_to_question_bank(
+                db,
+                teacher,
+                subject_id=exam.subject_id,
+                class_id=exam.class_id,
+                text=question.text,
+                question_type=_value(question.question_type) or "MCQ",
+                default_marks=question.marks,
+                negative_marks=question.negative_marks,
+                options=options_dicts,
+                image_url=question.image_url,
+                explanation=question.explanation,
+                difficulty=_value(question.difficulty),
+            )
+            question.bank_item_id = bank_item.id
+            await db.flush()
+        except Exception:
+            pass  # Bank save is best-effort; exam question is already persisted
 
         AuditService.record(
             db,
@@ -1719,6 +1725,7 @@ class TeacherService:
                 }
                 for opt in payload.options
             ]
+            flag_modified(item, "options")
         if payload.image_url is not None:
             item.image_url = payload.image_url
         if payload.explanation is not None:
@@ -1727,6 +1734,7 @@ class TeacherService:
             item.difficulty = DifficultyLevel(payload.difficulty)
         if payload.tags is not None:
             item.tags = [t.strip() for t in payload.tags if t.strip()]
+            flag_modified(item, "tags")
         # subject / class can be explicitly cleared by passing None in the payload
         if payload.subject_id is not None:
             item.subject_id = payload.subject_id
