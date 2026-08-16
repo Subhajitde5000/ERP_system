@@ -98,9 +98,9 @@ export const EVENT_META: Record<NotificationEvent, EventMeta> = {
   PAYROLL_RUN_DUE: { category: "SYSTEM", icon: Wallet, href: "/hr/dashboard", urgent: true },
 
   // Hostel Warden
-  HOSTEL_STUDENT_ABSENT: { category: "ATTENDANCE", icon: AlertTriangle, href: "/hostel/dashboard", urgent: true },
-  HOSTEL_LEAVE_REQUEST: { category: "SYSTEM", icon: CalendarClock, href: "/hostel/dashboard" },
-  COMPLAINT_RAISED: { category: "SYSTEM", icon: ShieldAlert, href: "/hostel/dashboard" },
+  HOSTEL_STUDENT_ABSENT: { category: "ATTENDANCE", icon: AlertTriangle, href: "/hostel-warden/attendance", urgent: true },
+  HOSTEL_LEAVE_REQUEST: { category: "SYSTEM", icon: CalendarClock, href: "/hostel-warden/leaves" },
+  COMPLAINT_RAISED: { category: "SYSTEM", icon: ShieldAlert, href: "/hostel-warden/complaints" },
 
   // Institution Admin
   SUPPORT_TICKET_NEW: { category: "SYSTEM", icon: LifeBuoy, href: "/support" },

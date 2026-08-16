@@ -1,4 +1,5 @@
 import type { InstitutionRole } from "@/types/auth";
+import { leadershipCall, queryString } from "@/lib/principal";
 import type { Tone } from "@/types/dashboard";
 import type {
   BookCondition,
@@ -26,8 +27,8 @@ import type {
  *    role gets a circulation lever, not even the Institution Admin. The page
  *    says so in the UI rather than silently omitting the button.
  *
- * TODO(Dev-B): the backend must scope identically — a reader requesting
- * `?include=issues` must 403 regardless of what the UI offers.
+ * The backend applies the same boundary: circulation routes require a live
+ * Librarian/Admin role and catalogue readers only receive their own loan.
  */
 
 const READER_NOTE =
@@ -132,7 +133,8 @@ export function availabilityTone(available: number, total: number): Tone {
 /**
  * Overdue fine. The DB stores `fine_amount` but no doc gives the rate, so it
  * lives here as one constant rather than being sprinkled through fixtures.
- * TODO(Dev-A): move to `tenant_settings` — institutions set their own rate.
+ * The production API reads `library.fine_per_day` from tenant settings; this
+ * remains the client-side presentation default.
  */
 export const FINE_PER_DAY = 5;
 
@@ -154,7 +156,8 @@ export function overdueDaysFor(dueDate: string, now: number): number {
  *
  * `book_issues.due_date` is stored per loan (§8.1) but no doc gives the
  * default term, so it lives here as one constant beside `FINE_PER_DAY`.
- * TODO(Dev-A): move both to `tenant_settings` — institutions differ.
+ * The production API reads the institution value from tenant settings; this
+ * remains the form default.
  */
 export const LOAN_DAYS = 14;
 
@@ -272,3 +275,74 @@ export function findIssueProblems(
 export function hasBlockingIssueProblem(problems: IssueIssue[]): boolean {
   return problems.some((p) => p.blocking);
 }
+
+/* ── Production API boundary ────────────────────────────────────────────── */
+
+const call = <T>(path: string, init: RequestInit = {}) =>
+  leadershipCall<T>("library", path, init, "LibraryAPIError");
+const json = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export interface LibraryPage<T> { items: T[]; total: number; limit: number; offset: number }
+export interface LibraryCatalogue extends LibraryPage<import("@/types/library").BookSummary> {
+  subjects: string[];
+  canManage: boolean;
+}
+export interface LibraryLoan {
+  id: string; copyId: string; bookId: string; bookTitle: string; accessionNumber: string;
+  borrowerId: string; borrowerName: string; borrowerRef: string; issuedAt: string;
+  dueDate: string; returnedAt: string | null; fineAmount: number; finePaid: boolean;
+  isOverdue: boolean; overdueDays: number;
+}
+export interface LibraryDesk extends LibraryPage<LibraryLoan> {
+  overdue: number;
+  outstandingFines: number;
+}
+export interface LibraryDashboard {
+  titles: number; copies: number; available: number; onLoan: number; overdue: number;
+  outstandingFines: number; recentLoans: LibraryLoan[]; canManage: boolean;
+}
+export interface LibraryBookDetail {
+  book: import("@/types/library").BookSummary;
+  copies: import("@/types/library").BookCopy[] | null;
+  issues: LibraryLoan[] | null;
+  ownLoan: LibraryLoan | null;
+  canManage: boolean;
+}
+export interface LibraryBorrower {
+  id: string; name: string; ref: string; currentLoans: number; overdueLoans: number;
+}
+export interface LibraryResource {
+  id: string; title: string; resourceType: EResourceType; url: string | null;
+  fileKey: string | null; subjectArea: string | null; uploadedByName: string; createdAt: string;
+}
+export interface BookPayload {
+  title: string; authors: string[]; isbn?: string | null; publisher?: string | null;
+  edition?: string | null; publicationYear?: number | null; subjectArea?: string | null;
+  language?: string; locationCode?: string | null; coverImageUrl?: string | null; isActive?: boolean;
+}
+
+export const fetchLibraryDashboard = () => call<LibraryDashboard>("/dashboard");
+export const fetchBooks = (filters: { query?: string; subject?: string; available?: boolean; limit?: number; offset?: number } = {}) =>
+  call<LibraryCatalogue>(`/books${queryString(filters)}`);
+export const fetchBook = (id: string) => call<LibraryBookDetail>(`/books/${id}`);
+export const createBook = (body: BookPayload) => call<LibraryBookDetail>("/books", json("POST", body));
+export const updateBook = (id: string, body: BookPayload) => call<LibraryBookDetail>(`/books/${id}`, json("PUT", body));
+export const addBookCopy = (bookId: string, body: { accessionNumber: string; condition: BookCondition }) =>
+  call<import("@/types/library").BookCopy>(`/books/${bookId}/copies`, json("POST", body));
+export const updateCopyCondition = (copyId: string, condition: BookCondition) =>
+  call<import("@/types/library").BookCopy>(`/copies/${copyId}/condition`, json("PATCH", { condition }));
+export const fetchIssues = (filters: { overdue?: boolean; query?: string; limit?: number; offset?: number } = {}) =>
+  call<LibraryDesk>(`/issues${queryString(filters)}`);
+export const issueBook = (body: { copyId: string; borrowerId: string; dueDate: string; notes?: string }) =>
+  call<LibraryLoan>("/issues", json("POST", body));
+export const returnBook = (id: string, body: { finePaid: boolean; notes?: string }) =>
+  call<LibraryLoan>(`/issues/${id}/return`, json("POST", body));
+export const fetchBorrowers = (query = "") => call<LibraryBorrower[]>(`/borrowers${queryString({ query })}`);
+export const fetchResources = (query = "") => call<LibraryResource[]>(`/e-resources${queryString({ query })}`);
+export const createResource = (body: { title: string; resourceType: EResourceType; url?: string; fileKey?: string; subjectArea?: string }) =>
+  call<LibraryResource>("/e-resources", json("POST", body));
+export const deleteResource = (id: string) => call<void>(`/e-resources/${id}`, { method: "DELETE" });

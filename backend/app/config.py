@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolve the .env path relative to this file so it is found regardless of
 # the working directory uvicorn (or its --reload subprocess) was launched from.
-_ENV_FILE = Path(__file__).parent.parent / ".env.example"
+_ENV_FILE = Path(__file__).parent.parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -70,8 +70,8 @@ class Settings(BaseSettings):
     # password: https://myaccount.google.com/apppasswords
     GOOGLE_SMTP_HOST: str = "smtp.gmail.com"
     GOOGLE_SMTP_PORT: int = 587          # 587 = STARTTLS, 465 = implicit TLS
-    GOOGLE_SMTP_USER: str = "dessubhajit00@gmail.com"
-    GOOGLE_SMTP_PASSWORD: str = "wjsb cwjq iqqy tnxn"
+    GOOGLE_SMTP_USER: str = ""
+    GOOGLE_SMTP_PASSWORD: str = ""
 
     # -- Klaviyo (Events API) --
     # Private key (pk_...) with Events:write + Profiles:write scopes.

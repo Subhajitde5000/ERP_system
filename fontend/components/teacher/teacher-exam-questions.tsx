@@ -152,7 +152,6 @@ export function TeacherExamQuestionsPage() {
             {showImportModal && data ? (
               <ImportFromBankModal
                 examId={examId}
-                subjectId={data.subject_id}
                 onClose={() => setShowImportModal(false)}
                 onImported={async () => {
                   await resource.reload();
@@ -461,12 +460,10 @@ function QuestionComposer({
 
 function ImportFromBankModal({
   examId,
-  subjectId,
   onClose,
   onImported,
 }: {
   examId: string;
-  subjectId?: string;
   onClose: () => void;
   onImported: () => Promise<void>;
 }) {
@@ -480,14 +477,15 @@ function ImportFromBankModal({
   const loadBank = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchQuestionBank({ subject_id: subjectId, search: search.trim() || undefined, limit: 100 });
+      // Fetch all bank questions without subject filter so teachers can see everything they saved
+      const res = await fetchQuestionBank({ search: search.trim() || undefined, limit: 100 });
       setItems(res.items);
     } catch {
       setError("Failed to load question bank items.");
     } finally {
       setLoading(false);
     }
-  }, [subjectId, search]);
+  }, [search]);
 
   useEffect(() => {
     loadBank();

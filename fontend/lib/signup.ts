@@ -245,7 +245,7 @@ export async function createOrder(payload: {
   moduleKeys: string[];
   billingCycle: "MONTHLY" | "YEARLY";
   couponCode: string | null;
-  owner: OwnerDraft;
+  owner?: OwnerDraft | null;
   institution: InstitutionDraft;
   urlSlug: string;
   password: string;

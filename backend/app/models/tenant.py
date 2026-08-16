@@ -46,13 +46,6 @@ class Tenant(Base):
     owner_platform_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform_users.id"), nullable=True
     )
-    # The xyz.com customer account that owns this institution (update.sql §1:
-    # "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS owner_id"). Nullable so
-    # institutions created directly by Sales/Super Admin — which have no
-    # self-service owner — remain valid (PLATFORM-OWNER-ACCOUNTS.md).
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
     logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     city: Mapped[str | None] = mapped_column(String(100), nullable=True)

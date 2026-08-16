@@ -477,7 +477,7 @@ export function LibrarySection({
               <div className="min-w-0 flex-1">
                 {/* The catalogue entry lives on PAGE 24 */}
                 <Link
-                  href={`/library/books/${b.bookId}`}
+                  href={`/librarian/books/${b.bookId}`}
                   className="block truncate rounded text-[13px] font-medium text-foreground underline-offset-2 hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15"
                 >
                   {b.title}
@@ -540,7 +540,7 @@ export function HostelSection({
           <div className="flex shrink-0 flex-wrap gap-2">
             {/* The room itself lives on PAGE 23 */}
             <Link
-              href={`/hostel/rooms/${hostel.roomNo}`}
+              href={`/hostel-warden/rooms/${hostel.roomNo}`}
               className="inline-flex h-9 items-center rounded-field border border-border px-3 text-[12px] font-medium text-accent transition-colors hover:border-accent hover:bg-accent-light"
             >
               Open room
