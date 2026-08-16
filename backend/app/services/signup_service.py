@@ -39,6 +39,7 @@ from app.models.billing import (
     TenantSetting,
 )
 from app.models.catalog import Module, Plan
+from app.models.platform_owner import PlatformOwner
 from app.models.platform_user import PlatformRole, PlatformUser
 from app.models.role import Role, RoleAssignment, ScopeLevel
 from app.models.tenant import Tenant, TenantType
@@ -191,7 +192,15 @@ class SignupService:
     @staticmethod
     async def _ensure_owner_account(
         db: AsyncSession, payload: OrderCreateRequest
-    ) -> PlatformUser:
+    ) -> PlatformUser | PlatformOwner:
+        if payload.owner_id:
+            res_owner = await db.execute(
+                select(PlatformOwner).where(PlatformOwner.id == payload.owner_id)
+            )
+            existing_owner = res_owner.scalar_one_or_none()
+            if existing_owner is not None:
+                return existing_owner
+
         owner_email = str(
             payload.owner.email if payload.owner else payload.institution.email
         ).lower()
@@ -387,6 +396,10 @@ class SignupService:
 
         owner = await SignupService._ensure_owner_account(db, payload)
 
+        is_platform_user = isinstance(owner, PlatformUser)
+        owner_platform_user_id = owner.id if is_platform_user else None
+        owner_id = payload.owner_id or (owner.id if isinstance(owner, PlatformOwner) else None)
+
         order = Order(
             id=uuid.uuid4(),
             mode=payload.mode,
@@ -403,16 +416,16 @@ class SignupService:
             institution_name=payload.institution.name.strip(),
             institution_type=payload.institution.type,
             contact_email=str(payload.institution.email).lower(),
-            owner_name=owner.name,
-            owner_email=owner.email,
-            owner_platform_user_id=owner.id,
+            owner_name=owner.name if owner else None,
+            owner_email=owner.email if owner else None,
+            owner_platform_user_id=owner_platform_user_id,
             contact_phone=payload.institution.phone,
             country=payload.institution.country or "India",
             state=payload.institution.state,
             city=payload.institution.city,
             address=payload.institution.address,
             url_slug=slug,
-            owner_id=payload.owner_id,
+            owner_id=owner_id,
             password_hash=hash_password(payload.password),
         )
         db.add(order)
@@ -525,6 +538,7 @@ class SignupService:
             slug=order.url_slug,
             type=TenantType(order.institution_type),
             plan_id=plan.id,
+            owner_id=order.owner_id,
             owner_platform_user_id=order.owner_platform_user_id,
             email=order.contact_email,
             phone=order.contact_phone,

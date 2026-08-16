@@ -183,9 +183,7 @@ export function CheckoutFlow({
     else if (initialPlan) saved.planSlug = initialPlan;
     return saved;
   });
-  const [step, setStep] = useState(() =>
-    initialPlan || initialMode ? 2 : 0,
-  );
+  const [step, setStep] = useState(0);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [provision, setProvision] = useState<ProvisionResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -293,6 +291,7 @@ export function CheckoutFlow({
           onStartTrial={() => chooseMode("TRIAL")}
           busy={busy}
           setBusy={setBusy}
+          isOwnerSession={Boolean(ownerToken)}
         />
       </CheckoutShell>
     );
@@ -401,6 +400,7 @@ function RegistrationStep({
   onStartTrial,
   busy,
   setBusy,
+  isOwnerSession = false,
 }: {
   draft: Draft;
   onChange: (patch: Partial<Draft>) => void;
@@ -408,6 +408,7 @@ function RegistrationStep({
   onStartTrial: () => void;
   busy: boolean;
   setBusy: (v: boolean) => void;
+  isOwnerSession?: boolean;
 }) {
   const [confirm, setConfirm] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -415,8 +416,10 @@ function RegistrationStep({
   function validate(): boolean {
     const e: Record<string, string> = {};
     const inst = draft.institution;
-    if (draft.owner.name.trim().length < 2) e.ownerName = "Enter the owner name";
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(draft.owner.email)) e.ownerEmail = "Enter a valid owner email";
+    if (!isOwnerSession) {
+      if (draft.owner.name.trim().length < 2) e.ownerName = "Enter the owner name";
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(draft.owner.email)) e.ownerEmail = "Enter a valid owner email";
+    }
     if (inst.name.trim().length < 2) e.name = "Enter the institution name";
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(inst.email)) e.email = "Enter a valid official email";
     if (!inst.phone) e.phone = "Enter a phone number";
@@ -455,8 +458,12 @@ function RegistrationStep({
     <div className="animate-fade-up">
       <StepTitle
         icon={<Building2 className="h-5 w-5" aria-hidden="true" />}
-        title="Create your platform account"
-        subtitle="Sign up once at xyz.com. This owner account can create and manage multiple institutions, billing, invoices and support."
+        title={isOwnerSession ? "Set up your new institution" : "Create your platform account"}
+        subtitle={
+          isOwnerSession
+            ? "Configure institution identity and admin credentials. This institution will be linked to your platform account."
+            : "Sign up once at xyz.com. This owner account can create and manage multiple institutions, billing, invoices and support."
+        }
       />
       <form
         onSubmit={(e) => {
@@ -465,34 +472,38 @@ function RegistrationStep({
         }}
         className="mt-8 space-y-5 rounded-card border border-border bg-white p-6 shadow-card sm:p-8"
       >
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Owner Name" required error={errors.ownerName}>
-            <input
-              className={inputClass}
-              value={draft.owner.name}
-              onChange={(e) => onChange({ owner: { ...draft.owner, name: e.target.value } })}
-              placeholder="Rahul Sharma"
-              autoComplete="name"
-            />
-          </Field>
-          <Field label="Owner Email / Platform Login" required error={errors.ownerEmail}>
-            <input
-              className={inputClass}
-              type="email"
-              value={draft.owner.email}
-              onChange={(e) => onChange({ owner: { ...draft.owner, email: e.target.value } })}
-              placeholder="rahul@gmail.com"
-              autoComplete="email"
-            />
-          </Field>
-        </div>
+        {!isOwnerSession && (
+          <>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field label="Owner Name" required error={errors.ownerName}>
+                <input
+                  className={inputClass}
+                  value={draft.owner.name}
+                  onChange={(e) => onChange({ owner: { ...draft.owner, name: e.target.value } })}
+                  placeholder="Rahul Sharma"
+                  autoComplete="name"
+                />
+              </Field>
+              <Field label="Owner Email / Platform Login" required error={errors.ownerEmail}>
+                <input
+                  className={inputClass}
+                  type="email"
+                  value={draft.owner.email}
+                  onChange={(e) => onChange({ owner: { ...draft.owner, email: e.target.value } })}
+                  placeholder="rahul@gmail.com"
+                  autoComplete="email"
+                />
+              </Field>
+            </div>
 
-        <div className="rounded-field border border-accent-border bg-accent-light px-4 py-3 text-sm text-[#3730A3]">
-          Your platform account is the owner account. After email verification, sign in at
-          xyz.com/login to open My Institutions, Billing, Subscriptions, Invoices,
-          Support Tickets and Profile. Daily ERP users still sign in at the
-          institution subdomain.
-        </div>
+            <div className="rounded-field border border-accent-border bg-accent-light px-4 py-3 text-sm text-[#3730A3]">
+              Your platform account is the owner account. After email verification, sign in at
+              xyz.com/login to open My Institutions, Billing, Subscriptions, Invoices,
+              Support Tickets and Profile. Daily ERP users still sign in at the
+              institution subdomain.
+            </div>
+          </>
+        )}
 
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="Institution Name" required error={errors.name}>
@@ -976,21 +987,24 @@ function PaymentStep({
         moduleKeys: draft.moduleKeys,
         billingCycle: draft.billingCycle,
         couponCode: draft.couponCode.trim() || null,
-        owner: {
-          name: draft.owner.name,
-          email: draft.owner.email,
-        },
+        owner:
+          !ownerToken && draft.owner.name.trim() && draft.owner.email.trim()
+            ? {
+                name: draft.owner.name.trim(),
+                email: draft.owner.email.trim(),
+              }
+            : undefined,
         institution: {
-          name: draft.institution.name,
+          name: draft.institution.name.trim(),
           type: draft.institution.type,
-          email: draft.institution.email,
-          phone: draft.institution.phone,
-          country: draft.institution.country,
-          state: draft.institution.state,
-          city: draft.institution.city,
-          address: draft.institution.address,
+          email: draft.institution.email.trim(),
+          phone: draft.institution.phone?.trim() || null,
+          country: draft.institution.country.trim(),
+          state: draft.institution.state?.trim() || null,
+          city: draft.institution.city?.trim() || null,
+          address: draft.institution.address?.trim() || null,
         },
-        urlSlug: draft.urlSlug,
+        urlSlug: draft.urlSlug.trim(),
         password: draft.password,
       }, ownerToken);
       const result = await payOrder(
