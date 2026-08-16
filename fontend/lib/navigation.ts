@@ -95,7 +95,7 @@ const NAV_MAIN: NavItem[] = [
 const NAV_MODULES: NavItem[] = [
   { label: "Fees", href: "/fees", icon: BadgeIndianRupee, module: "finance" },
   { label: "Library", href: "/librarian/dashboard", icon: Library, module: "library" },
-  { label: "Hostel", href: "/hostel/dashboard", icon: Building2, module: "hostel" },
+  { label: "Hostel", href: "/hostel-warden/dashboard", icon: Building2, module: "hostel" },
   { label: "Transport", href: "/transport/dashboard", icon: Bus, module: "transport" },
   { label: "Placement", href: "/placement/dashboard", icon: Handshake, module: "placement" },
   { label: "HR", href: "/hr/dashboard", icon: Users, module: "hr" },

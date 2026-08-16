@@ -540,7 +540,7 @@ export function HostelSection({
           <div className="flex shrink-0 flex-wrap gap-2">
             {/* The room itself lives on PAGE 23 */}
             <Link
-              href={`/hostel/rooms/${hostel.roomNo}`}
+              href={`/hostel-warden/rooms/${hostel.roomNo}`}
               className="inline-flex h-9 items-center rounded-field border border-border px-3 text-[12px] font-medium text-accent transition-colors hover:border-accent hover:bg-accent-light"
             >
               Open room
