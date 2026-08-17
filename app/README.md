@@ -1,6 +1,37 @@
-# Welcome to your Expo app 👋
+# xyz.com ERP + LMS — Student app (React Native)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Mobile app for the **Student** console of the xyz.com ERP + LMS. It is a
+React Native (Expo + expo-router) port of the student side of the website in
+`../fontend` — same screens, same design tokens, same API endpoints, so the
+app UI matches the website UI one-to-one.
+
+> Teacher, Hostel Warden and the other role apps come next; this app only
+> contains the student side (C-ST-01 … C-ST-20).
+
+## Screens (identical to the website's student console)
+
+- **Login** — tenant login (institution code + email/roll number + password),
+  same welcome card, branding banner and validation as `/login` on the web.
+- **Dashboard** — attendance, upcoming exams, pending assignments, fee
+  balance, today's periods, next exam, recent notices, quick links.
+- **Profile** — student record; name / phone / photo are editable.
+- **Attendance** — overall + per-subject summary, leave requests, monthly
+  calendar, apply-for-leave form.
+- **Timetable** — Monday–Saturday period grid with teachers and rooms.
+- **Examinations** — list, instructions with countdown, timed attempt with
+  autosave (backgrounding the app reports the anti-cheat tab-switch signal),
+  result with answer review.
+- **Assignments** — list, brief, milestone chain, group formation
+  (create/join/reuse/leave), submit/resubmit with files, submission history
+  with file preview.
+- **Project Teams** — invitations, team metrics, and the team workspace
+  (task board, team chat, shared links, roster, submission overview).
+- **Content** — library with subject/chapter/type filters, inline viewer.
+- **Results** — published results, subject-wise detail, grade card.
+- **Notices** — notice board with unread marking.
+- **Discussion** — question threads, composer, replies and upvotes.
+- **Fees** — fee account, installments, scholarships, payment history and
+  official receipts.
 
 ## Get started
 
@@ -10,47 +41,31 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 
-2. Start the app
+2. Point the app at the FastAPI backend (defaults to `http://localhost:8000`,
+   the same default as the website). Create `.env.local` if needed:
+
+   ```bash
+   EXPO_PUBLIC_API_URL=http://<backend-host>:8000
+   ```
+
+3. Start the app
 
    ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+   Open it in Expo Go / a dev build, or press `w` for the web preview.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Notes on mobile-specific adaptations
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+The app reuses the website's exact palette, typography sizes, radii, shadows,
+labels and empty states (see `src/theme.ts`). Only where a browser feature
+has no native counterpart is it adapted:
 
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- `<select>` dropdowns become bottom-sheet pickers.
+- Browser `confirm()` becomes native alert dialogs.
+- `<input type="date">` becomes a `YYYY-MM-DD` text field.
+- Hover-only affordances (tooltips, hover reveals) are dropped, as on the
+  website's own mobile view.
+- Print/save-as-PDF buttons (grade card, receipt) are omitted — the document
+  itself is rendered identically.
