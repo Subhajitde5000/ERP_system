@@ -1,0 +1,3 @@
+## 2025-05-18 - Batch entity materialization during onboarding wizard completion
+**Learning:** Performing per-entity SELECT queries and `db.flush()` calls inside loops during multi-entity setup/onboarding creates an O(N) database roundtrip bottleneck (up to ~6,000 DB operations for 2,000 entities). Replacing per-item DB lookups with bulk `in_` queries and single-pass batch inserts reduces query complexity from O(N) to O(1) queries per entity type.
+**Action:** Always batch fetch existing records with `in_` filters and perform single-pass flushes when bulk importing or materializing onboarding state.

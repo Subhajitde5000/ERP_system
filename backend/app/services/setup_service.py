@@ -209,191 +209,234 @@ class SetupService:
         await db.flush()
 
         # 3. Departments.
+        # Performance: Batch fetch existing departments in 1 query (O(1) roundtrips instead of O(N))
         dept_by_code: dict[str, Department] = {}
-        for dep in state.departments:
-            res = await db.execute(
+        if state.departments:
+            dept_codes = [dep.code for dep in state.departments]
+            res_dept = await db.execute(
                 select(Department).where(
-                    Department.tenant_id == tenant.id, Department.code == dep.code
+                    Department.tenant_id == tenant.id, Department.code.in_(dept_codes)
                 )
             )
-            row = res.scalar_one_or_none()
-            if row is None:
-                row = Department(
-                    tenant_id=tenant.id,
-                    name=dep.name,
-                    code=dep.code,
-                    description=dep.description,
-                )
-                db.add(row)
-            else:
-                row.name = dep.name
-                row.description = dep.description
-            dept_by_code[dep.code] = row
-        await db.flush()
+            existing_depts = {dep.code: dep for dep in res_dept.scalars().all()}
+            for dep in state.departments:
+                row = existing_depts.get(dep.code)
+                if row is None:
+                    row = Department(
+                        tenant_id=tenant.id,
+                        name=dep.name,
+                        code=dep.code,
+                        description=dep.description,
+                    )
+                    db.add(row)
+                else:
+                    row.name = dep.name
+                    row.description = dep.description
+                dept_by_code[dep.code] = row
+            await db.flush()
 
         # 4. Classes (sections are classes — "10-A", "CSE-3").
+        # Performance: Batch fetch existing classes in 1 query (O(1) roundtrips instead of O(N))
         class_by_code: dict[str, SchoolClass] = {}
-        for cls in state.classes:
-            department = dept_by_code.get(cls.department_code)
-            if department is None:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Class '{cls.code}' references unknown department '{cls.department_code}'",
-                )
-            if year is None:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="Set the academic year before creating classes",
-                )
-            res = await db.execute(
+        if state.classes:
+            class_codes = [cls.code for cls in state.classes]
+            res_cls = await db.execute(
                 select(SchoolClass).where(
-                    SchoolClass.tenant_id == tenant.id, SchoolClass.code == cls.code
+                    SchoolClass.tenant_id == tenant.id, SchoolClass.code.in_(class_codes)
                 )
             )
-            row = res.scalar_one_or_none()
-            name = cls.section and f"{cls.name} · {cls.section}" or cls.name
-            if row is None:
-                row = SchoolClass(
-                    tenant_id=tenant.id,
-                    department_id=department.id,
-                    academic_year_id=year.id,
-                    name=name,
-                    code=cls.code,
-                    max_strength=cls.max_strength,
-                    room_no=cls.room_no,
-                )
-                db.add(row)
-            else:
-                row.department_id = department.id
-                row.academic_year_id = year.id
-                row.name = name
-                row.max_strength = cls.max_strength
-                row.room_no = cls.room_no
-            class_by_code[cls.code] = row
-        await db.flush()
+            existing_classes = {cls.code: cls for cls in res_cls.scalars().all()}
+            for cls in state.classes:
+                department = dept_by_code.get(cls.department_code)
+                if department is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Class '{cls.code}' references unknown department '{cls.department_code}'",
+                    )
+                if year is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Set the academic year before creating classes",
+                    )
+                row = existing_classes.get(cls.code)
+                name = cls.section and f"{cls.name} · {cls.section}" or cls.name
+                if row is None:
+                    row = SchoolClass(
+                        tenant_id=tenant.id,
+                        department_id=department.id,
+                        academic_year_id=year.id,
+                        name=name,
+                        code=cls.code,
+                        max_strength=cls.max_strength,
+                        room_no=cls.room_no,
+                    )
+                    db.add(row)
+                else:
+                    row.department_id = department.id
+                    row.academic_year_id = year.id
+                    row.name = name
+                    row.max_strength = cls.max_strength
+                    row.room_no = cls.room_no
+                class_by_code[cls.code] = row
+            await db.flush()
 
         # 5. Subjects.
-        for subject in state.subjects:
-            school_class = class_by_code.get(subject.class_code)
-            if school_class is None:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Subject '{subject.code}' references unknown class '{subject.class_code}'",
-                )
-            res = await db.execute(
+        # Performance: Batch fetch existing subjects in 1 query (O(1) roundtrips instead of O(N))
+        if state.subjects:
+            subject_codes = [sub.code for sub in state.subjects]
+            res_sub = await db.execute(
                 select(Subject).where(
-                    Subject.tenant_id == tenant.id, Subject.code == subject.code
+                    Subject.tenant_id == tenant.id, Subject.code.in_(subject_codes)
                 )
             )
-            row = res.scalar_one_or_none()
-            if row is None:
-                row = Subject(
-                    tenant_id=tenant.id,
-                    class_id=school_class.id,
-                    name=subject.name,
-                    code=subject.code,
-                    subject_type=subject.subject_type,
-                    credits=subject.credits,
-                    max_marks=subject.max_marks,
-                    passing_marks=subject.passing_marks,
-                )
-                db.add(row)
-            else:
-                row.class_id = school_class.id
-                row.name = subject.name
-                row.subject_type = subject.subject_type
-                row.credits = subject.credits
-                row.max_marks = subject.max_marks
-                row.passing_marks = subject.passing_marks
-        await db.flush()
+            existing_subjects = {sub.code: sub for sub in res_sub.scalars().all()}
+            for subject in state.subjects:
+                school_class = class_by_code.get(subject.class_code)
+                if school_class is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Subject '{subject.code}' references unknown class '{subject.class_code}'",
+                    )
+                row = existing_subjects.get(subject.code)
+                if row is None:
+                    row = Subject(
+                        tenant_id=tenant.id,
+                        class_id=school_class.id,
+                        name=subject.name,
+                        code=subject.code,
+                        subject_type=subject.subject_type,
+                        credits=subject.credits,
+                        max_marks=subject.max_marks,
+                        passing_marks=subject.passing_marks,
+                    )
+                    db.add(row)
+                else:
+                    row.class_id = school_class.id
+                    row.name = subject.name
+                    row.subject_type = subject.subject_type
+                    row.credits = subject.credits
+                    row.max_marks = subject.max_marks
+                    row.passing_marks = subject.passing_marks
+            await db.flush()
 
         # 6. Staff → users + role assignments.
+        # Performance: Batch fetch staff users and role assignments (O(1) queries instead of O(N) queries + flushes)
         roles = await SetupService._roles_by_name(db)
         now = datetime.now(timezone.utc)
-        for member in state.staff:
-            email = str(member.email).lower()
-            res = await db.execute(
+        if state.staff:
+            emails = [str(m.email).lower() for m in state.staff if m.email]
+            res_users = await db.execute(
                 select(User).where(
-                    User.tenant_id == tenant.id, User.email == email
+                    User.tenant_id == tenant.id, User.email.in_(emails)
                 )
-            )
-            user = res.scalar_one_or_none()
-            if user is None:
-                user = User(
-                    tenant_id=tenant.id,
-                    name=member.name,
-                    email=email,
-                    phone=member.phone,
-                    password_hash=hash_password(DEFAULT_SETUP_PASSWORD),
-                    is_active=True,
-                )
-                db.add(user)
-                await db.flush()
-            role = roles.get(member.role)
-            if role is not None:
-                res2 = await db.execute(
-                    select(RoleAssignment.id).where(
-                        RoleAssignment.user_id == user.id,
-                        RoleAssignment.role_id == role.id,
-                        RoleAssignment.tenant_id == tenant.id,
-                        RoleAssignment.is_active == True,  # noqa: E712
+            ) if emails else None
+            existing_users = {u.email: u for u in res_users.scalars().all()} if res_users else {}
+
+            staff_user_pairs = []
+            for member in state.staff:
+                email = str(member.email).lower() if member.email else None
+                user = existing_users.get(email) if email else None
+                if user is None:
+                    user = User(
+                        tenant_id=tenant.id,
+                        name=member.name,
+                        email=email,
+                        phone=member.phone,
+                        password_hash=hash_password(DEFAULT_SETUP_PASSWORD),
+                        is_active=True,
                     )
+                    db.add(user)
+                    if email:
+                        existing_users[email] = user
+                staff_user_pairs.append((member, user))
+
+            await db.flush()
+
+            staff_user_ids = [u.id for _, u in staff_user_pairs]
+            res_roles = await db.execute(
+                select(RoleAssignment.user_id, RoleAssignment.role_id).where(
+                    RoleAssignment.tenant_id == tenant.id,
+                    RoleAssignment.user_id.in_(staff_user_ids),
+                    RoleAssignment.is_active == True,  # noqa: E712
                 )
-                if res2.scalar_one_or_none() is None:
-                    db.add(
-                        RoleAssignment(
-                            user_id=user.id,
-                            role_id=role.id,
-                            tenant_id=tenant.id,
-                            assigned_at=now,
-                            is_active=True,
+            ) if staff_user_ids else None
+            existing_assignments = {(r[0], r[1]) for r in res_roles.all()} if res_roles else set()
+
+            for member, user in staff_user_pairs:
+                role = roles.get(member.role)
+                if role is not None:
+                    if (user.id, role.id) not in existing_assignments:
+                        db.add(
+                            RoleAssignment(
+                                user_id=user.id,
+                                role_id=role.id,
+                                tenant_id=tenant.id,
+                                assigned_at=now,
+                                is_active=True,
+                            )
                         )
-                    )
-        await db.flush()
+                        existing_assignments.add((user.id, role.id))
+            await db.flush()
 
         # 7. Students → users + STUDENT role.
+        # Performance: Batch fetch student users and STUDENT role assignments (O(1) queries instead of O(N) queries + flushes)
         student_role = roles.get("STUDENT")
-        for student in state.students:
-            res = await db.execute(
+        if state.students:
+            roll_nos = [s.roll_no for s in state.students if s.roll_no]
+            res_students = await db.execute(
                 select(User).where(
                     User.tenant_id == tenant.id,
-                    User.student_roll_no == student.roll_no,
+                    User.student_roll_no.in_(roll_nos),
                 )
-            )
-            user = res.scalar_one_or_none()
-            if user is None:
-                user = User(
-                    tenant_id=tenant.id,
-                    name=student.name,
-                    email=str(student.email).lower() if student.email else None,
-                    gender=student.gender,
-                    date_of_birth=student.date_of_birth,
-                    student_roll_no=student.roll_no,
-                    password_hash=hash_password(DEFAULT_STUDENT_PASSWORD),
-                    is_active=True,
-                )
-                db.add(user)
-                await db.flush()
-            if student_role is not None:
-                res2 = await db.execute(
-                    select(RoleAssignment.id).where(
-                        RoleAssignment.user_id == user.id,
-                        RoleAssignment.role_id == student_role.id,
+            ) if roll_nos else None
+            existing_students = {u.student_roll_no: u for u in res_students.scalars().all()} if res_students else {}
+
+            student_user_pairs = []
+            for student in state.students:
+                user = existing_students.get(student.roll_no) if student.roll_no else None
+                if user is None:
+                    user = User(
+                        tenant_id=tenant.id,
+                        name=student.name,
+                        email=str(student.email).lower() if student.email else None,
+                        gender=student.gender,
+                        date_of_birth=student.date_of_birth,
+                        student_roll_no=student.roll_no,
+                        password_hash=hash_password(DEFAULT_STUDENT_PASSWORD),
+                        is_active=True,
+                    )
+                    db.add(user)
+                    if student.roll_no:
+                        existing_students[student.roll_no] = user
+                student_user_pairs.append((student, user))
+
+            await db.flush()
+
+            if student_role is not None and student_user_pairs:
+                student_user_ids = [u.id for _, u in student_user_pairs]
+                res_roles = await db.execute(
+                    select(RoleAssignment.user_id).where(
                         RoleAssignment.tenant_id == tenant.id,
+                        RoleAssignment.role_id == student_role.id,
+                        RoleAssignment.user_id.in_(student_user_ids),
                         RoleAssignment.is_active == True,  # noqa: E712
                     )
-                )
-                if res2.scalar_one_or_none() is None:
-                    db.add(
-                        RoleAssignment(
-                            user_id=user.id,
-                            role_id=student_role.id,
-                            tenant_id=tenant.id,
-                            assigned_at=now,
-                            is_active=True,
+                ) if student_user_ids else None
+                assigned_student_user_ids = set(res_roles.scalars().all()) if res_roles else set()
+
+                for student, user in student_user_pairs:
+                    if user.id not in assigned_student_user_ids:
+                        db.add(
+                            RoleAssignment(
+                                user_id=user.id,
+                                role_id=student_role.id,
+                                tenant_id=tenant.id,
+                                assigned_at=now,
+                                is_active=True,
+                            )
                         )
-                    )
-        await db.flush()
+                        assigned_student_user_ids.add(user.id)
+            await db.flush()
 
         # 8. Modules — plan-gated: only modules the tenant's plan allows.
         await SetupService._sync_modules(db, tenant, state.modules)
