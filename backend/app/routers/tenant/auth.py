@@ -117,8 +117,10 @@ async def verify_reset_token(
 
 
 @router.post("/reset-password", response_model=APIResponse[None])
+@limiter.limit("10/hour")
 async def tenant_reset_password(
     req: ResetPasswordRequest,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Set a new password using a valid reset token (30-minute window)."""
