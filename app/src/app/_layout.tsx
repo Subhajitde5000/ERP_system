@@ -8,7 +8,7 @@ import { Colors } from "@/theme";
 
 SplashScreen.preventAutoHideAsync();
 
-/** The website's student console is light-only — lock the app to the same. */
+/** The website's institution consoles are light-only — lock the app to the same. */
 const AppTheme: Theme = {
   ...DefaultTheme,
   dark: false,
@@ -37,6 +37,7 @@ export default function RootLayout() {
           <Stack.Screen name="login" />
           <Stack.Screen name="forgot-password" />
           <Stack.Screen name="(student)" />
+          <Stack.Screen name="(teacher)" />
         </Stack>
       </InstitutionAuthProvider>
     </ThemeProvider>
