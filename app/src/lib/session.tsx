@@ -19,6 +19,9 @@ import {
   getAccessToken,
   refreshAccessToken,
   logout as tenantLogout,
+  loadInstitutionSlug,
+  saveInstitutionSlug,
+  clearInstitutionSlug as removeInstitutionSlug,
 } from "./auth";
 
 export interface InstitutionUser {
@@ -31,10 +34,15 @@ export interface InstitutionUser {
 
 interface InstitutionAuthContextType {
   user: InstitutionUser | null;
+  institutionSlug: string | null;
   isAuthenticated: boolean;
   hasRole: (role: string) => boolean;
   isLoading: boolean;
   logout: () => Promise<void>;
+  /** Save and update current institution code */
+  setInstitutionSlug: (slug: string) => Promise<void>;
+  /** Clear saved institution code so user can choose another */
+  clearInstitutionSlug: () => Promise<void>;
   /** Re-fetch `/tenant/auth/me` — used right after a successful login. */
   refresh: () => Promise<void>;
   /** Apply the user payload from the login response directly. */
@@ -68,27 +76,58 @@ async function fetchMe(): Promise<InstitutionUser | null> {
 
 export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<InstitutionUser | null>(null);
+  const [institutionSlug, setInstitutionSlugState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const hydrate = useCallback(async () => {
     try {
+      const savedSlug = await loadInstitutionSlug();
+      if (savedSlug) {
+        setInstitutionSlugState(savedSlug);
+      }
+
       if (!getAccessToken()) await refreshAccessToken();
       const me = await fetchMe();
       setUser(me);
+      if (me?.tenantId) {
+        setInstitutionSlugState(me.tenantId);
+        await saveInstitutionSlug(me.tenantId);
+      }
     } finally {
       setIsLoading(false);
     }
+  }, []);
+
+  /** Save and update institution slug */
+  const setInstitutionSlug = useCallback(async (slug: string) => {
+    const cleaned = slug.trim().toLowerCase();
+    await saveInstitutionSlug(cleaned);
+    setInstitutionSlugState(cleaned);
+  }, []);
+
+  /** Clear saved institution slug */
+  const clearInstitutionSlug = useCallback(async () => {
+    await removeInstitutionSlug();
+    setInstitutionSlugState(null);
   }, []);
 
   /** Re-run hydration with a fresh access token (post-login). */
   const refresh = useCallback(async () => {
     const me = await fetchMe();
     setUser(me);
+    if (me?.tenantId) {
+      setInstitutionSlugState(me.tenantId);
+      await saveInstitutionSlug(me.tenantId);
+    }
   }, []);
 
   /** Apply the user returned by the login call itself — no extra round trip. */
   const setUserFromLogin = useCallback((next: InstitutionUser | null) => {
     setUser(next);
+    if (next?.tenantId) {
+      setInstitutionSlugState(next.tenantId);
+      saveInstitutionSlug(next.tenantId);
+    }
     setIsLoading(false);
   }, []);
 
@@ -108,10 +147,13 @@ export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
     <InstitutionAuthContext.Provider
       value={{
         user,
+        institutionSlug,
         isAuthenticated: !!user,
         hasRole: (role: string) => !!user && user.roles.includes(role),
         isLoading,
         logout,
+        setInstitutionSlug,
+        clearInstitutionSlug,
         refresh,
         setUserFromLogin,
       }}

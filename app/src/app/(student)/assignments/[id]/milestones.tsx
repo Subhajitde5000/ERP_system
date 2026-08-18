@@ -32,7 +32,7 @@ export default function StudentAssignmentMilestonesPage() {
         subtitle="Stages unlock in order once the previous one is approved."
         action={
           <Link
-            href={{ pathname: "/(student)/assignments/[id]/index", params: { id: assignmentId } }}
+            href={{ pathname: "/(student)/assignments/[id]", params: { id: assignmentId } }}
             style={styles.detailLink}
           >
             Assignment detail

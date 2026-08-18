@@ -21,6 +21,7 @@ export function TextField({
   keyboardType,
   autoCapitalize = "none",
   editable = true,
+  hint,
 }: {
   label: string;
   value: string;
@@ -35,6 +36,8 @@ export function TextField({
   keyboardType?: KeyboardTypeOptions;
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   editable?: boolean;
+  /** Optional helper text shown below field when there is no error */
+  hint?: string;
 }) {
   const [revealed, setRevealed] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -86,7 +89,11 @@ export function TextField({
         ) : null}
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <Text style={styles.error}>{error}</Text>
+      ) : hint ? (
+        <Text style={styles.hint}>{hint}</Text>
+      ) : null}
     </View>
   );
 }
@@ -150,5 +157,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "500",
     color: Colors.destructiveText,
+  },
+  hint: {
+    marginTop: 5,
+    fontSize: 12,
+    color: "#64748B",
   },
 });

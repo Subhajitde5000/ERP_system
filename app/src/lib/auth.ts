@@ -22,8 +22,10 @@ export const API_BASE_URL =
 const TENANT_LOGIN = `${API_BASE_URL}/api/v1/tenant/auth/login`;
 const TENANT_LOGOUT = `${API_BASE_URL}/api/v1/tenant/auth/logout`;
 const TENANT_REFRESH = `${API_BASE_URL}/api/v1/tenant/auth/refresh`;
+const TENANT_FORGOT = `${API_BASE_URL}/api/v1/tenant/auth/forgot-password`;
 
 const REFRESH_KEY = "erp_refresh";
+const INSTITUTION_SLUG_KEY = "erp_institution_slug";
 
 // ── In-memory token store ─────────────────────────────────────────────────────
 
@@ -49,6 +51,20 @@ async function loadRefreshToken(): Promise<string | null> {
 
 async function clearRefreshToken(): Promise<void> {
   await SecureStore.deleteItemAsync(REFRESH_KEY).catch(() => undefined);
+}
+
+// ── Institution slug persistence (secure store) ──────────────────────────────
+
+export async function saveInstitutionSlug(slug: string): Promise<void> {
+  await SecureStore.setItemAsync(INSTITUTION_SLUG_KEY, slug.trim().toLowerCase()).catch(() => undefined);
+}
+
+export async function loadInstitutionSlug(): Promise<string | null> {
+  return SecureStore.getItemAsync(INSTITUTION_SLUG_KEY).catch(() => null);
+}
+
+export async function clearInstitutionSlug(): Promise<void> {
+  await SecureStore.deleteItemAsync(INSTITUTION_SLUG_KEY).catch(() => undefined);
 }
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -227,3 +243,26 @@ export async function refreshAccessToken(): Promise<string | null> {
 
 /** Minimum password length — shared between login validation and reset form. */
 export const MIN_PASSWORD_LENGTH = 6;
+
+/**
+ * Request a password reset link for a tenant user.
+ * Always resolves — never reveals whether an account exists.
+ */
+export async function requestPasswordReset(
+  identifier: string,
+  tenantSlug: string,
+): Promise<void> {
+  try {
+    await apiFetch<null>(TENANT_FORGOT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: tenantSlug, identifier }),
+    });
+  } catch (err) {
+    if (err instanceof AuthError && err.code === "NETWORK_ERROR") {
+      throw err;
+    }
+    // For privacy/security, backend always returns success or standard response
+  }
+}
+

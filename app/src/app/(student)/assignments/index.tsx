@@ -115,7 +115,7 @@ function AssignmentRow({ assignment }: { assignment: StudentAssignmentRow }) {
       </Text>
       <View style={styles.colAction}>
         <Link
-          href={{ pathname: "/(student)/assignments/[id]/index", params: { id: assignment.id } }}
+          href={{ pathname: "/(student)/assignments/[id]", params: { id: assignment.id } }}
           style={styles.openLink}
         >
           {assignment.my_status === "PENDING" || assignment.my_status === "RESUBMIT_REQUESTED" ? "Submit" : "Open"}

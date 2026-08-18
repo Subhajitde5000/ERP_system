@@ -7,7 +7,7 @@ import { Colors } from "@/theme";
 
 /** Entry — send the user to the console when signed in, else to login. */
 export default function Index() {
-  const { isAuthenticated, isLoading, hasRole } = useInstitutionAuth();
+  const { isAuthenticated, isLoading, hasRole, institutionSlug } = useInstitutionAuth();
 
   if (isLoading) {
     return (
@@ -19,6 +19,10 @@ export default function Index() {
 
   if (isAuthenticated && hasRole("STUDENT")) {
     return <Redirect href="/(student)/dashboard" />;
+  }
+
+  if (!institutionSlug) {
+    return <Redirect href="/institution" />;
   }
 
   return <Redirect href="/login" />;

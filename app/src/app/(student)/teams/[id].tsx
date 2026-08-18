@@ -296,7 +296,7 @@ export default function StudentTeamWorkspacePage() {
 
           {data ? (
             <View style={styles.topBarActions}>
-              <Link href={{ pathname: "/(student)/assignments/[id]/index", params: { id: data.assignment.id } }} asChild>
+              <Link href={{ pathname: "/(student)/assignments/[id]", params: { id: data.assignment.id } }} asChild>
                 <TouchableOpacity style={styles.topBarButton}>
                   <FileText size={14} color={Colors.primary} />
                   <Text style={styles.topBarButtonLabel}>Assignment Details</Text>
@@ -364,7 +364,7 @@ export default function StudentTeamWorkspacePage() {
                   ) : null}
 
                   <Link
-                    href={{ pathname: "/(student)/assignments/[id]/index", params: { id: data.assignment.id } }}
+                    href={{ pathname: "/(student)/assignments/[id]", params: { id: data.assignment.id } }}
                     asChild
                   >
                     <TouchableOpacity style={styles.topBarButton}>
@@ -852,7 +852,7 @@ export default function StudentTeamWorkspacePage() {
                   <View style={styles.submissionFooter}>
                     <Text style={styles.submissionPrompt}>Ready to submit your group assignment?</Text>
                     <Link
-                      href={{ pathname: "/(student)/assignments/[id]/index", params: { id: data.assignment.id } }}
+                      href={{ pathname: "/(student)/assignments/[id]", params: { id: data.assignment.id } }}
                       asChild
                     >
                       <TouchableOpacity style={styles.submissionButton}>

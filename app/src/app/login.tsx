@@ -8,18 +8,20 @@
  * login endpoint requires.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowRight, Check } from "lucide-react-native";
+import { ArrowLeftRight, ArrowRight, Building2, Check } from "lucide-react-native";
 
 import { MobileBanner } from "@/components/brand-banner";
 import { Button } from "@/components/button";
@@ -37,14 +39,12 @@ type Status =
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { setUserFromLogin } = useInstitutionAuth();
+  const { setUserFromLogin, institutionSlug, isLoading } = useInstitutionAuth();
   const [status, setStatus] = useState<Status>({ kind: "idle" });
-  const [slug, setSlug] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
   const [fieldErrors, setFieldErrors] = useState<{
-    slug?: string;
     identifier?: string;
     password?: string;
   }>({});
@@ -52,12 +52,22 @@ export default function LoginScreen() {
   const submitting = status.kind === "submitting";
   const succeeded = status.kind === "success";
 
+  useEffect(() => {
+    if (!isLoading && !institutionSlug) {
+      router.replace("/institution");
+    }
+  }, [isLoading, institutionSlug, router]);
+
   async function handleSubmit() {
     if (submitting || succeeded) return;
 
+    if (!institutionSlug) {
+      router.replace("/institution");
+      return;
+    }
+
     // Client-side validation before hitting the network
     const errors: typeof fieldErrors = {};
-    if (!slug.trim()) errors.slug = "Enter your institution code";
     if (!identifier.trim()) errors.identifier = "Enter your email or roll number";
     if (!password) errors.password = "Enter your password";
     else if (password.length < MIN_PASSWORD_LENGTH)
@@ -76,7 +86,7 @@ export default function LoginScreen() {
         identifier: identifier.trim(),
         password,
         remember,
-        tenantId: slug.trim(),
+        tenantId: institutionSlug.trim(),
       });
 
       if (!result.roles.includes("STUDENT")) {
@@ -92,7 +102,7 @@ export default function LoginScreen() {
         id: result.user.id,
         name: result.user.name,
         email: result.user.email || null,
-        tenantId: slug.trim(),
+        tenantId: institutionSlug.trim(),
         roles: result.roles,
       });
 
@@ -108,6 +118,18 @@ export default function LoginScreen() {
           : ERROR_MESSAGES.UNKNOWN;
       setStatus({ kind: "error", message });
     }
+  }
+
+  function handleContactAdmin() {
+    Alert.alert(
+      "Contact Institution Admin",
+      "Your Institution Admin is your school or college IT administrator, Registrar, or Academic Office.\n\n• If you need your Institution Code, check your admission confirmation email or portal URL (e.g. abc-college.xyz.com).\n• If you cannot access your account or reset your password, contact your campus helpdesk or teacher to reset it directly.",
+      [{ text: "Got it" }]
+    );
+  }
+
+  function handleChangeInstitution() {
+    router.push("/institution");
   }
 
   return (
@@ -126,6 +148,12 @@ export default function LoginScreen() {
               <View style={styles.heading}>
                 <Text style={styles.h1}>Welcome back</Text>
                 <Text style={styles.subtitle}>Sign in to your institution account</Text>
+                {institutionSlug ? (
+                  <View style={styles.institutionPill}>
+                    <Building2 size={14} color={Colors.accent} />
+                    <Text style={styles.institutionPillText}>{institutionSlug}</Text>
+                  </View>
+                ) : null}
               </View>
 
               {status.kind === "error" ? (
@@ -141,18 +169,6 @@ export default function LoginScreen() {
               ) : null}
 
               <View style={styles.form}>
-                <TextField
-                  label="Institution code"
-                  placeholder="e.g. green-college"
-                  value={slug}
-                  onChangeText={(value) => {
-                    setSlug(value);
-                    setFieldErrors((p) => ({ ...p, slug: undefined }));
-                  }}
-                  error={fieldErrors.slug}
-                  editable={!submitting && !succeeded}
-                />
-
                 <TextField
                   label="Email or Roll Number"
                   placeholder="you@college.edu or ROLL123"
@@ -176,6 +192,15 @@ export default function LoginScreen() {
                   error={fieldErrors.password}
                   revealable
                   editable={!submitting && !succeeded}
+                  labelAction={
+                    <TouchableOpacity
+                      onPress={() => router.push("/forgot-password")}
+                      disabled={submitting || succeeded}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.forgotLink}>Forgot?</Text>
+                    </TouchableOpacity>
+                  }
                 />
 
                 <Pressable
@@ -200,9 +225,33 @@ export default function LoginScreen() {
                   {!succeeded ? <ArrowRight size={16} color="#FFFFFF" /> : null}
                 </Button>
 
-                <Text style={styles.help}>
-                  Having trouble? <Text style={styles.helpLink}>Contact Institution Admin</Text>
-                </Text>
+                <View style={styles.divider} />
+
+                {/* Bottom option to change Institution code */}
+                <View style={styles.bottomActions}>
+                  <TouchableOpacity
+                    style={styles.changeInstitutionButton}
+                    onPress={handleChangeInstitution}
+                    disabled={submitting || succeeded}
+                    accessibilityRole="button"
+                  >
+                    <ArrowLeftRight size={14} color={Colors.accent} />
+                    <Text style={styles.changeInstitutionText}>
+                      Change Institution <Text style={styles.changeInstitutionCode}>({institutionSlug || "None"})</Text>
+                    </Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.help}>
+                    Having trouble?{" "}
+                    <Text
+                      style={styles.helpLink}
+                      onPress={handleContactAdmin}
+                      accessibilityRole="button"
+                    >
+                      Contact Institution Admin
+                    </Text>
+                  </Text>
+                </View>
               </View>
             </View>
 
@@ -239,7 +288,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   heading: {
-    marginBottom: 28,
+    marginBottom: 24,
   },
   h1: {
     fontSize: 22,
@@ -250,6 +299,24 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 13,
     color: "#64748B",
+  },
+  institutionPill: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    backgroundColor: "rgba(79, 70, 229, 0.08)",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(79, 70, 229, 0.2)",
+  },
+  institutionPillText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.accent,
   },
   alertGap: {
     marginBottom: 20,
@@ -286,14 +353,48 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#FFFFFF",
   },
+  divider: {
+    height: 1,
+    backgroundColor: "#F1F5F9",
+    marginVertical: 4,
+  },
+  bottomActions: {
+    gap: 12,
+    alignItems: "center",
+  },
+  changeInstitutionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  changeInstitutionText: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#334155",
+  },
+  changeInstitutionCode: {
+    fontWeight: "600",
+    color: Colors.accent,
+  },
   help: {
-    paddingTop: 8,
     textAlign: "center",
     fontSize: 12,
     color: "#64748B",
   },
   helpLink: {
-    fontWeight: "500",
+    fontWeight: "600",
+    color: Colors.accent,
+  },
+  forgotLink: {
+    fontSize: 12,
+    fontWeight: "600",
     color: Colors.accent,
   },
   footer: {

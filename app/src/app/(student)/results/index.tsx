@@ -33,7 +33,7 @@ export default function StudentResultsPage() {
               {resource.data.map((result) => (
                 <Link
                   key={result.publication_id}
-                  href={{ pathname: "/(student)/results/[id]/index", params: { id: result.publication_id } }}
+                  href={{ pathname: "/(student)/results/[id]", params: { id: result.publication_id } }}
                   asChild
                 >
                   <TouchableOpacity style={styles.card}>
