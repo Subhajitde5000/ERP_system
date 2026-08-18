@@ -1,13 +1,13 @@
-import { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Redirect } from "expo-router";
 
 import { useInstitutionAuth } from "@/lib/session";
+import { consoleHref } from "@/lib/roles";
 import { Colors } from "@/theme";
 
-/** Entry — send the user to the console when signed in, else to login. */
+/** Entry — send the user to the matching console when signed in, else to login. */
 export default function Index() {
-  const { isAuthenticated, isLoading, hasRole, institutionSlug } = useInstitutionAuth();
+  const { isAuthenticated, isLoading, user, institutionSlug } = useInstitutionAuth();
 
   if (isLoading) {
     return (
@@ -17,8 +17,9 @@ export default function Index() {
     );
   }
 
-  if (isAuthenticated && hasRole("STUDENT")) {
-    return <Redirect href="/(student)/dashboard" />;
+  if (isAuthenticated) {
+    const href = consoleHref(user?.roles);
+    if (href) return <Redirect href={href} />;
   }
 
   if (!institutionSlug) {

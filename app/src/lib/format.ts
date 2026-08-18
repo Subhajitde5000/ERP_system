@@ -44,3 +44,29 @@ export function clockTime(value: string): string {
 export function inr(amount: number): string {
   return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 0 })}`;
 }
+
+/** Local calendar date as `YYYY-MM-DD` — same helper the website uses for attendance. */
+export function localDate(value: Date = new Date()): string {
+  const y = value.getFullYear();
+  const m = `${value.getMonth() + 1}`.padStart(2, "0");
+  const d = `${value.getDate()}`.padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** ISO / server datetime → `YYYY-MM-DDTHH:MM` for a datetime-local field. */
+export function toDatetimeLocal(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return "";
+  const pad = (n: number) => `${n}`.padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** Parse a `YYYY-MM-DDTHH:MM` (or any Date-parseable) value to ISO, or null if empty. */
+export function parseDatetimeLocal(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.valueOf())) return null;
+  return date.toISOString();
+}

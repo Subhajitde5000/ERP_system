@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "ERP Student",
-    "slug": "erp-student",
+    "name": "xyz.com ERP",
+    "slug": "erp-campus",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

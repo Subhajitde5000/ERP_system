@@ -27,7 +27,8 @@ import { MobileBanner } from "@/components/brand-banner";
 import { Button } from "@/components/button";
 import { FormAlert } from "@/components/form-alert";
 import { TextField } from "@/components/text-field";
-import { AuthError, ERROR_MESSAGES, MIN_PASSWORD_LENGTH, login } from "@/lib/auth";
+import { AuthError, ERROR_MESSAGES, MIN_PASSWORD_LENGTH, login, logout } from "@/lib/auth";
+import { consoleHref, isTeacherRole } from "@/lib/roles";
 import { useInstitutionAuth } from "@/lib/session";
 import { Colors } from "@/theme";
 
@@ -89,10 +90,13 @@ export default function LoginScreen() {
         tenantId: institutionSlug.trim(),
       });
 
-      if (!result.roles.includes("STUDENT")) {
+      const home = consoleHref(result.roles);
+      if (!home) {
+        await logout().catch(() => undefined);
         setStatus({
           kind: "error",
-          message: "This app is for student accounts. Sign in with your student credentials.",
+          message:
+            "This app is for student and teacher accounts. Sign in with those credentials, or use the website for other roles.",
         });
         return;
       }
@@ -108,9 +112,11 @@ export default function LoginScreen() {
 
       setStatus({
         kind: "success",
-        message: "Signed in as Student — redirecting…",
+        message: isTeacherRole(result.roles)
+          ? "Signed in as Teacher — redirecting…"
+          : "Signed in as Student — redirecting…",
       });
-      setTimeout(() => router.replace("/(student)/dashboard"), 600);
+      setTimeout(() => router.replace(home), 600);
     } catch (err) {
       const message =
         err instanceof AuthError
