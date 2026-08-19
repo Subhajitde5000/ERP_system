@@ -87,6 +87,7 @@ export interface TeacherNoticeRow {
   published_at: string;
   expires_at: string | null;
   mine: boolean;
+  attachments?: Array<{ id: string; file_name: string; file_size_bytes: number; mime_type: string; url: string; is_image: boolean; is_link: boolean }>;
 }
 
 export interface TeacherDashboard {
@@ -894,6 +895,7 @@ export interface TeacherNoticeCreate {
   class_id: string;
   priority?: "NORMAL" | "IMPORTANT" | "URGENT";
   expires_at?: string | null;
+  attachments?: Array<{ file_name: string; mime_type: string; data_url?: string; external_url?: string }>;
 }
 
 export const fetchTeacherNoticeTargets = () => call<TeacherTargetOption[]>("/notices/targets");

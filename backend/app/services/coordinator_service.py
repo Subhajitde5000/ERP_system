@@ -76,6 +76,7 @@ from app.schemas.coordinator import (
     CoordinatorTimetableSlot,
 )
 from app.services.audit_service import AuditService
+from app.services.principal_service import PrincipalService
 
 __all__ = ["CoordinatorService"]
 
@@ -1350,17 +1351,14 @@ class CoordinatorService:
         target_names = await CoordinatorService._notice_target_names(
             db, tenant_id, [notice for notice, _, _ in notices]
         )
-        items = [
-            CoordinatorService._notice_row(
-                notice,
-                author_name,
-                int(read_count or 0),
-                target_names.get(
-                    (_value(notice.target_scope), notice.target_id)
-                ),
+        items = []
+        for notice, author_name, read_count in notices:
+            row = CoordinatorService._notice_row(
+                notice, author_name, int(read_count or 0),
+                target_names.get((_value(notice.target_scope), notice.target_id)),
             )
-            for notice, author_name, read_count in notices
-        ]
+            row.attachments = await PrincipalService._notice_attachments(db, notice.id)
+            items.append(row)
         return CoordinatorNoticePage(total=int(total), limit=limit, offset=offset, items=items)
 
     @staticmethod
@@ -1393,6 +1391,7 @@ class CoordinatorService:
         )
         db.add(notice)
         await db.flush()
+        attachments = await PrincipalService._save_notice_attachments(db, notice.id, payload.attachments)
         AuditService.record(
             db,
             actor=coordinator,
@@ -1409,12 +1408,14 @@ class CoordinatorService:
                 "is_pinned": notice.is_pinned,
             },
         )
-        return CoordinatorService._notice_row(
+        row = CoordinatorService._notice_row(
             notice,
             coordinator.name,
             0,
             None,
         )
+        row.attachments = attachments
+        return row
 
     @staticmethod
     async def notice_targets(

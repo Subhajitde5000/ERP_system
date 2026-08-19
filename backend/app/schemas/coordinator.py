@@ -16,6 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.common import APIResponse
+from app.schemas.principal import NoticeAttachment, NoticeAttachmentInput
 
 # ── Shared paging contracts ──────────────────────────────────────────────────
 
@@ -376,6 +377,7 @@ class CoordinatorNoticeRow(BaseModel):
     published_at: datetime
     expires_at: datetime | None = None
     read_count: int
+    attachments: list[NoticeAttachment] = Field(default_factory=list)
 
 
 class CoordinatorNoticePage(CoordinatorPage):
@@ -404,6 +406,7 @@ class CoordinatorNoticeCreate(BaseModel):
     priority: Literal["NORMAL", "IMPORTANT", "URGENT"] = "NORMAL"
     is_pinned: bool = False
     expires_at: datetime | None = None
+    attachments: list[NoticeAttachmentInput] = Field(default_factory=list, max_length=5)
 
     @field_validator("title", "body")
     @classmethod

@@ -19,6 +19,7 @@ const CONFIG: LeadershipNoticesConfig = {
   composeHref: "/teacher/notices/new",
   canViewReadReceipts: false,
   canPin: false,
+  allowAttachments: true,
   allowedPostScopes: ["CLASS"],
   load: (filters) => fetchTeacherNotices({ query: filters.query, limit: filters.limit, offset: filters.offset }),
   loadDetail: fetchTeacherNotice,
@@ -39,6 +40,7 @@ const CONFIG: LeadershipNoticesConfig = {
       class_id: payload.target_id,
       priority: payload.priority,
       expires_at: payload.expires_at ?? null,
+      attachments: payload.attachments,
     });
   },
 };

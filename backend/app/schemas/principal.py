@@ -225,6 +225,33 @@ class ResultApprovalRequest(BaseModel):
 
 # ── Notice board ─────────────────────────────────────────────────────────────
 
+class NoticeAttachmentInput(BaseModel):
+    """A browser-selected file (data URL) or a safe external link."""
+
+    file_name: str = Field(..., min_length=1, max_length=255)
+    mime_type: str = Field(..., min_length=1, max_length=100)
+    data_url: str | None = None
+    external_url: str | None = Field(default=None, max_length=2048)
+
+    @model_validator(mode="after")
+    def has_one_source(self) -> "NoticeAttachmentInput":
+        if bool(self.data_url) == bool(self.external_url):
+            raise ValueError("Provide either a file or a link attachment")
+        if self.external_url and not self.external_url.startswith(("https://", "http://")):
+            raise ValueError("Links must use http or https")
+        return self
+
+
+class NoticeAttachment(BaseModel):
+    id: uuid.UUID
+    file_name: str
+    file_size_bytes: int
+    mime_type: str
+    url: str
+    is_image: bool
+    is_link: bool
+
+
 class LeadershipNoticeRow(BaseModel):
     """Notice metadata shared by leadership roles without receipt data."""
 
@@ -241,6 +268,7 @@ class LeadershipNoticeRow(BaseModel):
     is_pinned: bool
     published_at: datetime
     expires_at: datetime | None = None
+    attachments: list[NoticeAttachment] = Field(default_factory=list)
 
 
 class PrincipalNoticeRow(LeadershipNoticeRow):
@@ -271,6 +299,7 @@ class PrincipalNoticeCreate(BaseModel):
     priority: Literal["NORMAL", "IMPORTANT", "URGENT"] = "NORMAL"
     is_pinned: bool = False
     expires_at: datetime | None = None
+    attachments: list[NoticeAttachmentInput] = Field(default_factory=list, max_length=5)
 
     @field_validator("expires_at")
     @classmethod
