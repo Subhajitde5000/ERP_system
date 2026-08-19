@@ -152,7 +152,7 @@ export default function InstitutionScreen() {
             </View>
 
             <Text style={styles.footer}>
-              Multi-tenant student portal · Secure campus isolation ·{" "}
+              Multi-tenant campus portal · Secure campus isolation ·{" "}
               <Text style={styles.footerVersion}>v0.1.0</Text>
             </Text>
           </View>

@@ -28,11 +28,13 @@ export function SelectField({
   options,
   value,
   onChange,
+  disabled = false,
 }: {
   label?: string;
   options: SelectOption[];
   value: string;
   onChange: (value: string) => void;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const current = options.find((option) => option.value === value);
@@ -42,8 +44,10 @@ export function SelectField({
       {label ? <Text style={styles.label}>{label}</Text> : null}
       <TouchableOpacity
         accessibilityRole="button"
+        accessibilityState={{ disabled }}
+        disabled={disabled}
         onPress={() => setOpen(true)}
-        style={styles.field}
+        style={[styles.field, disabled && styles.fieldDisabled]}
       >
         <Text style={[styles.value, !current && styles.placeholder]} numberOfLines={1}>
           {current?.label ?? ""}
@@ -101,6 +105,9 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 14,
+  },
+  fieldDisabled: {
+    opacity: 0.6,
   },
   value: {
     flex: 1,

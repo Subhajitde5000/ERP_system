@@ -1,60 +1,53 @@
 /**
- * Student console shell — mobile port of the website's InstitutionConsoleShell
- * (fontend/components/institution-console/institution-console-shell.tsx +
- * fontend/components/student/student-shell.tsx).
- *
- * On the website the sidebar is hidden on phones and a hamburger opens the
- * same drawer; the app renders exactly that mobile layout: a 56px white
- * header with a menu button and the drawer with the console header, the 12
- * student nav items, the identity card and Sign out.
+ * Teacher console shell — mobile port of fontend/components/teacher/teacher-shell.tsx
+ * + InstitutionConsoleShell. Same 12 C-TC nav items, same drawer layout as
+ * the student console so the two roles feel like one app.
  */
 
-import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import {
   BookOpen,
   CalendarDays,
   ClipboardCheck,
+  Database,
   FileSpreadsheet,
   GraduationCap,
-  IndianRupee,
   LayoutDashboard,
   LogOut,
   Megaphone,
   Menu,
   MessageSquare,
+  PenSquare,
   Repeat2,
-  UserRound,
+  UserRoundCheck,
   Users,
   X,
   type LucideIcon,
 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { isTeacherRole } from "@/lib/roles";
 import { useInstitutionAuth } from "@/lib/session";
+import { isStudentRole, roleLabel } from "@/lib/roles";
 import { Colors } from "@/theme";
 
-/** C-ST-01 … C-ST-20 navigation; everything is scoped to the signed-in student.
- * Group segments are transparent in expo-router URLs, so plain paths are used
- * (they resolve inside the (student) group and match `usePathname()`). */
+/** C-TC-01 … C-TC-22 navigation; group segments are transparent in expo-router. */
 const NAVIGATION: { label: string; href: string; icon: LucideIcon }[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Profile", href: "/profile", icon: UserRound },
-  { label: "Attendance", href: "/attendance", icon: ClipboardCheck },
-  { label: "Timetable", href: "/timetable", icon: CalendarDays },
+  { label: "My schedule", href: "/schedule", icon: CalendarDays },
+  { label: "Mark attendance", href: "/attendance/mark", icon: PenSquare },
+  { label: "Attendance sessions", href: "/attendance/sessions", icon: ClipboardCheck },
+  { label: "Leave requests", href: "/attendance/leaves", icon: UserRoundCheck },
   { label: "Examinations", href: "/examinations", icon: FileSpreadsheet },
+  { label: "Question Bank", href: "/question-bank", icon: Database },
   { label: "Assignments", href: "/assignments", icon: Repeat2 },
   { label: "Project Teams", href: "/teams", icon: Users },
   { label: "Content", href: "/content", icon: BookOpen },
-  { label: "Results", href: "/results", icon: GraduationCap },
   { label: "Notices", href: "/notices", icon: Megaphone },
   { label: "Discussion", href: "/discussion", icon: MessageSquare },
-  { label: "Fees", href: "/fees", icon: IndianRupee },
 ];
 
-export function StudentShellHeader({ onOpenNav }: { onOpenNav: () => void }) {
+export function TeacherShellHeader({ onOpenNav }: { onOpenNav: () => void }) {
   return (
     <View style={styles.header}>
       <TouchableOpacity
@@ -65,12 +58,12 @@ export function StudentShellHeader({ onOpenNav }: { onOpenNav: () => void }) {
         <Menu size={20} color={Colors.mutedForeground} />
       </TouchableOpacity>
       <GraduationCap size={16} color={Colors.mutedForeground} />
-      <Text style={styles.headerTitle}>My learning</Text>
+      <Text style={styles.headerTitle}>Classes, exams and assignments</Text>
     </View>
   );
 }
 
-export function StudentNavDrawer({
+export function TeacherNavDrawer({
   open,
   onClose,
 }: {
@@ -84,7 +77,7 @@ export function StudentNavDrawer({
 
   if (!open) return null;
 
-  const initials = (user?.name ?? "Student")
+  const initials = (user?.name ?? "Teacher")
     .split(" ")
     .map((part) => part[0])
     .filter(Boolean)
@@ -106,7 +99,7 @@ export function StudentNavDrawer({
           </View>
           <View style={styles.drawerHeaderText}>
             <Text style={styles.consoleTitle} numberOfLines={1}>
-              Student console
+              Teacher console
             </Text>
             <Text style={styles.consoleName} numberOfLines={1}>
               {user?.name ?? "—"}
@@ -147,21 +140,21 @@ export function StudentNavDrawer({
                 {user?.email ?? "—"}
               </Text>
               <Text style={styles.identityRole} numberOfLines={1}>
-                Student
+                {roleLabel(user?.roles)}
               </Text>
             </View>
           </View>
-          {isTeacherRole(user?.roles) ? (
+          {isStudentRole(user?.roles) ? (
             <TouchableOpacity
               accessibilityRole="button"
               onPress={() => {
                 onClose();
-                router.replace("/(teacher)/dashboard");
+                router.replace("/(student)/dashboard");
               }}
               style={styles.signOut}
             >
               <GraduationCap size={16} color={Colors.mutedForeground} />
-              <Text style={styles.signOutLabel}>Switch to teacher</Text>
+              <Text style={styles.signOutLabel}>Switch to student</Text>
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity
@@ -199,6 +192,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   headerTitle: {
+    flex: 1,
     fontSize: 14,
     fontWeight: "700",
     color: Colors.primary,
