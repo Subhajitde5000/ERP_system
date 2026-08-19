@@ -972,9 +972,15 @@ CREATE TABLE notice_attachments (
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   notice_id                    UUID NOT NULL REFERENCES notices(id) ON DELETE CASCADE,
   file_name                    VARCHAR(255) NOT NULL,
-  file_key                     TEXT NOT NULL,
-  file_size_bytes              BIGINT NOT NULL,
-  mime_type                    VARCHAR(100) NOT NULL
+  file_key                     TEXT,
+  file_size_bytes              BIGINT NOT NULL DEFAULT 0,
+  mime_type                    VARCHAR(100) NOT NULL,
+  external_url                 TEXT,
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_notice_attachment_source CHECK (
+    (file_key IS NOT NULL AND external_url IS NULL) OR
+    (file_key IS NULL AND external_url IS NOT NULL)
+  )
 );
 
 CREATE TABLE notice_reads (

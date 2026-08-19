@@ -18,6 +18,7 @@ const CONFIG: LeadershipNoticesConfig = {
   composeHref: "/hod/notices/new",
   canViewReadReceipts: false,
   canPin: false,
+  allowAttachments: true,
   allowedPostScopes: ["DEPARTMENT", "CLASS"],
   load: fetchHodNotices,
   loadDetail: fetchHodNotice,

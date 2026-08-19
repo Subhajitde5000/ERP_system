@@ -203,7 +203,7 @@ export const fetchHodNotices = (filters: { query?: string; scope?: "INSTITUTION"
   call<PrincipalPage<HodNoticeRow>>(`/notices${queryString({ query: filters.query, scope: filters.scope, include_expired: filters.includeExpired, limit: filters.limit, offset: filters.offset })}`);
 export const fetchHodNotice = (id: string) => call<HodNoticeDetail>(`/notices/${id}`);
 export const fetchHodNoticeTargets = () => call<PrincipalNoticeTargets>("/notices/targets");
-export const createHodNotice = (payload: { title: string; body: string; target_scope: "INSTITUTION" | "DEPARTMENT" | "CLASS"; target_id?: string | null; priority: "NORMAL" | "IMPORTANT" | "URGENT"; is_pinned: boolean; expires_at?: string | null }) =>
+export const createHodNotice = (payload: { title: string; body: string; target_scope: "INSTITUTION" | "DEPARTMENT" | "CLASS"; target_id?: string | null; priority: "NORMAL" | "IMPORTANT" | "URGENT"; is_pinned: boolean; expires_at?: string | null; attachments?: Array<{ file_name: string; mime_type: string; data_url?: string; external_url?: string }> }) =>
   call<HodNoticeDetail>("/notices", { method: "POST", body: JSON.stringify(payload) });
 export const fetchHodDiscussion = (filters: { query?: string; limit?: number; offset?: number } = {}) =>
   call<PrincipalPage<HodDiscussionThread>>(`/discussion${queryString(filters)}`);

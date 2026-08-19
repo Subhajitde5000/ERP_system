@@ -27,6 +27,8 @@ export function CoordinatorNoticeComposerPage() {
     expires_at: null,
   });
   const [saving, setSaving] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [link, setLink] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +66,11 @@ export function CoordinatorNoticeComposerPage() {
     setError(null);
     setSaved(null);
     try {
-      await createCoordinatorNotice(form);
+      const attachments: NonNullable<CoordinatorNoticeCreate["attachments"]> = await Promise.all(
+        files.map(async (file) => ({ file_name: file.name, mime_type: file.type || "application/octet-stream", data_url: await readFileAsDataUrl(file) })),
+      );
+      if (link.trim()) attachments.push({ file_name: link.trim(), mime_type: "text/uri-list", external_url: link.trim() });
+      await createCoordinatorNotice({ ...form, attachments });
       setSaved("Notice published. The class will see it on their dashboard.");
       setForm({
         title: "",
@@ -75,6 +81,8 @@ export function CoordinatorNoticeComposerPage() {
         is_pinned: false,
         expires_at: null,
       });
+      setFiles([]);
+      setLink("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not publish notice.");
     } finally {
@@ -191,6 +199,14 @@ export function CoordinatorNoticeComposerPage() {
                 placeholder="Share the change, the date and what students should do."
               />
             </Field>
+            <Field label="Photos or documents">
+              <input type="file" multiple accept="image/jpeg,image/png,image/webp,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip" onChange={(event) => { const selected = Array.from(event.target.files ?? []); if (selected.length > 5 || selected.some((file) => file.size > 10 * 1024 * 1024)) { setError("Attach up to 5 files, each no larger than 10 MB."); return; } setFiles(selected); }} className="h-11 rounded-field border border-border bg-white px-3 py-2 text-sm" />
+              <span className="text-[11px] text-muted-foreground">PDF, Office documents, ZIP or images; 10 MB each.</span>
+              {files.length ? <span className="text-[11px] text-muted-foreground">{files.map((file) => file.name).join(", ")}</span> : null}
+            </Field>
+            <Field label="External link (optional)">
+              <input type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://example.com" className="h-11 rounded-field border border-border bg-white px-3 text-sm" />
+            </Field>
           </div>
 
           <div className="flex items-center justify-end gap-2">
@@ -247,3 +263,7 @@ function Field({
 export type { CoordinatorTargetOption, CoordinatorNoticeCreate };
 // keep `Save` referenced so the icon import is used if the form grows.
 void Save;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = () => reject(new Error(`Could not read ${file.name}.`)); reader.onload = () => resolve(String(reader.result)); reader.readAsDataURL(file); });
+}

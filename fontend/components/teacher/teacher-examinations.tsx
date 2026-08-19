@@ -368,6 +368,8 @@ export function TeacherExamDetailPage() {
   );
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const questionMarks = resource.data?.questions.reduce((total, question) => total + question.marks, 0) ?? 0;
+  const questionMarksMatch = resource.data ? questionMarks === resource.data.total_marks : false;
 
   async function publish() {
     setBusy(true);
@@ -399,7 +401,7 @@ export function TeacherExamDetailPage() {
               {resource.data.status === "DRAFT" ? (
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !questionMarksMatch}
                   onClick={publish}
                   className="inline-flex h-10 items-center gap-2 rounded-field bg-accent px-4 text-sm font-semibold text-white shadow-accent transition hover:bg-accent-hover disabled:opacity-60"
                 >
@@ -411,6 +413,11 @@ export function TeacherExamDetailPage() {
         }
       />
       {actionError ? <p role="alert" className="mb-3 text-sm text-destructive-text">{actionError}</p> : null}
+      {resource.data?.status === "DRAFT" && !questionMarksMatch ? (
+        <p role="alert" className="mb-3 rounded-field border border-warning-border bg-warning-light px-4 py-2.5 text-sm text-warning-text">
+          Question marks must equal the exam total of {resource.data.total_marks}. Current question total: {questionMarks}.
+        </p>
+      ) : null}
       <AsyncState loading={resource.loading} error={resource.error} onRetry={resource.reload} loadingLabel="Loading exam…">
         {resource.data ? <ExamForm initial={resource.data} examId={examId} key={`${resource.data.id}:${resource.data.status}`} /> : null}
       </AsyncState>

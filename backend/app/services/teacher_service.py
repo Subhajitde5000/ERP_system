@@ -152,6 +152,7 @@ from app.schemas.teacher import (
     TeachingAssignment,
 )
 from app.services.audit_service import AuditService
+from app.services.principal_service import PrincipalService
 from app.services.principal_service import PrincipalService, _value
 
 
@@ -1281,10 +1282,11 @@ class TeacherService:
         ).one()
         if not question_rows[0]:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Add at least one question before publishing")
-        if float(question_rows[1] or 0) > exam.total_marks:
+        question_marks = float(question_rows[1] or 0)
+        if question_marks != exam.total_marks:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Question marks exceed the exam total_marks",
+                detail=f"Question marks must equal the exam total_marks ({exam.total_marks}); currently {question_marks:g}",
             )
         exam.status = ExamStatus.PUBLISHED
         await db.flush()
@@ -3941,7 +3943,9 @@ class TeacherService:
         page = await TeacherService._notice_rows(db, teacher, scope, notice_id=notice_id, limit=1, offset=0)
         if not page.items:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Notice not found")
-        return page.items[0]
+        notice = page.items[0]
+        notice.attachments = await PrincipalService._notice_attachments(db, notice_id)
+        return notice
 
     @staticmethod
     async def notice_targets(db: AsyncSession, teacher: User) -> list[TeacherTargetOption]:
@@ -3981,6 +3985,7 @@ class TeacherService:
         )
         db.add(notice)
         await db.flush()
+        await PrincipalService._save_notice_attachments(db, notice.id, payload.attachments)
         AuditService.record(
             db,
             actor=teacher,

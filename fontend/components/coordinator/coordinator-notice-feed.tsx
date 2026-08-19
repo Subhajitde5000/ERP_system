@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Eye, Megaphone, Pin, Plus, Search } from "lucide-react";
+import { ExternalLink, Eye, FileText, ImageIcon, Link2, Megaphone, Pin, Plus, Search } from "lucide-react";
 
 import { Card, EmptyState, PageHeader } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
@@ -10,6 +10,7 @@ import {
   fetchCoordinatorNotices,
   type CoordinatorNoticeRow,
 } from "@/lib/coordinator-api";
+import { API_BASE_URL } from "@/lib/auth";
 
 export function CoordinatorNoticeFeedPage() {
   const [query, setQuery] = useState("");
@@ -162,6 +163,8 @@ function NoticeCard({ notice }: { notice: CoordinatorNoticeRow }) {
           {notice.body}
         </div>
 
+        {notice.attachments?.length ? <div className="grid gap-2 sm:grid-cols-2">{notice.attachments.map((attachment) => attachment.is_image ? <a key={attachment.id} href={attachmentUrl(attachment.url)} target="_blank" rel="noreferrer" className="overflow-hidden rounded-field border border-border"><img src={attachmentUrl(attachment.url)} alt={attachment.file_name} className="h-36 w-full object-cover" /><span className="flex items-center gap-2 p-2 text-xs font-medium"><ImageIcon className="h-4 w-4" />{attachment.file_name}</span></a> : <a key={attachment.id} href={attachmentUrl(attachment.url)} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-field border border-border p-3 text-sm font-medium text-accent hover:border-accent">{attachment.is_link ? <Link2 className="h-4 w-4 shrink-0" /> : <FileText className="h-4 w-4 shrink-0" />}{attachment.file_name}<ExternalLink className="ml-auto h-4 w-4 shrink-0" /></a>)}</div> : null}
+
         {/* Expiry detail */}
         {notice.expires_at ? (
           <p className="text-[11px] text-muted-foreground">
@@ -176,6 +179,8 @@ function NoticeCard({ notice }: { notice: CoordinatorNoticeRow }) {
     </Card>
   );
 }
+
+function attachmentUrl(url: string) { return url.startsWith("/") ? `${API_BASE_URL}${url}` : url; }
 
 function PriorityBadge({
   priority,
