@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.common import APIResponse
+from app.schemas.principal import NoticeAttachment, NoticeAttachmentInput
 from app.schemas.student import (
     StudentGroupMessageOut,
     StudentGroupResourceOut,
@@ -88,6 +89,7 @@ class TeacherNoticeRow(BaseModel):
     published_at: datetime
     expires_at: datetime | None = None
     mine: bool = False
+    attachments: list[NoticeAttachment] = Field(default_factory=list)
 
 
 class TeacherDashboard(BaseModel):
@@ -736,6 +738,7 @@ class TeacherNoticeCreate(BaseModel):
     class_id: uuid.UUID
     priority: Literal["NORMAL", "IMPORTANT", "URGENT"] = "NORMAL"
     expires_at: datetime | None = None
+    attachments: list[NoticeAttachmentInput] = Field(default_factory=list, max_length=5)
 
     @field_validator("expires_at")
     @classmethod

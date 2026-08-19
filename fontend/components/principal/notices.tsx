@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, Megaphone, Pin, Plus, X } from "lucide-react";
+import { ExternalLink, Eye, FileText, ImageIcon, Link2, Megaphone, Pin, Plus, X } from "lucide-react";
 
 import { Card, EmptyState, PageHeader, inputClass, labelClass } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
@@ -17,13 +17,15 @@ import {
   type PrincipalNoticeTargets,
   type PrincipalPage,
 } from "@/lib/principal";
+import { API_BASE_URL } from "@/lib/auth";
 import { AsyncState, dateTime, statusLabel } from "./principal-ui";
 
 type PostScope = "INSTITUTION" | "DEPARTMENT" | "CLASS";
-type LeadershipNoticeRow = Omit<PrincipalNoticeRow, "read_count"> & { read_count?: number };
-type LeadershipNoticeDetail = Omit<PrincipalNoticeDetail, "read_count" | "readers"> & {
+type LeadershipNoticeRow = Omit<PrincipalNoticeRow, "read_count" | "attachments"> & { read_count?: number; attachments?: PrincipalNoticeRow["attachments"] };
+type LeadershipNoticeDetail = Omit<PrincipalNoticeDetail, "read_count" | "readers" | "attachments"> & {
   read_count?: number;
   readers?: PrincipalNoticeDetail["readers"];
+  attachments?: PrincipalNoticeRow["attachments"];
 };
 
 export interface LeadershipNoticesConfig {
@@ -32,6 +34,7 @@ export interface LeadershipNoticesConfig {
   composeHref: string;
   canViewReadReceipts: boolean;
   canPin: boolean;
+  allowAttachments?: boolean;
   allowedPostScopes: PostScope[];
   load: (filters: {
     query?: string;
@@ -50,6 +53,7 @@ export interface LeadershipNoticesConfig {
     priority: "NORMAL" | "IMPORTANT" | "URGENT";
     is_pinned: boolean;
     expires_at?: string | null;
+    attachments?: Array<{ file_name: string; mime_type: string; data_url?: string; external_url?: string }>;
   }) => Promise<LeadershipNoticeDetail>;
 }
 
@@ -59,6 +63,7 @@ const PRINCIPAL_NOTICE_CONFIG: LeadershipNoticesConfig = {
   composeHref: "/principal/notices/new",
   canViewReadReceipts: true,
   canPin: true,
+  allowAttachments: true,
   allowedPostScopes: ["INSTITUTION", "DEPARTMENT", "CLASS"],
   load: fetchPrincipalNotices,
   loadDetail: fetchPrincipalNotice,
@@ -102,7 +107,8 @@ export function LeadershipNoticeComposerPage({ config }: { config: LeadershipNot
   const router = useRouter();
   const targets = useResource(config.loadTargets, []);
   const initialScope = config.allowedPostScopes[0]!;
-  const [form, setForm] = useState({ title: "", body: "", targetScope: initialScope, targetId: "", priority: "NORMAL" as "NORMAL" | "IMPORTANT" | "URGENT", pinned: false, expiresAt: "" });
+  const [form, setForm] = useState({ title: "", body: "", targetScope: initialScope, targetId: "", priority: "NORMAL" as "NORMAL" | "IMPORTANT" | "URGENT", pinned: false, expiresAt: "", link: "" });
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,6 +127,8 @@ export function LeadershipNoticeComposerPage({ config }: { config: LeadershipNot
     setBusy(true);
     setError(null);
     try {
+      const attachments: Array<{ file_name: string; mime_type: string; data_url?: string; external_url?: string }> = config.allowAttachments ? await Promise.all(files.map(async (file) => ({ file_name: file.name, mime_type: file.type || "application/octet-stream", data_url: await readFileAsDataUrl(file) }))) : [];
+      if (config.allowAttachments && form.link.trim()) attachments.push({ file_name: form.link.trim(), mime_type: "text/uri-list", external_url: form.link.trim() });
       await config.create({
         title: form.title,
         body: form.body,
@@ -129,6 +137,7 @@ export function LeadershipNoticeComposerPage({ config }: { config: LeadershipNot
         priority: form.priority,
         is_pinned: config.canPin ? form.pinned : false,
         expires_at: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
+        attachments,
       });
       router.replace(config.composeHref.replace(/\/new$/, ""));
     } catch (caught) {
@@ -146,6 +155,7 @@ export function LeadershipNoticeComposerPage({ config }: { config: LeadershipNot
           <form onSubmit={submit} className="space-y-5">
             <div><label htmlFor="notice-title" className={labelClass}>Title</label><input id="notice-title" className={inputClass} maxLength={255} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></div>
             <div><label htmlFor="notice-body" className={labelClass}>Message</label><textarea id="notice-body" className={`${inputClass} min-h-44 py-3`} maxLength={20000} value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} required /></div>
+            {config.allowAttachments ? <div className="grid gap-4 sm:grid-cols-2"><div><label htmlFor="notice-files" className={labelClass}>Photos or documents</label><input id="notice-files" type="file" multiple accept="image/jpeg,image/png,image/webp,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip" className={inputClass} onChange={(event) => { const selected = Array.from(event.target.files ?? []); if (selected.length > 5 || selected.some((file) => file.size > 10 * 1024 * 1024)) { setError("Attach up to 5 files, each no larger than 10 MB."); return; } setFiles(selected); }} /><p className="mt-1 text-xs text-muted-foreground">PDF, Word, PowerPoint, Excel, ZIP, JPG, PNG or WebP; up to 10 MB each.</p>{files.length ? <p className="mt-2 text-xs text-muted-foreground">{files.map((file) => file.name).join(", ")}</p> : null}</div><div><label htmlFor="notice-link" className={labelClass}>External link (optional)</label><input id="notice-link" type="url" className={inputClass} placeholder="https://example.com" value={form.link} onChange={(event) => setForm({ ...form, link: event.target.value })} /></div></div> : null}
             <div className="grid gap-4 sm:grid-cols-2"><div><label htmlFor="notice-target-scope" className={labelClass}>Audience</label><select id="notice-target-scope" className={inputClass} value={form.targetScope} onChange={(event) => setForm({ ...form, targetScope: event.target.value as PostScope, targetId: "" })}>{config.allowedPostScopes.map((postScope) => <option key={postScope} value={postScope}>{postScope === "INSTITUTION" ? "Institution-wide" : postScope === "DEPARTMENT" ? "Department" : "Class"}</option>)}</select></div><div><label htmlFor="notice-priority" className={labelClass}>Priority</label><select id="notice-priority" className={inputClass} value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value as typeof form.priority })}><option value="NORMAL">Normal</option><option value="IMPORTANT">Important</option><option value="URGENT">Urgent</option></select></div></div>
             {form.targetScope !== "INSTITUTION" ? <div><label htmlFor="notice-target" className={labelClass}>{form.targetScope === "DEPARTMENT" ? "Department" : "Class"}</label><select id="notice-target" className={inputClass} value={form.targetId} onChange={(event) => setForm({ ...form, targetId: event.target.value })} required><option value="">Select {form.targetScope.toLowerCase()}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.department_name ? `${option.department_name} · ${option.name}` : option.name}</option>)}</select></div> : null}
             <div className="grid gap-4 sm:grid-cols-2"><div><label htmlFor="notice-expires" className={labelClass}>Expires at (optional)</label><input id="notice-expires" type="datetime-local" className={inputClass} value={form.expiresAt} onChange={(event) => setForm({ ...form, expiresAt: event.target.value })} /></div>{config.canPin ? <label className="flex items-center gap-2 pt-7 text-sm font-medium text-primary"><input type="checkbox" checked={form.pinned} onChange={(event) => setForm({ ...form, pinned: event.target.checked })} className="h-4 w-4 rounded border-border accent-accent" /> Pin this notice</label> : <p className="pt-7 text-xs text-muted-foreground">Only institution leadership can pin notices.</p>}</div>
@@ -208,7 +218,16 @@ function NoticeDetailContent({ notice, canViewReadReceipts }: { notice: Leadersh
     <div>
       <div className="border-b border-border pb-4"><h3 className="font-display text-xl font-bold text-primary">{notice.title}</h3><p className="mt-2 text-xs text-muted-foreground">{notice.target_name ?? statusLabel(notice.target_scope)} · posted {dateTime(notice.published_at)}</p></div>
       <p className="whitespace-pre-wrap py-5 text-sm leading-6 text-foreground">{notice.body}</p>
+      {notice.attachments?.length ? <div className="border-t border-border py-5"><h4 className="mb-3 font-display text-base font-bold text-primary">Attachments</h4><div className="grid gap-3 sm:grid-cols-2">{notice.attachments.map((attachment) => attachment.is_image ? <a key={attachment.id} href={attachmentUrl(attachment.url)} target="_blank" rel="noreferrer" className="overflow-hidden rounded-field border border-border"><img src={attachmentUrl(attachment.url)} alt={attachment.file_name} className="h-40 w-full object-cover" /><span className="flex items-center gap-2 p-2 text-xs font-medium"><ImageIcon className="h-4 w-4" />{attachment.file_name}</span></a> : <a key={attachment.id} href={attachmentUrl(attachment.url)} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-field border border-border p-3 text-sm font-medium text-accent hover:border-accent">{attachment.is_link ? <Link2 className="h-4 w-4 shrink-0" /> : <FileText className="h-4 w-4 shrink-0" />}{attachment.file_name}<ExternalLink className="ml-auto h-4 w-4 shrink-0" /></a>)}</div></div> : null}
       {canViewReadReceipts ? <><h4 className="border-t border-border pt-5 font-display text-base font-bold text-primary">Read receipts ({readers.length})</h4>{readers.length ? <ul className="mt-3 divide-y divide-border rounded-field border border-border">{readers.map((reader) => <li key={reader.id} className="flex items-center justify-between gap-3 px-3 py-3 text-sm"><span className="font-medium text-primary">{reader.name}</span><time className="text-xs text-muted-foreground">{dateTime(reader.read_at)}</time></li>)}</ul> : <p className="mt-3 text-sm text-muted-foreground">No recipients have read this notice yet.</p>}</> : null}
     </div>
   );
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = () => reject(new Error(`Could not read ${file.name}.`)); reader.onload = () => resolve(String(reader.result)); reader.readAsDataURL(file); });
+}
+
+function attachmentUrl(url: string) {
+  return url.startsWith("/") ? `${API_BASE_URL}${url}` : url;
 }

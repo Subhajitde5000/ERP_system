@@ -597,9 +597,15 @@ export function StudentExamResultPage() {
                       </p>
                       <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-primary">{answer.question_text}</p>
                       <p className="mt-1.5 text-sm text-muted-foreground">
-                        Your answer: <span className="font-medium text-primary">{answer.selected_option_text ?? answer.text_answer ?? "(unanswered)"}</span>
+                        Your answer: <span className={`font-medium ${
+                          answer.score !== null && answer.score === answer.marks
+                            ? "text-success-text"
+                            : answer.score !== null && answer.score < answer.marks
+                            ? "text-destructive-text"
+                            : "text-primary"
+                        }`}>{answer.selected_option_text ?? answer.text_answer ?? "(unanswered)"}</span>
                       </p>
-                      {answer.correct_option_text ? (
+                      {answer.correct_option_text && (answer.score === null || answer.score < answer.marks) ? (
                         <p className="mt-1 text-sm text-success-text">Correct answer: {answer.correct_option_text}</p>
                       ) : null}
                       {answer.feedback ? <p className="mt-1 text-sm italic text-muted-foreground">Feedback: {answer.feedback}</p> : null}

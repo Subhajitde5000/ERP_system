@@ -24,7 +24,7 @@ import uuid
 from datetime import date, datetime, time
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, Enum as SAEnum, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, Enum as SAEnum, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -265,6 +265,19 @@ class Notice(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+
+
+class NoticeAttachment(Base):
+    __tablename__ = "notice_attachments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    notice_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("notices.id", ondelete="CASCADE"), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    external_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
 
 
 class NoticeRead(Base):

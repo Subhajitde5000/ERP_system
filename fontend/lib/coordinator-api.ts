@@ -330,6 +330,7 @@ export interface CoordinatorNoticeRow {
   published_at: string;
   expires_at: string | null;
   read_count: number;
+  attachments: Array<{ id: string; file_name: string; file_size_bytes: number; mime_type: string; url: string; is_image: boolean; is_link: boolean }>;
 }
 
 export interface CoordinatorNoticePage {
@@ -359,6 +360,7 @@ export interface CoordinatorNoticeCreate {
   priority: CoordinatorNoticePriority;
   is_pinned: boolean;
   expires_at: string | null;
+  attachments?: Array<{ file_name: string; mime_type: string; data_url?: string; external_url?: string }>;
 }
 
 // ── Fetchers ────────────────────────────────────────────────────────────────

@@ -116,6 +116,7 @@ export const createVicePrincipalNotice = (payload: {
   priority: "NORMAL" | "IMPORTANT" | "URGENT";
   is_pinned: boolean;
   expires_at?: string | null;
+  attachments?: Array<{ file_name: string; mime_type: string; data_url?: string; external_url?: string }>;
 }) =>
   call<VicePrincipalNoticeDetail>("/notices", {
     method: "POST",

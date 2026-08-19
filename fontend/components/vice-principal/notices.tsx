@@ -18,6 +18,7 @@ const CONFIG: LeadershipNoticesConfig = {
   composeHref: "/vp/notices/new",
   canViewReadReceipts: false,
   canPin: false,
+  allowAttachments: true,
   allowedPostScopes: ["DEPARTMENT", "CLASS"],
   load: fetchVicePrincipalNotices,
   loadDetail: fetchVicePrincipalNotice,
