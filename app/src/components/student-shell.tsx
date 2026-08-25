@@ -27,6 +27,7 @@ import {
   Repeat2,
   UserRound,
   Users,
+  Video,
   X,
   type LucideIcon,
 } from "lucide-react-native";
@@ -41,6 +42,7 @@ import { Colors } from "@/theme";
  * (they resolve inside the (student) group and match `usePathname()`). */
 const NAVIGATION: { label: string; href: string; icon: LucideIcon }[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Online classes", href: "/online-classes", icon: Video },
   { label: "Profile", href: "/profile", icon: UserRound },
   { label: "Attendance", href: "/attendance", icon: ClipboardCheck },
   { label: "Timetable", href: "/timetable", icon: CalendarDays },

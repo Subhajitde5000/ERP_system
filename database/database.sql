@@ -114,6 +114,9 @@ CREATE TYPE stock_txn_type AS ENUM ('STOCK_IN', 'STOCK_OUT', 'ADJUSTMENT', 'RETU
 CREATE TYPE po_status AS ENUM ('DRAFT', 'SENT', 'ACKNOWLEDGED', 'DELIVERED', 'CANCELLED');
 CREATE TYPE exam_controller_publication_status AS ENUM ('DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'PUBLISHED', 'WITHDRAWN');
 CREATE TYPE exam_controller_grade_card_status AS ENUM ('PENDING', 'GENERATED', 'PUBLISHED', 'FAILED');
+CREATE TYPE online_class_status AS ENUM ('SCHEDULED', 'LIVE', 'COMPLETED', 'CANCELLED');
+CREATE TYPE online_class_mode AS ENUM ('SCHEDULED', 'INSTANT');
+CREATE TYPE online_attendance_status AS ENUM ('PRESENT', 'LATE', 'ABSENT');
 
 
 -- ============================================================================
@@ -2121,6 +2124,70 @@ CREATE TABLE data_export_jobs (
   created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ── Online classes (live teaching with automatic attendance) ────────────────
+
+CREATE TABLE online_classes (
+
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  teacher_id                   UUID NOT NULL REFERENCES users(id),
+  class_id                     UUID NOT NULL REFERENCES classes(id),
+  subject_id                   UUID NOT NULL REFERENCES subjects(id),
+  timetable_slot_id            UUID REFERENCES timetable_slots(id) ON DELETE SET NULL,
+  topic                        VARCHAR(255) NOT NULL,
+  mode                         online_class_mode NOT NULL DEFAULT 'SCHEDULED',
+  status                       online_class_status NOT NULL DEFAULT 'SCHEDULED',
+  scheduled_at                 TIMESTAMPTZ,
+  duration_minutes             INTEGER NOT NULL DEFAULT 60,
+  allow_join                   BOOLEAN NOT NULL DEFAULT TRUE,
+  recording_enabled            BOOLEAN NOT NULL DEFAULT FALSE,
+  recording_url                TEXT,
+  started_at                   TIMESTAMPTZ,
+  ended_at                     TIMESTAMPTZ,
+  attendance_session_id        UUID REFERENCES attendance_sessions(id) ON DELETE SET NULL,
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE online_class_participants (
+
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  class_id                     UUID NOT NULL REFERENCES online_classes(id) ON DELETE CASCADE,
+  student_id                   UUID NOT NULL REFERENCES users(id),
+  waiting_since                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  joined_at                    TIMESTAMPTZ,
+  left_at                      TIMESTAMPTZ,
+  duration_seconds             INTEGER NOT NULL DEFAULT 0,
+  attendance_status            online_attendance_status,
+  hand_raised_at               TIMESTAMPTZ,
+  is_online                    BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_online_class_participants__class_id_student_id UNIQUE (class_id, student_id)
+);
+
+CREATE TABLE online_class_messages (
+
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  class_id                     UUID NOT NULL REFERENCES online_classes(id) ON DELETE CASCADE,
+  sender_id                    UUID NOT NULL REFERENCES users(id),
+  sender_role                  VARCHAR(20) NOT NULL,
+  body                         TEXT NOT NULL,
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE online_class_files (
+
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  class_id                     UUID NOT NULL REFERENCES online_classes(id) ON DELETE CASCADE,
+  uploader_id                  UUID NOT NULL REFERENCES users(id),
+  file_name                    VARCHAR(255) NOT NULL,
+  file_path                    TEXT NOT NULL,
+  file_size_bytes              BIGINT NOT NULL DEFAULT 0,
+  mime_type                    VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 
 -- ============================================================================
 --  SECTION 4 — DOCUMENTED INDEXES (58)
@@ -2199,6 +2266,13 @@ CREATE INDEX idx_export_jobs_tenant_id ON data_export_jobs (tenant_id, created_a
 CREATE INDEX idx_export_jobs_status ON data_export_jobs (status) WHERE status IN ('PENDING','PROCESSING');
 CREATE INDEX idx_att_records_student_date ON attendance_records (tenant_id, student_id, status) INCLUDE (session_id);
 CREATE INDEX idx_att_sessions_date_range ON attendance_sessions (tenant_id, class_id, date, subject_id);
+CREATE INDEX idx_online_classes_tenant_status ON online_classes (tenant_id, status, scheduled_at);
+CREATE INDEX idx_online_classes_teacher ON online_classes (teacher_id, created_at DESC);
+CREATE INDEX idx_online_classes_class ON online_classes (class_id, scheduled_at);
+CREATE INDEX idx_online_class_participants_class ON online_class_participants (class_id);
+CREATE INDEX idx_online_class_participants_student ON online_class_participants (student_id);
+CREATE INDEX idx_online_class_messages_class ON online_class_messages (class_id, created_at);
+CREATE INDEX idx_online_class_files_class ON online_class_files (class_id, created_at);
 
 
 -- ============================================================================

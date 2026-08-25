@@ -13,6 +13,7 @@ import {
   Repeat2,
   UserRound,
   Users,
+  Video,
 } from "lucide-react";
 
 import {
@@ -23,6 +24,7 @@ import {
 /** C-ST-01 … C-ST-20 navigation; everything is scoped to the signed-in student. */
 const NAVIGATION: InstitutionConsoleNavItem[] = [
   { label: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard },
+  { label: "Online classes", href: "/student/online-classes", icon: Video },
   { label: "Profile", href: "/student/profile", icon: UserRound },
   { label: "Attendance", href: "/student/attendance", icon: ClipboardCheck },
   { label: "Timetable", href: "/student/timetable", icon: CalendarDays },

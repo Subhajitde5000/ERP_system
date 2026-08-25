@@ -38,6 +38,9 @@ export default function TeacherLayout() {
       <TeacherShellHeader onOpenNav={() => setNavOpen(true)} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.background } }}>
         <Stack.Screen name="dashboard" />
+        <Stack.Screen name="online-classes/index" />
+        <Stack.Screen name="online-classes/new" />
+        <Stack.Screen name="online-classes/[id]" />
         <Stack.Screen name="schedule" />
         <Stack.Screen name="attendance/mark" />
         <Stack.Screen name="attendance/sessions/index" />
