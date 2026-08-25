@@ -7,17 +7,19 @@ presence, chat, raise-hand, WebRTC signalling, whiteboard strokes.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
+import anyio
 from fastapi import APIRouter, Depends, File, Query, UploadFile, WebSocket, WebSocketDisconnect, status
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import AsyncSessionLocal, get_db
+from app.database import get_db
 from app.dependencies.auth import get_current_tenant_user_student, get_current_tenant_user_teacher
 from app.models.online_class import OnlineClass, OnlineClassStatus
 from app.models.user import User
@@ -237,18 +239,17 @@ async def _send_roster(websocket: WebSocket, db: AsyncSession, oc: OnlineClass) 
 
 
 @router.websocket("/{class_id}/live")
-async def live_room(websocket: WebSocket, class_id: uuid.UUID, token: str = Query(...)):
+async def live_room(websocket: WebSocket, class_id: uuid.UUID, db: DB, token: str = Query(...)):
     """Presence + chat + raise-hand + WebRTC signalling + whiteboard relay.
 
     Browsers cannot set headers on a WebSocket handshake, so the short-lived
     tenant JWT travels in the query string and is validated before accept().
-    The socket owns its own DB session for the whole connection and commits
-    after every persisted event.
+    The injected session lives for the whole connection; every persisted
+    event commits immediately so a mid-class crash loses nothing.
     """
     user: User | None = None
     oc: OnlineClass | None = None
     role = ""
-    db = AsyncSessionLocal()
     try:
         try:
             payload = decode_access_token(token)
@@ -347,15 +348,19 @@ async def live_room(websocket: WebSocket, class_id: uuid.UUID, token: str = Quer
     except Exception:
         # Transport or DB blip inside the loop — fall through to cleanup; the
         # client reconnects and attendance still settles on class end.
-        pass
+        await db.rollback()
     finally:
         if user is not None:
             live_rooms.disconnect(class_id, user.id)
-            try:
-                if role == "STUDENT" and oc is not None and oc.status == OnlineClassStatus.LIVE:
-                    await OnlineClassService.ws_student_left(db, oc, user)
-                    await db.commit()
-                await live_rooms.broadcast(class_id, {"type": "peer-left", "peer_id": str(user.id)})
-            except Exception:
-                await db.rollback()
-        await db.close()
+            # Shield the ledger work from task cancellation: on a client drop
+            # (or server shutdown) the leave must persist and peers must hear
+            # peer-left even though this coroutine is being torn down.
+            with anyio.CancelScope(shield=True):
+                try:
+                    if role == "STUDENT" and oc is not None and oc.status == OnlineClassStatus.LIVE:
+                        await OnlineClassService.ws_student_left(db, oc, user)
+                        await db.commit()
+                    await live_rooms.broadcast(class_id, {"type": "peer-left", "peer_id": str(user.id)})
+                except Exception:
+                    with contextlib.suppress(Exception):
+                        await db.rollback()
