@@ -112,6 +112,7 @@ from app.models.online_class import (
     OnlineClassFile,
     OnlineClassMessage,
     OnlineClassMode,
+    OnlineClassMutedStudent,
     OnlineClassParticipant,
     OnlineClassStatus,
 )
@@ -232,6 +233,7 @@ __all__ = [
     "OnlineClassFile",
     "OnlineClassMessage",
     "OnlineClassMode",
+    "OnlineClassMutedStudent",
     "OnlineClassParticipant",
     "OnlineClassStatus",
 ]

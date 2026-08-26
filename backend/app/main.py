@@ -98,6 +98,19 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     )
 
 
+from app.services.scheduler_service import start_scheduler, stop_scheduler
+
+
+@app.on_event("startup")
+async def on_startup():
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    stop_scheduler()
+
+
 # ── Health Check ─────────────────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
 async def health_check():
