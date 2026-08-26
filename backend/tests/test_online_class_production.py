@@ -205,3 +205,64 @@ async def test_notifications_inbox_and_mark_read():
     updated = await OnlineClassService.mark_notification_read(db, student, notif_id)
     assert updated.is_read is True
     assert notif.read_at is not None
+
+
+@pytest.mark.asyncio
+async def test_admin_overview_metrics():
+    admin = SimpleNamespace(id=uuid.uuid4(), tenant_id=uuid.uuid4())
+    db = MagicMock()
+
+    # Mock total count, rows, today date, and 4 KPI metrics
+    kpi_mock = MagicMock()
+    kpi_mock.scalar_one.side_effect = [
+        1,  # total classes matching filter
+        2,  # live_count
+        5,  # scheduled_today
+        3,  # completed_today
+        25, # active_participants_now
+    ]
+    kpi_mock.all.return_value = []
+    db.execute = AsyncMock(return_value=kpi_mock)
+
+    from app.services.principal_service import PrincipalService
+    PrincipalService._tenant_today = AsyncMock(return_value=date(2026, 8, 27))
+
+    overview = await OnlineClassService.list_for_admin(db, admin)
+    assert overview.summary.live_count == 2
+    assert overview.summary.scheduled_today_count == 5
+    assert overview.summary.completed_today_count == 3
+    assert overview.summary.total_participants_now == 25
+
+
+@pytest.mark.asyncio
+async def test_whiteboard_stroke_saving():
+    oc_id = uuid.uuid4()
+    oc = SimpleNamespace(id=oc_id, whiteboard_strokes=[])
+    db = MagicMock()
+    db.get = AsyncMock(return_value=oc)
+    db.flush = AsyncMock()
+
+    stroke = {"tool": "pen", "color": "#ff0000", "points": [10, 20, 30, 40]}
+    await OnlineClassService.save_whiteboard_stroke(db, oc_id, stroke)
+
+    assert len(oc.whiteboard_strokes) == 1
+    assert oc.whiteboard_strokes[0]["tool"] == "pen"
+
+
+@pytest.mark.asyncio
+async def test_student_cannot_send_chat_when_muted(monkeypatch):
+    from fastapi import HTTPException
+
+    student = SimpleNamespace(id=uuid.uuid4(), tenant_id=uuid.uuid4(), name="Student")
+    oc = SimpleNamespace(id=uuid.uuid4(), tenant_id=student.tenant_id, teacher_id=uuid.uuid4(), status=OnlineClassStatus.LIVE)
+    db = MagicMock()
+
+    monkeypatch.setattr(OnlineClassService, "_ensure_room_member", AsyncMock(return_value="STUDENT"))
+    monkeypatch.setattr(OnlineClassService, "is_student_muted", AsyncMock(return_value=True))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await OnlineClassService.post_message(db, student, oc, "Hello class")
+
+    assert exc_info.value.status_code == 403
+    assert "muted" in exc_info.value.detail.lower()
+

@@ -1218,7 +1218,7 @@ class OnlineClassService:
         user: User,
         oc: OnlineClass,
         filename: str,
-        content: bytes,
+        content: bytes | UploadFile,
         mime_type: str,
         uploads_root: Path,
         role: str = "TEACHER",
@@ -1228,11 +1228,6 @@ class OnlineClassService:
             raise HTTPException(status.HTTP_409_CONFLICT, detail="Files can be shared once the class has started")
 
         max_bytes = settings.ONLINE_CLASS_UPLOAD_MAX_MB * 1024 * 1024
-        if len(content) > max_bytes:
-            raise HTTPException(
-                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File exceeds the {settings.ONLINE_CLASS_UPLOAD_MAX_MB} MB limit",
-            )
 
         # Validate MIME type against configured safe allowlist
         clean_mime = (mime_type or "application/octet-stream").lower().split(";")[0].strip()
@@ -1246,7 +1241,29 @@ class OnlineClassService:
         stored_name = f"{uuid.uuid4().hex}_{safe_name}"
         target_dir = uploads_root / "online-classes" / str(oc.id)
         target_dir.mkdir(parents=True, exist_ok=True)
-        (target_dir / stored_name).write_bytes(content)
+        dest = target_dir / stored_name
+
+        if hasattr(content, "read"):
+            total_size = 0
+            with dest.open("wb") as out:
+                while chunk := await content.read(64 * 1024):
+                    total_size += len(chunk)
+                    if total_size > max_bytes:
+                        dest.unlink(missing_ok=True)
+                        raise HTTPException(
+                            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail=f"File exceeds the {settings.ONLINE_CLASS_UPLOAD_MAX_MB} MB limit",
+                        )
+                    out.write(chunk)
+            file_size = total_size
+        else:
+            if len(content) > max_bytes:
+                raise HTTPException(
+                    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"File exceeds the {settings.ONLINE_CLASS_UPLOAD_MAX_MB} MB limit",
+                )
+            dest.write_bytes(content)
+            file_size = len(content)
 
         file_entry = OnlineClassFile(
             id=uuid.uuid4(),
@@ -1256,7 +1273,7 @@ class OnlineClassService:
             uploader_role=role,
             file_name=safe_name,
             file_path=stored_name,
-            file_size_bytes=len(content),
+            file_size_bytes=file_size,
             mime_type=clean_mime[:100],
         )
         db.add(file_entry)

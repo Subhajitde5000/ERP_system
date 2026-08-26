@@ -305,9 +305,8 @@ async def export_attendance_csv(class_id: uuid.UUID, db: DB, teacher: Teacher):
 @router.post("/{class_id}/files", response_model=APIResponseOnlineFile, status_code=status.HTTP_201_CREATED)
 async def share_file(class_id: uuid.UUID, db: DB, teacher: Teacher, file: UploadFile = File(...)):
     oc = await OnlineClassService._get_owned_class(db, teacher, class_id)
-    content = await file.read()
     row = await OnlineClassService.add_file(
-        db, teacher, oc, file.filename or "file", content, file.content_type or "", UPLOADS_ROOT, role="TEACHER"
+        db, teacher, oc, file.filename or "file", file, file.content_type or "", UPLOADS_ROOT, role="TEACHER"
     )
     return APIResponse(success=True, data=row, message="File shared with the class")
 
@@ -321,9 +320,8 @@ async def delete_file(class_id: uuid.UUID, file_id: uuid.UUID, db: DB, teacher: 
 @router.post("/{class_id}/recording", response_model=APIResponseOnlineClass, status_code=status.HTTP_201_CREATED)
 async def save_recording(class_id: uuid.UUID, db: DB, teacher: Teacher, file: UploadFile = File(...)):
     oc = await OnlineClassService._get_owned_class(db, teacher, class_id)
-    content = await file.read()
     row = await OnlineClassService.save_recording(
-        db, teacher, oc, file.filename or "recording.webm", content, file.content_type or "video/webm", UPLOADS_ROOT
+        db, teacher, oc, file.filename or "recording.webm", file, file.content_type or "video/webm", UPLOADS_ROOT
     )
     return APIResponse(success=True, data=row, message="Recording saved")
 
@@ -355,9 +353,8 @@ async def leave_class(class_id: uuid.UUID, db: DB, student: Student):
 @router.post("/{class_id}/files/student", response_model=APIResponseOnlineFile, status_code=status.HTTP_201_CREATED)
 async def student_share_file(class_id: uuid.UUID, db: DB, student: Student, file: UploadFile = File(...)):
     oc = await OnlineClassService._get_visible_class(db, student, class_id)
-    content = await file.read()
     row = await OnlineClassService.add_file(
-        db, student, oc, file.filename or "student_upload", content, file.content_type or "", UPLOADS_ROOT, role="STUDENT"
+        db, student, oc, file.filename or "student_upload", file, file.content_type or "", UPLOADS_ROOT, role="STUDENT"
     )
     return APIResponse(success=True, data=row, message="File uploaded")
 
