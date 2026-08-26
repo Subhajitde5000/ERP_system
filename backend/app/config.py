@@ -34,6 +34,36 @@ class Settings(BaseSettings):
     # ── Redis ─────────────────────────────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # ── Online Class ──────────────────────────────────────────────────────────
+    # Max concurrent WebSocket connections per live room (per worker).
+    # With Redis pub/sub this is per-worker; total capacity = workers × limit.
+    WS_MAX_ROOM_PARTICIPANTS: int = 500
+    # Maximum file upload size for class materials / recordings (MB).
+    ONLINE_CLASS_UPLOAD_MAX_MB: int = 25
+    # Comma-separated MIME-type allowlist for shared class files.
+    ONLINE_CLASS_ALLOWED_MIME_TYPES: str = (
+        "application/pdf,"
+        "application/msword,"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document,"
+        "application/vnd.ms-excel,"
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,"
+        "application/vnd.ms-powerpoint,"
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation,"
+        "image/jpeg,image/png,image/gif,image/webp,image/svg+xml,"
+        "video/mp4,video/webm,video/ogg,"
+        "audio/mpeg,audio/ogg,audio/wav,"
+        "text/plain,text/csv"
+    )
+
+    @property
+    def allowed_mime_set(self) -> set[str]:
+        return {m.strip() for m in self.ONLINE_CLASS_ALLOWED_MIME_TYPES.split(",") if m.strip()}
+
+    # ── Firebase Cloud Messaging (optional push notifications) ────────────────
+    # Set this to your FCM v1 service-account JSON path or leave blank to
+    # disable push entirely (in-app DB notifications still work).
+    FCM_SERVER_KEY: str = ""
+
     # ── CORS ──────────────────────────────────────────────────────────────────
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
 

@@ -32,7 +32,7 @@ _UNMANAGED_TABLES = frozenset([
     "merit_lists", "e_resources", "book_issues", "book_copies", "books",
     "appraisal_cycles", "appraisals", "leave_policies", "placement_drives",
     "placement_applications", "placement_offers", "drive_eligibility",
-    "companies", "mentor_notes", "notifications", "device_tokens",
+    "companies", "mentor_notes", "device_tokens",
     "parent_student_links", "transport_routes", "grade_cards",
     "inventory_categories", "inventory_items", "bulk_import_jobs",
     "vehicles", "payroll_runs", "vendors", "salary_structures",

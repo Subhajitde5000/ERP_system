@@ -2145,6 +2145,8 @@ CREATE TABLE online_classes (
   started_at                   TIMESTAMPTZ,
   ended_at                     TIMESTAMPTZ,
   attendance_session_id        UUID REFERENCES attendance_sessions(id) ON DELETE SET NULL,
+  -- Persisted whiteboard strokes for replay on rejoin/reload (capped at 500 entries).
+  whiteboard_strokes           JSONB NOT NULL DEFAULT '[]',
   created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -2164,6 +2166,16 @@ CREATE TABLE online_class_participants (
   CONSTRAINT uq_online_class_participants__class_id_student_id UNIQUE (class_id, student_id)
 );
 
+CREATE TABLE online_class_muted_students (
+
+  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  class_id                     UUID NOT NULL REFERENCES online_classes(id) ON DELETE CASCADE,
+  student_id                   UUID NOT NULL REFERENCES users(id),
+  muted_at                     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_muted__class_student UNIQUE (class_id, student_id)
+);
+
 CREATE TABLE online_class_messages (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2181,6 +2193,7 @@ CREATE TABLE online_class_files (
   tenant_id                    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   class_id                     UUID NOT NULL REFERENCES online_classes(id) ON DELETE CASCADE,
   uploader_id                  UUID NOT NULL REFERENCES users(id),
+  uploader_role                VARCHAR(20) NOT NULL DEFAULT 'TEACHER',
   file_name                    VARCHAR(255) NOT NULL,
   file_path                    TEXT NOT NULL,
   file_size_bytes              BIGINT NOT NULL DEFAULT 0,
@@ -2273,6 +2286,8 @@ CREATE INDEX idx_online_class_participants_class ON online_class_participants (c
 CREATE INDEX idx_online_class_participants_student ON online_class_participants (student_id);
 CREATE INDEX idx_online_class_messages_class ON online_class_messages (class_id, created_at);
 CREATE INDEX idx_online_class_files_class ON online_class_files (class_id, created_at);
+CREATE INDEX idx_muted_class ON online_class_muted_students (class_id);
+CREATE INDEX idx_notif_user_unread ON notifications (user_id, is_read, created_at);
 
 
 -- ============================================================================

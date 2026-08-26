@@ -7,7 +7,8 @@ Snake_case payloads, matching the other institution console clients
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -38,8 +39,19 @@ class OnlineClassCreate(BaseModel):
 
 
 class OnlineClassUpdate(BaseModel):
+    topic: str | None = Field(default=None, min_length=1, max_length=255)
+    scheduled_at: datetime | None = None
+    duration_minutes: int | None = Field(default=None, ge=5, le=480)
     allow_join: bool | None = None
     recording_enabled: bool | None = None
+
+
+class AttendanceOverrideIn(BaseModel):
+    attendance_status: str = Field(
+        pattern="^(PRESENT|LATE|ABSENT)$",
+        description="Target attendance status: PRESENT, LATE, or ABSENT",
+    )
+    remarks: str | None = Field(default=None, max_length=255)
 
 
 # ── Rows ──────────────────────────────────────────────────────────────────────
@@ -79,11 +91,14 @@ class OnlineParticipantRow(BaseModel):
     attendance_status: str | None = None
     hand_raised_at: datetime | None = None
     is_online: bool = False
+    is_muted: bool = False
 
 
 class OnlineFileRow(BaseModel):
     id: uuid.UUID
+    uploader_id: uuid.UUID
     uploader_name: str
+    uploader_role: str = "TEACHER"
     file_name: str
     url: str
     file_size_bytes: int
@@ -108,6 +123,8 @@ class OnlineClassDetail(OnlineClassRow):
     roster_size: int = 0
     participants: list[OnlineParticipantRow] = []
     files: list[OnlineFileRow] = []
+    muted_student_ids: list[uuid.UUID] = []
+    whiteboard_strokes: list[dict[str, Any]] = []
     join_state: str | None = None  # populated for the student view
 
 
@@ -161,6 +178,52 @@ class StudentOnlineClassList(BaseModel):
     past: list[StudentOnlineClassRow]
 
 
+# ── Student Notifications Inbox ───────────────────────────────────────────────
+
+
+class NotificationRow(BaseModel):
+    id: uuid.UUID
+    title: str
+    body: str
+    type: str
+    data: dict[str, Any] = {}
+    is_read: bool
+    read_at: datetime | None = None
+    created_at: datetime
+
+
+class NotificationPage(BaseModel):
+    total: int
+    unread_count: int
+    limit: int
+    offset: int
+    items: list[NotificationRow]
+
+
+# ── Admin & Institutional Monitoring ─────────────────────────────────────────
+
+
+class OnlineClassAdminRow(OnlineClassRow):
+    department_name: str | None = None
+    roster_size: int = 0
+    active_participants: int = 0
+
+
+class OnlineClassAdminSummary(BaseModel):
+    live_count: int = 0
+    scheduled_today_count: int = 0
+    completed_today_count: int = 0
+    total_participants_now: int = 0
+
+
+class OnlineClassAdminPage(BaseModel):
+    summary: OnlineClassAdminSummary
+    total: int
+    limit: int
+    offset: int
+    items: list[OnlineClassAdminRow]
+
+
 # ── Envelope aliases ──────────────────────────────────────────────────────────
 
 APIResponseOnlineClassSetupOptions = APIResponse[OnlineClassSetupOptions]
@@ -173,3 +236,6 @@ APIResponseOnlineMessage = APIResponse[OnlineMessageRow]
 APIResponseOnlineFiles = APIResponse[list[OnlineFileRow]]
 APIResponseOnlineFile = APIResponse[OnlineFileRow]
 APIResponseStudentOnlineClasses = APIResponse[StudentOnlineClassList]
+APIResponseNotificationPage = APIResponse[NotificationPage]
+APIResponseNotification = APIResponse[NotificationRow]
+APIResponseOnlineClassAdminPage = APIResponse[OnlineClassAdminPage]
