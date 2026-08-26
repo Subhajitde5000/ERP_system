@@ -22,6 +22,7 @@ import {
   Repeat2,
   UserRoundCheck,
   Users,
+  Video,
   X,
   type LucideIcon,
 } from "lucide-react-native";
@@ -34,6 +35,7 @@ import { Colors } from "@/theme";
 /** C-TC-01 … C-TC-22 navigation; group segments are transparent in expo-router. */
 const NAVIGATION: { label: string; href: string; icon: LucideIcon }[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Online classes", href: "/online-classes", icon: Video },
   { label: "My schedule", href: "/schedule", icon: CalendarDays },
   { label: "Mark attendance", href: "/attendance/mark", icon: PenSquare },
   { label: "Attendance sessions", href: "/attendance/sessions", icon: ClipboardCheck },

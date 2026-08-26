@@ -40,6 +40,7 @@ from app.routers import (
     student_router,
     library_router,
     hostel_router,
+    online_class_router,
 )
 from app.schemas.common import ErrorDetail
 
@@ -124,3 +125,4 @@ app.include_router(teacher_router, prefix=api_prefix)
 app.include_router(student_router, prefix=api_prefix)
 app.include_router(library_router, prefix=api_prefix)
 app.include_router(hostel_router, prefix=api_prefix)
+app.include_router(online_class_router, prefix=api_prefix)

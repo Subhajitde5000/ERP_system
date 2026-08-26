@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ClipboardCheck, FileSpreadsheet, PenSquare, Repeat2 } from "lucide-react";
+import { ClipboardCheck, FileSpreadsheet, PenSquare, Repeat2, Video } from "lucide-react";
 
 import { Card, EmptyState, PageHeader } from "@/components/admin/ui";
 import { useInstitutionAuth } from "@/hooks/use-institution-auth";
@@ -151,6 +151,7 @@ function DashboardContent({ data }: { data: TeacherDashboard }) {
           </div>
           <div className="grid gap-2">
             {[
+              ["Start online class", "/teacher/online-classes", Video],
               ["Mark attendance", "/teacher/attendance/mark", PenSquare],
               ["Review submissions", "/teacher/assignments", Repeat2],
               ["Create exam", "/teacher/examinations/new", FileSpreadsheet],
