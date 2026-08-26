@@ -105,6 +105,16 @@ from app.models.lms import (
     SubmissionFile,
     SubmissionReview,
 )
+from app.models.online_class import (
+    Notification,
+    OnlineAttendanceStatus,
+    OnlineClass,
+    OnlineClassFile,
+    OnlineClassMessage,
+    OnlineClassMode,
+    OnlineClassParticipant,
+    OnlineClassStatus,
+)
 
 __all__ = [
     "PlatformUser",
@@ -216,4 +226,12 @@ __all__ = [
     "HostelAttendanceStatus",
     "SubmissionFile",
     "SubmissionReview",
+    "Notification",
+    "OnlineAttendanceStatus",
+    "OnlineClass",
+    "OnlineClassFile",
+    "OnlineClassMessage",
+    "OnlineClassMode",
+    "OnlineClassParticipant",
+    "OnlineClassStatus",
 ]

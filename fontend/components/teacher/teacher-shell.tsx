@@ -13,6 +13,7 @@ import {
   Repeat2,
   UserRoundCheck,
   Users,
+  Video,
 } from "lucide-react";
 
 import {
@@ -23,6 +24,7 @@ import {
 /** C-TC-01 … C-TC-22 navigation for the teaching-scope teacher console. */
 const NAVIGATION: InstitutionConsoleNavItem[] = [
   { label: "Dashboard", href: "/teacher/dashboard", icon: LayoutDashboard },
+  { label: "Online classes", href: "/teacher/online-classes", icon: Video },
   { label: "My schedule", href: "/teacher/schedule", icon: CalendarDays },
   { label: "Mark attendance", href: "/teacher/attendance/mark", icon: PenSquare },
   { label: "Attendance sessions", href: "/teacher/attendance/sessions", icon: ClipboardCheck },

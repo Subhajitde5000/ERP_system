@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, FileSpreadsheet, IndianRupee, Megaphone, Repeat2 } from "lucide-react";
+import { BookOpen, FileSpreadsheet, IndianRupee, Megaphone, Repeat2, Video } from "lucide-react";
 
 import { Card, EmptyState, PageHeader } from "@/components/admin/ui";
 import { useInstitutionAuth } from "@/hooks/use-institution-auth";
 import { useResource } from "@/hooks/use-resource";
+import { fetchMyOnlineClasses } from "@/lib/online-class";
 import { fetchStudentDashboard, type StudentDashboard } from "@/lib/student";
 import { AsyncState, MetricCard, dateOnly, dateTime, percent, statusLabel } from "@/components/principal/principal-ui";
 import { clockTime } from "@/components/institution-console/weekly-grid";
@@ -35,8 +36,45 @@ export function StudentDashboardPage() {
 }
 
 function DashboardContent({ data }: { data: StudentDashboard }) {
+  const onlineClasses = useResource(fetchMyOnlineClasses, []);
+  const todayLive = onlineClasses.data?.today ?? [];
+
   return (
     <div className="space-y-6">
+      {todayLive.length ? (
+        <Card>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-base font-bold text-primary">Today&apos;s online classes</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Attendance is recorded automatically while you stay in class.</p>
+            </div>
+            <Link href="/student/online-classes" className="text-sm font-semibold text-accent hover:underline">
+              All classes
+            </Link>
+          </div>
+          <ol className="space-y-3">
+            {todayLive.map((oc) => (
+              <li key={oc.id} className="flex items-center justify-between gap-3 border-l-2 border-accent pl-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-primary">
+                    {oc.subject_code} · {oc.topic}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {oc.status === "LIVE" ? "Live now" : "Scheduled"} · {oc.teacher_name}
+                  </p>
+                </div>
+                <Link
+                  href={`/student/online-classes/${oc.id}`}
+                  className="flex shrink-0 items-center gap-1.5 rounded-field bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+                >
+                  <Video className="h-3.5 w-3.5" aria-hidden="true" />
+                  {oc.status === "LIVE" ? "Join class" : "Open"}
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </Card>
+      ) : null}
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Attendance"

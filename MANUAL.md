@@ -279,6 +279,15 @@ The migration pattern is established and identical for each:
 
 `database/update2.sql` is the current post-base migration file for additive production schema changes; every change also needs a matching Alembic revision.
 
+**Online classes** (`/api/v1/online-classes`, `database/online_class_migration.sql`)
+is a fully wired production module: teachers schedule a class from the timetable
+or start an instant one (students get a notification), students join through a
+waiting room, and the live room (video/audio, screen share, chat, raise hand,
+whiteboard, file sharing) runs over one WebSocket per class. Attendance is
+automatic — join/leave times are tracked per student and, when the class ends,
+scored by policy (≥75% of class duration → Present, 30–74% → Late/Partial,
+<30% → Absent) and synced into `attendance_sessions` / `attendance_records`.
+
 ---
 
 ## 9. Production checklist
@@ -316,6 +325,7 @@ All under `/api/v1`. Authenticated routes take `Authorization: Bearer <jwt>`.
 | Principal | `/principal` | `/dashboard`, `/attendance`, `/examinations` (+ schedule approval), `/results` (+ publication approval), `/staff`, `/students`, `/notices`, `/timetable`, `/reports`, `/reports/export` |
 | Vice Principal | `/vice-principal` | Delegated `/dashboard`, `/attendance`, `/examinations`, `/results`, `/staff`, `/notices`, `/reports/export`; no final approval endpoints |
 | Head of Department | `/hod` | Department dashboard, attendance detail/export, exams, assignments, results, teachers/subjects, mentors, notices, discussion moderation and timetable |
+| Online classes | `/online-classes` | Teacher: `/setup-options`, schedule (`POST`), `/instant`, `/{id}/start`, `/{id}/end`, admit/remove, `/{id}/attendance`, `/{id}/files`, `/{id}/recording`. Student: `/my/classes`, `/{id}/join`, `/{id}/leave`, chat, materials. Live room: `WS /{id}/live` |
 | Tenant auth | `/tenant/auth` | `/login`, `/logout`, `/refresh`, `/me`, `/forgot-password`, `/reset-password` |
 | Platform staff auth | `/platform/auth` | `/login`, `/logout`, `/refresh`, `/me` |
 | Setup wizard | `/setup` | `GET`, `PUT`, `POST /complete` |

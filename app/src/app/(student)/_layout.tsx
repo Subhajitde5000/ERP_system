@@ -37,6 +37,8 @@ export default function StudentLayout() {
       <StudentShellHeader onOpenNav={() => setNavOpen(true)} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.background } }}>
         <Stack.Screen name="dashboard" />
+        <Stack.Screen name="online-classes/index" />
+        <Stack.Screen name="online-classes/[id]" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="attendance/index" />
         <Stack.Screen name="attendance/calendar" />
