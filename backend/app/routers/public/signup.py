@@ -14,11 +14,11 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from app.rate_limit import limiter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies.auth import rls_public_bypass
 from app.schemas.common import APIResponse
 from app.schemas.signup import (
     APIResponseCatalog,
@@ -37,7 +37,6 @@ from app.schemas.signup import (
 from app.services.signup_service import SignupService
 
 router = APIRouter(prefix="/public", tags=["Public Signup"])
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post(
@@ -162,6 +161,7 @@ async def create_order(
     request: Request,
     payload: OrderCreateRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _rls: Annotated[None, Depends(rls_public_bypass)],
 ):
     """Create the checkout draft — subdomain + price are validated first."""
     data = await SignupService.create_order(db, payload)
@@ -177,6 +177,7 @@ async def pay_order(
     request: Request,
     payload: OrderPayRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _rls: Annotated[None, Depends(rls_public_bypass)],
 ):
     """
     Pay and provision.
@@ -201,6 +202,7 @@ async def get_order(
     order_id: uuid.UUID,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _rls: Annotated[None, Depends(rls_public_bypass)],
 ):
     """Success-page payload (idempotent — safe to re-fetch after redirect).
     Read-only: returns the provisioned result without re-running the pipeline."""

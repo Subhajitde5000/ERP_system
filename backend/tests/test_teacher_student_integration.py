@@ -76,13 +76,13 @@ async def real_backend():
     srv = pgserver.get_server(pathlib.Path(tempfile.mkdtemp()), cleanup_mode="stop")
     srv.ensure_postgres_running()
     async_uri = srv.get_uri().replace("postgresql://", "postgresql+asyncpg://")
-    engine = create_async_engine(async_uri)
-    async with engine.begin() as conn:
+    boot_engine = create_async_engine(async_uri)
+    async with boot_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    Session = async_sessionmaker(engine, expire_on_commit=False)
+    BootSession = async_sessionmaker(boot_engine, expire_on_commit=False)
 
-    async with Session() as s:
+    async with BootSession() as s:
         plan = Plan(
             id=uuid.uuid4(), name="Professional", slug=f"professional-{SLUG}",
             max_students=5000, max_teachers=500, max_storage_gb=200,
@@ -188,6 +188,17 @@ async def real_backend():
             "teacher_id": teacher.id,
             "student_id": student.id,
         }
+
+    # RLS (H3): apply the production policy script, then run the whole suite
+    # as the non-superuser app role so Postgres genuinely enforces isolation.
+    from tests.conftest import enable_rls_enforcement
+
+    app_uri = await enable_rls_enforcement(srv.get_uri())
+    await boot_engine.dispose()
+    engine = create_async_engine(
+        app_uri.replace("postgresql://", "postgresql+asyncpg://")
+    )
+    Session = async_sessionmaker(engine, expire_on_commit=False)
 
     async def override_get_db():
         async with Session() as session:
@@ -354,7 +365,8 @@ async def test_exam_lifecycle_end_to_end(real_backend, tokens):
         "duration_minutes": 60, "instructions": "Answer all questions.",
         "scheduled_at": (NOW - timedelta(minutes=2)).isoformat(),
         "window_end_at": (NOW + timedelta(minutes=30)).isoformat(),
-        "allow_review": True,
+        # allow_review/show_score_immediately stay False: this lifecycle
+        # asserts results remain gated until the teacher releases them.
     })
     assert created.status_code == 201, created.text
     exam_id = created.json()["data"]["id"]

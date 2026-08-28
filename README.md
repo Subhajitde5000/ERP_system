@@ -10,10 +10,10 @@ the live admin features, the API reference and the production checklist.
 ## Quick start
 
 ```bash
-# 1. Database (PostgreSQL)
-psql -U erp_user -d erp_db -f database/database.sql
-psql -U erp_user -d erp_db -f database/update.sql
-psql -U erp_user -d erp_db -f database/update2.sql
+# 1. Database (PostgreSQL 15+) — canonical order, see database/README.md
+psql -U erp_user -d erp_db -v ON_ERROR_STOP=1 -f database/database.sql
+psql -U erp_user -d erp_db -v ON_ERROR_STOP=1 -f database/class_hierarchy_migration.sql
+psql -U erp_user -d erp_db -v ON_ERROR_STOP=1 -f database/update_rls.sql
 
 # 2. Backend
 cd backend && python -m venv .venv && source .venv/bin/activate

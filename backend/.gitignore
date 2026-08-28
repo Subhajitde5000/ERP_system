@@ -4,3 +4,7 @@ __pycache__/
 *.egg-info/
 .env*
 .env
+# Uploaded user content (class materials, recordings, notice attachments)
+# must never be committed — it lives on disk/object storage only (A6).
+uploads/
+*.sqlite*

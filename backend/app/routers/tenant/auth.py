@@ -14,12 +14,11 @@ Endpoints:
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from app.rate_limit import limiter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies.auth import get_current_tenant_user
+from app.dependencies.auth import get_current_tenant_user, rls_public_bypass
 from app.models.user import User
 from app.schemas.auth import (
     AccessTokenResponse,
@@ -35,7 +34,6 @@ from app.schemas.common import APIResponse
 from app.services.auth_service import AuthService, _load_tenant_user_permissions
 
 router = APIRouter(prefix="/tenant/auth", tags=["Tenant Authentication"])
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/login", response_model=APIResponse[TenantLoginResponse])
@@ -44,6 +42,7 @@ async def tenant_login(
     req: TenantLoginRequest,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _rls: Annotated[None, Depends(rls_public_bypass)],
 ):
     """Authenticate an institution user. Accepts email or student roll number."""
     data = await AuthService.tenant_login(
@@ -71,6 +70,7 @@ async def tenant_logout(
 async def tenant_refresh(
     req: RefreshRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _rls: Annotated[None, Depends(rls_public_bypass)],
 ):
     """Refresh an expired access token using a valid refresh token."""
     data = await AuthService.tenant_refresh(
@@ -87,6 +87,7 @@ async def tenant_forgot_password(
     req: ForgotPasswordRequest,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _rls: Annotated[None, Depends(rls_public_bypass)],
 ):
     """
     Request a password reset link.
@@ -106,6 +107,7 @@ async def tenant_forgot_password(
 async def verify_reset_token(
     token: Annotated[str, Query(min_length=1)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    _rls: Annotated[None, Depends(rls_public_bypass)],
 ):
     """
     Verify that a reset token is present and unexpired.
@@ -122,6 +124,7 @@ async def tenant_reset_password(
     req: ResetPasswordRequest,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _rls: Annotated[None, Depends(rls_public_bypass)],
 ):
     """Set a new password using a valid reset token (30-minute window)."""
     await AuthService.tenant_reset_password(

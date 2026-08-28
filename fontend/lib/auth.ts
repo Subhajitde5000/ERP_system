@@ -222,12 +222,19 @@ export async function refreshAccessToken(): Promise<string | null> {
   if (!refreshToken) return null;
 
   try {
-    const data = await apiFetch<{ access_token: string }>(TENANT_REFRESH, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
+    const data = await apiFetch<{ access_token: string; refresh_token?: string | null }>(
+      TENANT_REFRESH,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      },
+    );
     setAccessToken(data.access_token);
+    // Refresh tokens ROTATE (audit issue H6): the server revokes the token
+    // we just sent, so we must store the replacement — keeping the old one
+    // would trip reuse detection and revoke the whole session family.
+    if (data.refresh_token) saveRefreshToken(data.refresh_token);
     return data.access_token;
   } catch {
     // Refresh token is invalid or expired — clear it so we don't loop
@@ -447,12 +454,17 @@ export async function platformLogout(signal?: AbortSignal): Promise<void> {
 export async function refreshPlatformToken(): Promise<string | null> {
   if (!_platformRefreshToken) return null;
   try {
-    const data = await apiFetch<{ access_token: string }>(PLATFORM_REFRESH, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: _platformRefreshToken }),
-    });
+    const data = await apiFetch<{ access_token: string; refresh_token?: string | null }>(
+      PLATFORM_REFRESH,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: _platformRefreshToken }),
+      },
+    );
     setAccessToken(data.access_token);
+    // Rotation (H6): adopt the replacement; the old token is now revoked.
+    if (data.refresh_token) _platformRefreshToken = data.refresh_token;
     return data.access_token;
   } catch {
     setAccessToken(null);

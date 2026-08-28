@@ -1330,6 +1330,7 @@ class TeacherService:
         image_url: str | None = None,
         explanation: str | None = None,
         difficulty: str | None = None,
+        tags: list[str] | None = None,
     ) -> QuestionBankItem:
         existing = (
             await db.execute(
@@ -1363,6 +1364,7 @@ class TeacherService:
             image_url=image_url,
             explanation=explanation.strip() if explanation else None,
             difficulty=DifficultyLevel(difficulty) if difficulty else None,
+            tags=tags or [],
             usage_count=1,
         )
         db.add(bank_item)
