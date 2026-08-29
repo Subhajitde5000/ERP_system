@@ -905,16 +905,39 @@ class TeacherService:
                 .offset(offset)
             )
         ).all()
+        # One extra query for the whole page: whose words are these? Resolved in
+        # bulk rather than per row, because a leave list is read all at once.
+        requester_ids = {leave.requested_by for leave, *_rest in rows if leave.requested_by}
+        requester_names: dict[uuid.UUID, str] = {}
+        if requester_ids:
+            requester_names = dict(
+                (
+                    await db.execute(
+                        select(User.id, User.name).where(User.id.in_(list(requester_ids)))
+                    )
+                ).all()
+            )
         return TeacherLeavePage(
             total=int(total),
             limit=limit,
             offset=offset,
             pending_count=int(pending),
-            items=[TeacherService._leave_row(leave, user, school_class, enrollment) for leave, user, school_class, enrollment in rows],
+            items=[
+                TeacherService._leave_row(
+                    leave, user, school_class, enrollment, requester_names.get(leave.requested_by)
+                )
+                for leave, user, school_class, enrollment in rows
+            ],
         )
 
     @staticmethod
-    def _leave_row(leave: AttendanceLeave, user: User, school_class: SchoolClass, enrollment) -> TeacherLeaveRow:
+    def _leave_row(
+        leave: AttendanceLeave,
+        user: User,
+        school_class: SchoolClass,
+        enrollment,
+        requested_by_name: str | None = None,
+    ) -> TeacherLeaveRow:
         return TeacherLeaveRow(
             id=leave.id,
             student_id=leave.student_id,
@@ -929,6 +952,8 @@ class TeacherService:
             status=_value(leave.status) or "PENDING",
             reviewed_at=leave.reviewed_at,
             created_at=leave.created_at,
+            request_source=leave.request_source or "STUDENT",
+            requested_by_name=requested_by_name,
         )
 
     @staticmethod

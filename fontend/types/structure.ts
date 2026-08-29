@@ -217,36 +217,3 @@ export interface EnrollmentBoard {
   currentYearName: string;
   classes: ClassRow[];
 }
-
-/* ── §6.7 parent_student_links ──────────────────────────────────────────── */
-
-export interface ParentLinkRow {
-  id: string;
-  parentId: string;
-  parentName: string;
-  parentEmail: string;
-  parentPhone: string | null;
-  studentId: string;
-  studentName: string;
-  studentRollNo: string;
-  studentClassName: string;
-  /** `relation` — Father / Mother / Guardian */
-  relation: string;
-  isPrimary: boolean;
-  createdAt: string;
-}
-
-/**
- * C-IA-12 — "Link parent accounts to student (**school only**)".
- *
- * The parenthetical is a hard gate, not a hint: §6.7 says "school type only"
- * and `role_based_system_design.md` §3 lists PARENT as a school-type role. A
- * college tenant gets an explanation, not an empty table — `tenantType` is
- * carried so the page can say *why* it is empty.
- */
-export interface ParentLinkBoard {
-  links: ParentLinkRow[];
-  tenantType: "SCHOOL" | "COLLEGE";
-  /** Students with no parent linked — the gap an admin is here to close */
-  unlinked: { studentId: string; studentName: string; className: string }[];
-}

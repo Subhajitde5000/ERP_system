@@ -38,6 +38,7 @@ from app.routers import (
     exam_controller_router,
     teacher_router,
     student_router,
+    parent_router,
     library_router,
     hostel_router,
     online_class_router,
@@ -136,6 +137,7 @@ app.include_router(coordinator_router, prefix=api_prefix)
 app.include_router(exam_controller_router, prefix=api_prefix)
 app.include_router(teacher_router, prefix=api_prefix)
 app.include_router(student_router, prefix=api_prefix)
+app.include_router(parent_router, prefix=api_prefix)
 app.include_router(library_router, prefix=api_prefix)
 app.include_router(hostel_router, prefix=api_prefix)
 app.include_router(online_class_router, prefix=api_prefix)

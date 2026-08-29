@@ -30,6 +30,12 @@ from app.models.platform_setting import (
 )
 from app.models.academic import AcademicYear, Department, SchoolClass, Subject, ClassGrade, ClassProgram
 from app.models.enrollment import Enrollment, TeacherSubject
+from app.models.parent import (
+    DEFAULT_PARENT_ACCESS_SCOPE,
+    PARENT_ACCESS_MODULES,
+    LinkStatus,
+    ParentStudentLink,
+)
 from app.models.principal import (
     AttendanceSession,
     AttemptStatus,

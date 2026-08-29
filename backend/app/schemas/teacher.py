@@ -193,6 +193,11 @@ class TeacherLeaveRow(BaseModel):
     status: str
     reviewed_at: datetime | None = None
     created_at: datetime
+    #: Who filed it. A "fever, 3 days" from the guardian and the same words from
+    #: the student are different pieces of evidence, and the teacher is the one
+    #: who has to weigh them.
+    request_source: str = "STUDENT"
+    requested_by_name: str | None = None
 
 
 class TeacherLeavePage(TeacherPage):

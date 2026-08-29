@@ -10,10 +10,12 @@ from fastapi import APIRouter
 from app.routers.institution.structure import router as structure_router
 from app.routers.institution.people import router as people_router
 from app.routers.institution.config import router as config_router
+from app.routers.institution.links import router as links_router
 
 router = APIRouter(prefix="/institution", tags=["Institution Admin"])
 router.include_router(structure_router)
 router.include_router(people_router)
 router.include_router(config_router)
+router.include_router(links_router)
 
 __all__ = ["router"]
