@@ -369,8 +369,8 @@ institution-admin RBAC guard + plan-gated modules.
 - `doc/database_design_complete.md`, `doc/role_based_system_design.md`
 - `doc/PAGES-TODO.md` — page coverage matrix
 - `INSTITUTION-ADMIN-GUIDE.md` — the office user guide (no technical background needed)
-- `PARENT-PORTAL-USER-GUIDE.md` — how a guardian activates and uses the portal, and how the
-  office grants or removes that access
+- `PARENT-PORTAL-USER-GUIDE.md` — screen-by-screen how-to for guardians (activation, every menu,
+  leave filing) and for the office board that grants or removes access
 - `System.md` — parent–student connected access: schema, enforcement, the 23 guardian endpoints,
   both consoles and the test map
 
