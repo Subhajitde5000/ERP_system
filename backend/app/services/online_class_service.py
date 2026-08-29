@@ -72,7 +72,6 @@ from app.schemas.online_class import (
     StudentOnlineClassRow,
 )
 from app.services.audit_service import AuditService
-from app.services.jwt_service import sign_upload_url
 from app.services.principal_service import PrincipalService
 from app.services.push_service import PushService
 from app.services.teacher_service import TeacherService
@@ -83,18 +82,6 @@ logger = logging.getLogger(__name__)
 PRESENT_MIN_RATIO = 0.75
 LATE_MIN_RATIO = 0.30
 MAX_WHITEBOARD_STROKES = 500
-
-
-def _signed_file_url(url: str | None) -> str | None:
-    """
-    Audit issue A6: uploads are no longer publicly mounted. Persisted
-    uploads-relative paths (``/uploads/...``) are signed into short-lived
-    download URLs at response time; anything else (external links, None)
-    passes through untouched.
-    """
-    if url and url.startswith("/uploads/"):
-        return sign_upload_url(url)
-    return url
 
 
 def _tenant_now(tz_name: str | None) -> datetime:
@@ -247,7 +234,7 @@ class OnlineClassService:
             duration_minutes=oc.duration_minutes,
             allow_join=oc.allow_join,
             recording_enabled=oc.recording_enabled,
-            recording_url=_signed_file_url(oc.recording_url),
+            recording_url=oc.recording_url,
             started_at=oc.started_at,
             ended_at=oc.ended_at,
             created_at=oc.created_at,
@@ -316,8 +303,7 @@ class OnlineClassService:
                 uploader_name=name,
                 uploader_role=f.uploader_role,
                 file_name=f.file_name,
-                # Signed, expiring download URL — never the raw /uploads path (A6).
-                url=sign_upload_url(f"/uploads/online-classes/{class_id}/{f.file_path}"),
+                url=f"/uploads/online-classes/{class_id}/{f.file_path}",
                 file_size_bytes=f.file_size_bytes,
                 mime_type=f.mime_type,
                 created_at=f.created_at,
@@ -514,7 +500,7 @@ class OnlineClassService:
                 duration_minutes=oc.duration_minutes,
                 allow_join=oc.allow_join,
                 recording_enabled=oc.recording_enabled,
-                recording_url=_signed_file_url(oc.recording_url),
+                recording_url=oc.recording_url,
                 started_at=oc.started_at,
                 ended_at=oc.ended_at,
                 created_at=oc.created_at,
@@ -1049,15 +1035,7 @@ class OnlineClassService:
             if oc.status == OnlineClassStatus.LIVE:
                 today.append(row)
             elif oc.status == OnlineClassStatus.SCHEDULED:
-                # Compare calendar dates in the TENANT's timezone: a class at
-                # 18:51 UTC is "tomorrow" for an Asia/Kolkata institution even
-                # though its UTC date matches today's.
-                scheduled_local = (
-                    oc.scheduled_at.astimezone(now.tzinfo)
-                    if oc.scheduled_at and oc.scheduled_at.tzinfo is not None
-                    else oc.scheduled_at
-                )
-                (today if scheduled_local and scheduled_local.date() == now.date() else upcoming).append(row)
+                (today if oc.scheduled_at and oc.scheduled_at.date() == now.date() else upcoming).append(row)
             else:
                 past.append(row)
         return StudentOnlineClassList(today=today, upcoming=upcoming, past=past)
@@ -1339,12 +1317,7 @@ class OnlineClassService:
         if user.id != oc.teacher_id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the class teacher can save a recording")
         row = await OnlineClassService.add_file(db, user, oc, filename, content, mime_type, uploads_root, role="TEACHER")
-        # Persist the uploads-relative PATH, not a URL: signed URLs expire,
-        # a stored path can be re-signed on every read (A6).
-        stored_path = await db.scalar(
-            select(OnlineClassFile.file_path).where(OnlineClassFile.id == row.id)
-        )
-        oc.recording_url = f"/uploads/online-classes/{oc.id}/{stored_path}"
+        oc.recording_url = row.url
         await db.flush()
         return await OnlineClassService._to_row(db, oc)
 
@@ -1542,7 +1515,7 @@ class OnlineClassService:
                 duration_minutes=oc.duration_minutes,
                 allow_join=oc.allow_join,
                 recording_enabled=oc.recording_enabled,
-                recording_url=_signed_file_url(oc.recording_url),
+                recording_url=oc.recording_url,
                 started_at=oc.started_at,
                 ended_at=oc.ended_at,
                 created_at=oc.created_at,

@@ -33,9 +33,8 @@ type so a token from one is never accepted by another:
 
 ```
 fontend/   Next.js 16 (App Router) + React 19 + Tailwind
-backend/   FastAPI + SQLAlchemy 2 (async) + asyncpg + bcrypt + JWT
-database/  database.sql (complete base schema) + incremental module migrations
-           + update_rls.sql — the single source of schema truth (see database/README.md)
+backend/   FastAPI + SQLAlchemy 2 (async) + asyncpg + Alembic + bcrypt + JWT
+database/  database.sql (106-table base schema) + update.sql + update2.sql (post-base changes)
 doc/       architecture, system-flow, owner-accounts, page specs
 ```
 
@@ -69,17 +68,23 @@ doc/       architecture, system-flow, owner-accounts, page specs
 psql -U postgres -c "CREATE USER erp_user WITH PASSWORD 'erp_password';"
 psql -U postgres -c "CREATE DATABASE erp_db OWNER erp_user;"
 
-# 2. Base schema (complete) + class hierarchy + Row-Level Security
-psql -U erp_user -d erp_db -v ON_ERROR_STOP=1 -f database/database.sql
-psql -U erp_user -d erp_db -v ON_ERROR_STOP=1 -f database/class_hierarchy_migration.sql
-psql -U erp_user -d erp_db -v ON_ERROR_STOP=1 -f database/update_rls.sql
+# 2. Base schema (106 tables + role/permission/module seeds)
+psql -U erp_user -d erp_db -f database/database.sql
+
+# 3. Post-base updates (owner accounts, academic links, support and Principal governance)
+psql -U erp_user -d erp_db -f database/update.sql
+psql -U erp_user -d erp_db -f database/update2.sql
 ```
 
-> **Single schema path (audit H2):** the raw SQL files in `database/` are the
-> only supported provisioning path — see `database/README.md` for the full
-> order and the upgrade policy. The former Alembic chain could not bootstrap
-> a fresh database and is archived under `backend/archive/alembic-legacy/`.
-> Do not mix Alembic and raw SQL on the same database.
+> **Alembic-managed deployments** instead of raw SQL:
+> ```bash
+> cd backend && alembic upgrade head
+> ```
+> The migrations end at `e7f2a6c3b904` and include the Principal governance
+> and HOD mentor/scope workflow. Apply the raw schema plus both update files for the documented
+> production path, or use your validated Alembic baseline for a
+> migrations-managed environment — never mix a raw-schema bootstrap and
+> Alembic on the same database without stamping/validating its revision.
 
 ### 4.2 Backend
 
@@ -196,10 +201,9 @@ final schedule and result approval belong to the Principal.
 
 ### Governance migration
 
-`database/database.sql` carries the explicit
+`database/update2.sql` (or Alembic revision `e7f2a6c3b904`) adds explicit
 `PENDING` / `APPROVED` / `REJECTED` decision state, actor, timestamp and note
-on exam schedules and result publications (formerly shipped as a post-base
-update; now part of the main schema). Existing visible result publications
+to exam schedules and result publications. Existing visible result publications
 are backfilled as approved; unpublished legacy publications enter the pending
 queue. Every Principal decision is written to the append-only `audit_logs`
 table in the same transaction.
@@ -251,10 +255,10 @@ institution-wide fallback.
 | `/hod/discussion` | Pin, lock and soft-delete department/class/subject threads |
 | `/hod/timetable` | Read-only classes in the HOD's departments |
 
-`database/database.sql` includes the partial unique mentor index and the
-scoped HOD role-assignment backfill for legacy `departments.hod_id` records
-(formerly a post-base update; now part of the main schema). Provision from
-`database/README.md` before deploying the HOD console.
+`database/update2.sql` section 10 / Alembic `e7f2a6c3b904` adds the partial
+unique mentor index. Section 11 backfills scoped HOD role assignments for
+legacy `departments.hod_id` records. Apply this update before deploying the
+HOD console.
 
 ---
 
@@ -273,9 +277,7 @@ The migration pattern is established and identical for each:
 3. Add a `lib/institution.ts` call + a `/admin/<feature>` client page (or convert
    the existing `(institution)/<feature>` page), removing its `*-data.ts`.
 
-Schema changes follow `database/README.md`: one new migration SQL file per
-change, folded into `database.sql`, with the matching ORM model — the raw SQL
-path is the single source of truth (Alembic is archived).
+`database/update2.sql` is the current post-base migration file for additive production schema changes; every change also needs a matching Alembic revision.
 
 **Online classes** (`/api/v1/online-classes`, `database/online_class_migration.sql`)
 is a fully wired production module: teachers schedule a class from the timetable
@@ -293,9 +295,7 @@ scored by policy (≥75% of class duration → Present, 30–74% → Late/Partia
 - [ ] **Secrets** — `JWT_SECRET_KEY` a 64-hex random string; rotate periodically.
       `APP_DEBUG=false` (hides `/docs`, `/redoc`, stack traces; also hides the
       raw email-verification token from API responses).
-- [ ] **Database** — canonical SQL path applied per `database/README.md`
-      (`database.sql` + `class_hierarchy_migration.sql` + `update_rls.sql`,
-      plus any newer module migrations); backups on.
+- [ ] **Database** — `database.sql`, `update.sql` **and** `update2.sql` applied (or the validated Alembic path reaches `e7f2a6c3b904`); backups on.
 - [ ] **CORS** — `ALLOWED_ORIGINS` lists only your real origins
       (`https://xyz.com,https://app.xyz.com`, approved tenant origins).
 - [ ] **Email** — wire an outbound provider to drain `outbox_emails`
@@ -357,7 +357,7 @@ institution-admin RBAC guard + plan-gated modules.
 | `402 … not included in your plan` | Optional module toggle blocked by `plans.allowed_modules`. Upgrade the plan. |
 | `next build` fails | Run `npm ci` first, then inspect the reported TypeScript/route error. The app no longer fetches Google Fonts during build. |
 | Email links never arrive | No outbound provider draining `outbox_emails`. In dev (`APP_DEBUG=true`) the owner verification token is returned in the signup response. |
-| Migration conflict | Single source of truth is the raw SQL in `database/` — apply per `database/README.md` and never run the archived Alembic chain (`backend/archive/alembic-legacy/`), which cannot bootstrap a fresh database. |
+| Migration conflict | Ensure a single source: raw SQL (`database.sql` + `update.sql` + `update2.sql`) **or** your validated Alembic path, not both. Current head revision is `e7f2a6c3b904`. |
 
 ---
 
@@ -369,6 +369,5 @@ institution-admin RBAC guard + plan-gated modules.
 - `doc/database_design_complete.md`, `doc/role_based_system_design.md`
 - `doc/PAGES-TODO.md` — page coverage matrix
 
-_Manual v1.6 — verified against the canonical SQL schema in `database/`
-(see `database/README.md`), and the live `/admin`, `/principal`, `/vp` and
-`/hod` consoles. Alembic is archived; raw SQL is the single schema path._
+_Manual v1.5 — verified against the 106-table schema, `update2.sql`, Alembic
+head `e7f2a6c3b904`, and the live `/admin`, `/principal`, `/vp` and `/hod` consoles._

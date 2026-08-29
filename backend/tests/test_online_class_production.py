@@ -208,7 +208,7 @@ async def test_notifications_inbox_and_mark_read():
 
 
 @pytest.mark.asyncio
-async def test_admin_overview_metrics(monkeypatch):
+async def test_admin_overview_metrics():
     admin = SimpleNamespace(id=uuid.uuid4(), tenant_id=uuid.uuid4())
     db = MagicMock()
 
@@ -225,9 +225,7 @@ async def test_admin_overview_metrics(monkeypatch):
     db.execute = AsyncMock(return_value=kpi_mock)
 
     from app.services.principal_service import PrincipalService
-    # monkeypatch (not bare assignment): a leaked class attribute used to
-    # poison every later test that resolves the tenant-local "today".
-    monkeypatch.setattr(PrincipalService, "_tenant_today", AsyncMock(return_value=date(2026, 8, 27)))
+    PrincipalService._tenant_today = AsyncMock(return_value=date(2026, 8, 27))
 
     overview = await OnlineClassService.list_for_admin(db, admin)
     assert overview.summary.live_count == 2

@@ -71,24 +71,6 @@ class Settings(BaseSettings):
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
 
-    # ── Rate limiting ─────────────────────────────────────────────────────────
-    # Extra proxy CIDRs (comma-separated) whose X-Forwarded-For headers are
-    # trusted when computing the client IP for rate limits, e.g. the public
-    # IPs of your load balancers. Private/loopback ranges are always trusted.
-    # Redis storage for shared counters is configured via REDIS_URL above.
-    TRUSTED_PROXIES: str = ""
-
-    # ── Signed file URLs (audit issue A6) ─────────────────────────────────────
-    # Lifetime of signed download URLs for uploaded files (class materials,
-    # recordings, notice attachments). Long enough for a video to stream or a
-    # shared page stay open, short enough that leaked links expire quickly.
-    FILE_URL_TTL_MINUTES: int = 120
-
-    # ── Bulk imports (audit issue H4) ─────────────────────────────────────────
-    # Max size for CSV/JSON bulk-import uploads (staff, students, question
-    # bank). Bounded reads protect the API from memory-exhaustion DoS.
-    BULK_IMPORT_MAX_MB: int = 2
-
     # ── App ───────────────────────────────────────────────────────────────────
     APP_ENV: str = "development"
     APP_DEBUG: bool = True

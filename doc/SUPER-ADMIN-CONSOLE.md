@@ -21,10 +21,13 @@ setDone(`POST /platform/tenants { … } — API not connected yet (Dev-A, C-SA-0
 ## Deploying
 
 ```bash
-# 1. Schema (raw SQL — the single canonical path, see database/README.md)
-psql -v ON_ERROR_STOP=1 -f database/database.sql
-psql -v ON_ERROR_STOP=1 -f database/class_hierarchy_migration.sql
-psql -v ON_ERROR_STOP=1 -f database/update_rls.sql
+# 1. Schema (raw SQL)
+psql -f database/database.sql
+psql -f database/update.sql
+psql -f database/update2.sql          # ← new, idempotent
+
+#    …or with Alembic (equivalent, and now single-headed again)
+cd backend && alembic upgrade head
 
 # 2. Catalogue, roles, plans, Super Admin
 python backend/scripts/seed_data.py
@@ -118,11 +121,9 @@ once, not eight times.
 
 ## Schema drift found and fixed
 
-The console schema (`audit_logs`, `platform_settings` and its indexes) is now
-part of `database/database.sql` — this section is historical context: the
-work was originally shipped as `update2.sql`, and running it against a real
-PostgreSQL 16 surfaced four pre-existing mismatches between `database.sql`
-and the (now archived) Alembic migrations.
+`update2.sql` adds `audit_logs`, `platform_settings` and the console's
+indexes. Running it against a real PostgreSQL 16 also surfaced four
+pre-existing mismatches between `database.sql` and the Alembic migrations.
 Each broke production on a raw-SQL deployment:
 
 | # | Drift | Symptom |
@@ -132,8 +133,8 @@ Each broke production on a raw-SQL deployment:
 | 3 | 8 tables only in Alembic (`orders`, `outbox_emails`, `platform_invoices`, `platform_payments`, `coupons`, `platform_sessions`, `platform_invoice_lines`, `support_ticket_messages`) | no billing or email layer at all |
 | 4 | `orders.owner_name`, `support_tickets.owner_id`/`category` missing | owner dashboard queries failed |
 
-With those fixes folded into `database.sql`, a from-scratch raw-SQL database
-has **zero** table or column drift against the ORM.
+After `update2.sql`, a from-scratch raw-SQL database has **zero** table or
+column drift against the ORM.
 
 Two unrelated pre-existing bugs also blocked the build and are fixed:
 `lib/signup.ts` had a truncated duplicate `getJson()` from a bad merge (the
