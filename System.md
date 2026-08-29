@@ -114,6 +114,11 @@ that predate the feature, and ends with assertions that fail loudly if the expec
 absent. A new installation gets the same schema from `database/database.sql`, which now contains
 these columns inline (132 tables, verified by the trailing `$do$` block).
 
+`parent_student_links` is also removed from `_UNMANAGED_TABLES` in `backend/app/alembic/env.py`. That
+list exists so autogenerate does not emit `DROP TABLE` for tables that exist only in raw SQL; this
+table now has an ORM model, so leaving it listed would hide its columns and indexes from every future
+drift check — the file's own comment is "remove entries here as ORM models are added".
+
 No scheduled job is needed for expiry, and none was added: an unclaimed code is refused at lookup
 (`410` past `code_expires_at`) and a lapsed `access_upto` is decided by `is_live()` on the day the
 request arrives, so a school suspending access at 6pm does not wait for a cron tick. The only
