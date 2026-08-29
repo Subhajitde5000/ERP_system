@@ -15,15 +15,24 @@ import Link from "next/link";
 import { useParentConsole } from "./parent-console-context";
 import { ChildGate, FactGrid } from "./parent-shared";
 import { Card } from "@/components/admin/ui";
-import { AsyncState, MetricCard, dateOnly, dateTime, percent } from "@/components/principal/principal-ui";
+import { AsyncState, MetricCard, dateOnly, dateTime, percent, statusLabel } from "@/components/principal/principal-ui";
 import { useResource } from "@/hooks/use-resource";
-import { fetchChildDashboard, fetchChildProfile } from "@/lib/parent";
+import { fetchChildDashboard, fetchChildProfile, fetchLastAttendance } from "@/lib/parent";
 
 export function ParentChildTodayPage() {
   const { activeChild, allows } = useParentConsole();
   const childId = activeChild?.student_id ?? "";
   const dashboard = useResource(() => (childId ? fetchChildDashboard(childId) : Promise.reject(new Error("no child"))), [childId]);
   const profile = useResource(() => (childId ? fetchChildProfile(childId) : Promise.reject(new Error("no child"))), [childId]);
+  /*
+   * "Was my child at school today?" answered by one small endpoint instead of
+   * downloading a calendar. It is decoration on the tile, so a failure here leaves
+   * the percentage intact rather than breaking the screen.
+   */
+  const lastMark = useResource(
+    () => (childId ? fetchLastAttendance(childId) : Promise.reject(new Error("no child"))),
+    [childId],
+  );
 
   return (
     <ChildGate title="{child} today" subtitle="What the school has recorded so far this term">
@@ -46,7 +55,11 @@ export function ParentChildTodayPage() {
                       ? "warning"
                       : "success"
                   }
-                  hint={`${dashboard.data.student.attendance_marks} sessions marked`}
+                  hint={
+                    lastMark.data?.date
+                      ? `Last mark ${statusLabel(lastMark.data.status ?? "")} · ${dateOnly(lastMark.data.date)}`
+                      : `${dashboard.data.student.attendance_marks} sessions marked`
+                  }
                 />
               ) : null}
               {allows("assignment") ? (

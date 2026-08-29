@@ -368,6 +368,11 @@ institution-admin RBAC guard + plan-gated modules.
 - `doc/PLATFORM-OWNER-ACCOUNTS.md` — the account-holder (multi-institution) model
 - `doc/database_design_complete.md`, `doc/role_based_system_design.md`
 - `doc/PAGES-TODO.md` — page coverage matrix
+- `INSTITUTION-ADMIN-GUIDE.md` — the office user guide (no technical background needed)
+- `PARENT-PORTAL-USER-GUIDE.md` — how a guardian activates and uses the portal, and how the
+  office grants or removes that access
+- `System.md` — parent–student connected access: schema, enforcement, the 23 guardian endpoints,
+  both consoles and the test map
 
 _Manual v1.5 — verified against the 106-table schema, `update2.sql`, Alembic
 head `e7f2a6c3b904`, and the live `/admin`, `/principal`, `/vp` and `/hod` consoles._

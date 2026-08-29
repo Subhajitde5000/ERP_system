@@ -9,6 +9,9 @@ It is written as a system document, not a tutorial: each section states the rule
 enforced, and why it is that way — so that a change to any of it can be checked against the
 consequence rather than against a description of a screenshot.
 
+For the opposite audience — a parent with an activation slip, or an office clerk linking a family —
+that is `PARENT-PORTAL-USER-GUIDE.md`, which covers the same surface without a single endpoint in it.
+
 | Concern | Lives in |
 | --- | --- |
 | Tables, constraints, indexes | `database/database.sql` (§6.7 `parent_student_links`), delta in `database/update_parent_portal.sql` |
