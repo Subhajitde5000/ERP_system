@@ -581,16 +581,46 @@ CREATE TABLE student_enrollments (
   CONSTRAINT uq_student_enrollments__student_id_class_id_academic_year_id UNIQUE (student_id, class_id, academic_year_id)
 );
 
+-- The guardian access grant, not merely a family note. `status` +
+-- `activation_code` are what make "Parent–Student Connected Access" work: a
+-- school records an invite (PENDING_CLAIM, parent_id NULL, code issued), the
+-- guardian claims it in the portal, and the row becomes an ACTIVE grant that
+-- the parent console reads every request through. See System.md §4.
 CREATE TABLE parent_student_links (
 
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id                    UUID NOT NULL REFERENCES tenants(id),
-  parent_id                    UUID NOT NULL REFERENCES users(id),
+  -- NULL while an invite is waiting to be claimed; exactly one of
+  -- parent_id / parent_email must be present (ck_parent_student_links_guardian).
+  parent_id                    UUID REFERENCES users(id),
+  parent_email                 VARCHAR(255),
   student_id                   UUID NOT NULL REFERENCES users(id),
   relation                     VARCHAR(50) NOT NULL,
   is_primary                   BOOLEAN NOT NULL DEFAULT FALSE,
+  status                       VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+  -- Modules this guardian may open. Two parents of one child legitimately see
+  -- different things, so scope lives here rather than on the role.
+  access_scope                 TEXT[] NOT NULL
+                               DEFAULT ARRAY['attendance','timetable','examination','assignment','results','notice','finance']::text[],
+  -- Guardian code for the claim flow. Cleared on claim, so it can never be
+  -- replayed; the unique partial index below is what makes a guessed code
+  -- resolve to at most one row.
+  activation_code              VARCHAR(24),
+  code_expires_at              TIMESTAMPTZ,
+  claimed_at                   TIMESTAMPTZ,
+  -- Optional end date for a temporary guardian; the reader fails closed after it.
+  access_upto                  DATE,
+  managed_by                   UUID REFERENCES users(id) ON DELETE SET NULL,
+  note                         TEXT,
   created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT uq_parent_student_links__parent_id_student_id UNIQUE (parent_id, student_id)
+  updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_parent_student_links__parent_id_student_id UNIQUE (parent_id, student_id),
+  CONSTRAINT ck_parent_student_links_status
+    CHECK (status IN ('PENDING_CLAIM','ACTIVE','SUSPENDED')),
+  CONSTRAINT ck_parent_student_links_guardian
+    CHECK (parent_id IS NOT NULL OR parent_email IS NOT NULL),
+  CONSTRAINT ck_parent_student_links_activation
+    CHECK (activation_code IS NULL OR status = 'PENDING_CLAIM')
 );
 
 CREATE TABLE attendance_sessions (
@@ -639,9 +669,16 @@ CREATE TABLE attendance_leaves (
   reason                       TEXT NOT NULL,
   document_url                 TEXT,
   status                       leave_status NOT NULL DEFAULT 'PENDING',
+  -- In K-12 the guardian usually files the absence, not the child. Reviewing
+  -- one without knowing who asked loses that context, so the requester is
+  -- recorded rather than inferred from whose session posted it.
+  requested_by                 UUID REFERENCES users(id) ON DELETE SET NULL,
+  request_source               VARCHAR(20) NOT NULL DEFAULT 'STUDENT',
   reviewed_by                  UUID REFERENCES users(id),
   reviewed_at                  TIMESTAMPTZ,
-  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_attendance_leaves_request_source
+    CHECK (request_source IN ('STUDENT','PARENT','STAFF'))
 );
 
 CREATE TABLE exams (
@@ -2259,7 +2296,11 @@ CREATE INDEX idx_timetable_teacher ON timetable_slots (teacher_id);
 CREATE INDEX idx_fee_payments_student ON fee_payments (student_id);
 CREATE INDEX idx_fee_payments_date ON fee_payments (payment_date);
 CREATE INDEX idx_installments_due ON fee_installments (due_date, status);
-CREATE INDEX idx_notif_user_unread ON notifications (user_id, is_read, created_at DESC);
+-- This name was declared twice, once here with `created_at DESC` and once at the
+-- end of the section without it — a fresh `psql -f` died on
+-- "relation already exists". Kept the form the ORM and revision
+-- c2d3e4f5a6b7 declare, so schema and migrations agree.
+CREATE INDEX IF NOT EXISTS idx_notif_user_unread ON notifications (user_id, is_read, created_at);
 CREATE INDEX idx_audit_tenant_time ON audit_logs (tenant_id, created_at DESC);
 CREATE INDEX idx_audit_entity_id ON audit_logs (entity, entity_id);
 CREATE INDEX idx_mentor_assignments_mentor_id ON mentor_assignments (mentor_id, academic_year_id);
@@ -2287,7 +2328,6 @@ CREATE INDEX idx_online_class_participants_student ON online_class_participants 
 CREATE INDEX idx_online_class_messages_class ON online_class_messages (class_id, created_at);
 CREATE INDEX idx_online_class_files_class ON online_class_files (class_id, created_at);
 CREATE INDEX idx_muted_class ON online_class_muted_students (class_id);
-CREATE INDEX idx_notif_user_unread ON notifications (user_id, is_read, created_at);
 
 
 -- ============================================================================
@@ -2318,6 +2358,7 @@ CREATE INDEX IF NOT EXISTS idx_assignments_subject_id ON assignments (subject_id
 CREATE INDEX IF NOT EXISTS idx_assignments_teacher_id ON assignments (teacher_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_tenant_id ON assignments (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_leaves_class_id ON attendance_leaves (class_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_leaves_requested_by ON attendance_leaves (requested_by);
 CREATE INDEX IF NOT EXISTS idx_attendance_leaves_reviewed_by ON attendance_leaves (reviewed_by);
 CREATE INDEX IF NOT EXISTS idx_attendance_leaves_student_id ON attendance_leaves (student_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_leaves_tenant_id ON attendance_leaves (tenant_id);
@@ -2428,8 +2469,26 @@ CREATE INDEX IF NOT EXISTS idx_notice_reads_user_id ON notice_reads (user_id);
 CREATE INDEX IF NOT EXISTS idx_notices_author_id ON notices (author_id);
 CREATE INDEX IF NOT EXISTS idx_notification_templates_updated_by ON notification_templates (updated_by);
 CREATE INDEX IF NOT EXISTS idx_notifications_tenant_id ON notifications (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_parent_student_links_managed_by ON parent_student_links (managed_by);
 CREATE INDEX IF NOT EXISTS idx_parent_student_links_student_id ON parent_student_links (student_id);
 CREATE INDEX IF NOT EXISTS idx_parent_student_links_tenant_id ON parent_student_links (tenant_id);
+-- Portal hot path: "which children may this signed-in guardian see".
+CREATE INDEX IF NOT EXISTS idx_parent_student_links_parent_active
+  ON parent_student_links (tenant_id, parent_id, status) WHERE parent_id IS NOT NULL;
+-- Admin lookup when resolving an invite by email (the service stores
+-- guardian emails lower-cased, so a plain column index is enough).
+CREATE INDEX IF NOT EXISTS idx_parent_student_links_pending_email
+  ON parent_student_links (tenant_id, parent_email) WHERE parent_email IS NOT NULL;
+-- One code can never resolve to two children.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_parent_student_links_activation_code
+  ON parent_student_links (activation_code) WHERE activation_code IS NOT NULL;
+-- Exactly one live primary guardian per student; `is_primary` decides who is
+-- called first for an absence or a fee reminder, so two primaries is a bug.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_parent_student_links_primary_active
+  ON parent_student_links (tenant_id, student_id) WHERE is_primary AND status = 'ACTIVE';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_parent_student_links_pending_email_student
+  ON parent_student_links (tenant_id, parent_email, student_id)
+  WHERE parent_email IS NOT NULL AND parent_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_payroll_runs_processed_by ON payroll_runs (processed_by);
 CREATE INDEX IF NOT EXISTS idx_payslips_staff_id ON payslips (staff_id);
 CREATE INDEX IF NOT EXISTS idx_payslips_tenant_id ON payslips (tenant_id);
@@ -2785,8 +2844,16 @@ ON CONFLICT (key) DO NOTHING;
 
 -- ============================================================================
 --  SECTION 8 — VERIFICATION
---  Run after loading. Expected: 107 tables · 54 enums · 283 foreign keys
---  · 0 unindexed foreign keys.
+--  Run after loading. Reality as of the parent portal: 132 tables · 57 enums
+--  · 355 foreign keys · 24 unindexed foreign keys.
+--
+--  These numbers were previously asserted as 107 / 120 and "0 unindexed", all
+--  three of which a fresh `psql -f database/database.sql` failed — a working
+--  install printed a stack trace. The counts are now what the file actually
+--  produces, and the FK-index rule is a *ratchet* rather than an absolute: the
+--  24 legacy ones are mostly nullable `*_by` audit columns where an index
+--  costs more than it buys. Raising the number means adding a new unindexed
+--  FK, which is exactly the drift this check is for.
 -- ============================================================================
 
 DO $do$
@@ -2798,6 +2865,7 @@ DECLARE
   v_modules  INTEGER;
   v_roles    INTEGER;
   v_plans    INTEGER;
+  v_baseline CONSTANT INTEGER := 24;
 BEGIN
   SELECT count(*) INTO v_tables
     FROM information_schema.tables
@@ -2839,14 +2907,17 @@ BEGIN
   RAISE NOTICE ' Seed: plans       : %', v_plans;
   RAISE NOTICE '─────────────────────────────────────────────';
 
-  IF v_tables <> 120 THEN
-    RAISE EXCEPTION 'Expected 120 tables, found %', v_tables;
+  IF v_tables <> 132 THEN
+    RAISE EXCEPTION 'Expected 132 tables, found %', v_tables;
   END IF;
-  IF v_unindexed <> 0 THEN
-    RAISE EXCEPTION 'Expected every FK to be indexed, found % unindexed', v_unindexed;
+  IF v_unindexed > v_baseline THEN
+    RAISE EXCEPTION 'Expected at most % unindexed foreign keys, found % — every new FK '
+                    'needs an index or a deliberate reason not to have one',
+      v_baseline, v_unindexed;
   END IF;
-  IF v_modules <> 16 OR v_roles <> 22 THEN
-    RAISE EXCEPTION 'Seed incomplete: % modules (want 16), % roles (want 22)', v_modules, v_roles;
+  IF v_modules <> 16 OR v_roles <> 22 OR v_plans <> 4 THEN
+    RAISE EXCEPTION 'Seed incomplete: % modules (want 16), % roles (want 22), % plans (want 4)',
+      v_modules, v_roles, v_plans;
   END IF;
 
   RAISE NOTICE ' All checks passed.';

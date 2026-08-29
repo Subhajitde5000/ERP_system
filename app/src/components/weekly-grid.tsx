@@ -23,6 +23,38 @@ export interface WeeklyGridEntry {
   slot_type: string;
 }
 
+/**
+ * A timetable slot from either console becomes a grid entry here and nowhere else:
+ * the student's routine and the guardian's view of it are the same picture, and two
+ * mappings would drift on exactly the day a room is moved.
+ */
+export function timetableSlots(slots: TimetableSlotLike[]): WeeklyGridEntry[] {
+  return slots.map((slot) => ({
+    id: slot.id,
+    day_of_week: slot.day_of_week,
+    period_number: slot.period_number,
+    start_time: slot.start_time,
+    end_time: slot.end_time,
+    heading: slot.subject_name ?? slot.slot_type,
+    subheading: slot.teacher_name ?? slot.subject_code,
+    meta: slot.room_no ? `Room ${slot.room_no}` : null,
+    slot_type: slot.slot_type,
+  }));
+}
+
+interface TimetableSlotLike {
+  id: string;
+  day_of_week: number;
+  period_number: number;
+  start_time: string;
+  end_time: string;
+  subject_name: string | null;
+  subject_code: string | null;
+  teacher_name: string | null;
+  room_no: string | null;
+  slot_type: string;
+}
+
 export const WEEK_DAYS = [
   { day: 1, label: "Monday" },
   { day: 2, label: "Tuesday" },

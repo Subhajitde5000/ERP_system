@@ -260,6 +260,68 @@ def _staff_invited(ctx: dict[str, Any]) -> Rendered:
     )
 
 
+@template("parent.link_invited")
+def _parent_link_invited(ctx: dict[str, Any]) -> Rendered:
+    """The activation slip, in the inbox instead of on paper.
+
+    The code is the capability, so it is shown once and only in an email that
+    goes to the address the school recorded for this exact guardian. Claiming
+    clears it, which is why a re-send issues a new one rather than repeating this.
+    """
+    tenant = str(ctx.get("tenant_name", "your child's school"))
+    student = str(ctx.get("student_name", "your child"))
+    code = str(ctx.get("code", ""))
+    url = str(ctx.get("claim_url", ""))
+    days = ctx.get("days")
+    return Rendered(
+        subject=f"{tenant} — activate your parent access for {student}",
+        text=(
+            f"{tenant} has linked you to {student}.\n\n"
+            f"Activation code: {code}\n"
+            f"Enter it here to open the parent portal: {url}\n\n"
+            + (f"This code expires in {days} days.\n" if days else "")
+            + "If you did not expect this, no action is needed — nothing is shared until the code is used."
+        ),
+        html=_layout(
+            f"Activate your parent access for {student}",
+            f"{escape(tenant)} has linked you to {escape(student)} so you can follow "
+            f"attendance, exams, results and fees.",
+            [
+                _code(code),
+                _button(url, "Claim my access"),
+                _facts([("Expiry", f"{days} days" if days else "")]),
+            ],
+            "The code works once. If you did not expect this email, no action is "
+            "needed — nothing is shared until it is used.",
+        ),
+    )
+
+
+@template("parent.account_created")
+def _parent_account_created(ctx: dict[str, Any]) -> Rendered:
+    """Receipt for self-service activation, so a surprise login is visible."""
+    tenant = str(ctx.get("tenant_name", "your child's school"))
+    student = str(ctx.get("student_name", "your child"))
+    url = str(ctx.get("login_url", ""))
+    hi = _greeting(ctx)
+    return Rendered(
+        subject=f"Your {tenant} parent account is ready",
+        text=(
+            f"{hi}\n\nYour parent account for {student} at {tenant} is active.\n"
+            f"Sign in here: {url}\n\n"
+            "If you did not just create this account, contact the school office "
+            "and change your password."
+        ),
+        html=_layout(
+            f"Your parent account at {tenant} is ready",
+            f"{escape(hi)} your access to {escape(student)}'s record is now active.",
+            [_button(url, "Open the parent portal")],
+            "Did not just sign up? Contact the school office — the account was created "
+            "with the invitation code, so a stranger would need your slip.",
+        ),
+    )
+
+
 @template("mailer.test")
 def _mailer_test(ctx: dict[str, Any]) -> Rendered:
     note = str(ctx.get("note", "Your email configuration works."))
