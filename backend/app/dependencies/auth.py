@@ -310,3 +310,23 @@ async def get_current_tenant_user_student(
         {"STUDENT"},
         "Student privileges are required",
     )
+
+
+async def get_current_tenant_user_parent(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Require a live PARENT role. The child fence is the link, not this guard.
+
+    A role grant alone never widens data access: `ParentService.link()` still
+    has to find an ACTIVE `parent_student_links` row joining this caller to the
+    `child_id` in the request. That is the whole design — a parent reads a
+    child's records through the link, so the link, its status, its expiry and
+    its module scope are checked on every request rather than cached in a JWT.
+    """
+    return await _require_current_tenant_roles(
+        current_user,
+        db,
+        {"PARENT"},
+        "Parent privileges are required",
+    )

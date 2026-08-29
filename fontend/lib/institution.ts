@@ -363,3 +363,115 @@ export const updateSettings = (payload: Partial<SettingsInfo>) =>
 export const fetchProfile = () => call<InstitutionProfile>("/profile");
 export const updateProfile = (payload: Partial<InstitutionProfile>) =>
   call<InstitutionProfile>("/profile", { method: "PUT", body: JSON.stringify(payload) });
+
+// ── C-IA-12 · guardian (parent) links ───────────────────────────────────────
+//
+// The office side of the parent portal. Wire format is snake_case like every other
+// endpoint here, and the shapes are `ParentLinkRow` / `ParentLinkPage` in
+// `backend/app/schemas/parent.py`.
+//
+// Two rules the UI has to respect because the server enforces them:
+//  * creating a link is school-only — a college gets a 409, so the board hides the
+//    button instead of letting an admin discover it;
+//  * `activation_code` is present on exactly one response: the one that created or
+//    reissued it. It is a capability, never listable afterwards, so the office reads
+//    it off the dialog in front of them or sends a fresh one.
+
+export interface GuardianLinkRow {
+  id: string;
+  tenant_id: string;
+  parent_id: string | null;
+  parent_name: string | null;
+  parent_email: string | null;
+  parent_phone: string | null;
+  /** false once the account has been disabled — the portal is closed either way */
+  parent_is_active: boolean | null;
+  student_id: string;
+  student_name: string;
+  student_roll_no: string | null;
+  class_name: string | null;
+  relation: string;
+  is_primary: boolean;
+  /** PENDING_CLAIM | ACTIVE | SUSPENDED */
+  status: string;
+  access_scope: string[];
+  access_upto: string | null;
+  activation_code?: string | null;
+  code_expires_at: string | null;
+  claimed_at: string | null;
+  note: string | null;
+  managed_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GuardianLinkBoard {
+  total: number;
+  limit: number;
+  offset: number;
+  items: GuardianLinkRow[];
+  /** Link counts by status, plus `total` */
+  counts: Record<string, number>;
+  tenant_type: string;
+  /** Students with no guardian on record at all — the gap this page exists to close */
+  unlinked_count: number;
+  unlinked: { student_id: string; student_name: string; student_roll_no: string | null; class_name: string | null }[];
+}
+
+export interface GuardianLinkCreate {
+  student_id: string;
+  relation: string;
+  /** Attach an account the school already created… */
+  parent_user_id?: string | null;
+  /** …or invite one behind an activation code */
+  parent_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  is_primary?: boolean;
+  /** Omitted/null = the tenant default (all modules); [] is an explicit "nothing yet". */
+  access_scope?: string[] | null;
+  access_upto?: string | null;
+  note?: string | null;
+  /** Create the login now and mail a reset link, instead of the code route. */
+  create_account?: boolean;
+  send_email?: boolean;
+}
+
+export interface GuardianLinkUpdate {
+  relation?: string;
+  is_primary?: boolean;
+  status?: "ACTIVE" | "SUSPENDED";
+  access_scope?: string[] | null;
+  access_upto?: string | null;
+  note?: string | null;
+}
+
+export const fetchGuardianLinks = (filters: {
+  query?: string;
+  status?: string;
+  class_id?: string;
+  relation?: string;
+  primary_only?: boolean;
+  limit?: number;
+  offset?: number;
+} = {}) => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined || value === null || value === "" || value === false) continue;
+    params.set(key, String(value));
+  }
+  const qs = params.toString();
+  return call<GuardianLinkBoard>(`/parent-links${qs ? `?${qs}` : ""}`);
+};
+
+export const createGuardianLink = (payload: GuardianLinkCreate) =>
+  call<GuardianLinkRow>(`/parent-links`, { method: "POST", body: JSON.stringify(payload) });
+
+export const updateGuardianLink = (linkId: string, payload: GuardianLinkUpdate) =>
+  call<GuardianLinkRow>(`/parent-links/${linkId}`, { method: "PATCH", body: JSON.stringify(payload) });
+
+export const issueGuardianLinkCode = (linkId: string) =>
+  call<GuardianLinkRow>(`/parent-links/${linkId}/code`, { method: "POST" });
+
+export const deleteGuardianLink = (linkId: string) =>
+  call<null>(`/parent-links/${linkId}`, { method: "DELETE" });

@@ -29,6 +29,11 @@ aiosmtplib==3.0.2
 # klaviyo provider → Events API over HTTP (also used by the test client)
 httpx==0.28.1
 
+# Background jobs (app/services/scheduler_service.py: retention sweep, outbox
+# drain, daily reminders). Without this the app fails at import time on a fresh
+# install, so it is pinned rather than optional.
+apscheduler==3.11.0
+
 # Utilities
 python-multipart==0.0.12
 # Windows requires tzdata for Python's zoneinfo module (no system tz database)

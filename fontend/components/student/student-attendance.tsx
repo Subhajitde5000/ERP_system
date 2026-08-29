@@ -258,7 +258,9 @@ const STATUS_DOT: Record<string, string> = {
   PRESENT: "bg-success",
   ABSENT: "bg-destructive",
   LATE: "bg-warning",
-  EXCUSED: "bg-info",
+  // `bg-info` was never defined in tailwind.config.ts, so excused days rendered
+  // an invisible dot. The theme's cyan is `secondary`.
+  EXCUSED: "bg-secondary",
 };
 
 /** C-ST-04 — monthly calendar: P/A/L/E colour-coded with a subject tooltip. */

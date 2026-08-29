@@ -32,7 +32,10 @@ class HostelService:
  async def allowed_students(db,user,level):
   if level in {"MANAGE","OVERSEE"}: return None
   if level=="RESIDENT": return [user.id]
-  return list((await db.execute(select(ParentStudentLink.student_id).where(ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.parent_id==user.id))).scalars().all())
+  # Live links only: a suspended or expired grant must not keep a guardian in
+  # the hostel view. Same rule the parent portal applies (see ParentService.link).
+  today = date.today()
+  return list((await db.execute(select(ParentStudentLink.student_id).where(ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.parent_id==user.id,ParentStudentLink.status=="ACTIVE",or_(ParentStudentLink.access_upto.is_(None),ParentStudentLink.access_upto>=today)))).scalars().all())
  @staticmethod
  async def room_rows(db,user,level,query=None):
   occupied=select(func.count()).select_from(HostelAllotment).where(HostelAllotment.room_id==HostelRoom.id,HostelAllotment.status==AllotmentStatus.ACTIVE).correlate(HostelRoom).scalar_subquery()
