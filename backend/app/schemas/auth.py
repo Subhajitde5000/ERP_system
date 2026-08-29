@@ -140,8 +140,15 @@ class TenantInfo(BaseModel):
 # ── Refresh response ──────────────────────────────────────────────────────────
 
 class AccessTokenResponse(BaseModel):
-    """Returned on a successful token refresh — only a new access token."""
+    """
+    Returned on a successful token refresh.
+
+    Includes a ROTATED refresh token (audit issue H6): the old refresh token
+    is revoked server-side, so clients MUST store ``refresh_token`` and use
+    it for the next refresh. ``None`` only on legacy integrations.
+    """
 
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+    refresh_token: str | None = None

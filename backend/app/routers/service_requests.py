@@ -4,8 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from app.rate_limit import limiter
 
 from app.database import get_db
 from app.models.service_request import ServiceRequest
@@ -13,7 +12,6 @@ from app.schemas.common import APIResponse
 from app.schemas.service_request import ServiceRequestCreate, ServiceRequestCreated
 
 router = APIRouter(prefix="/public/service-requests", tags=["Public"])
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post(

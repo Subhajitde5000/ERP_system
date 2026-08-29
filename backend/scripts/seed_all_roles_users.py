@@ -1,14 +1,23 @@
 """
 ERP Backend — Seed 1 User for Every Role in DB
+
+Security (audit issue H5): every account gets the well-known demo password.
+This is a development tool only — it refuses to run when APP_ENV=production
+unless --force is passed.
 """
 
 import asyncio
+import sys
 import uuid
+from pathlib import Path
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+# Allow `python scripts/seed_all_roles_users.py` from the backend/ root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.database import AsyncSessionLocal
+from sqlalchemy import select  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
+
+from app.database import AsyncSessionLocal  # noqa: E402
 from app.models.platform_user import PlatformUser, PlatformRole
 from app.models.role import Role, RoleAssignment
 from app.models.tenant import Tenant, TenantType
@@ -133,6 +142,11 @@ async def seed_tenant_role_users(db: AsyncSession):
 
 async def main():
     async with AsyncSessionLocal() as db:
+        # RLS (H3): seeding writes tenant-scoped rows before any request
+        # context exists — the session must bypass row-level policies.
+        from app.utils.rls import enable_rls_bypass
+
+        await enable_rls_bypass(db)
         platform_users = await seed_platform_users(db)
         tenant_users = await seed_tenant_role_users(db)
         
@@ -150,4 +164,7 @@ async def main():
         print("="*80)
 
 if __name__ == "__main__":
+    from scripts.common import refuse_in_production
+
+    refuse_in_production("seed_all_roles_users.py")
     asyncio.run(main())

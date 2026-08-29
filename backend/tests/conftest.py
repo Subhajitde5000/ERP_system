@@ -1,3 +1,5 @@
+import pathlib
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -6,6 +8,51 @@ from unittest.mock import AsyncMock, MagicMock
 from app.config import get_settings
 from app.main import app
 from app.database import get_db
+
+# ── Row-Level Security test enforcement (audit issue H3) ─────────────────────
+# PostgreSQL superusers ALWAYS bypass RLS, and the embedded test server runs
+# as one. To prove tenant isolation end-to-end, integration fixtures call
+# enable_rls_enforcement() after seeding: it applies database/update_rls.sql
+# and returns a connection URI for a NON-superuser app role, so every request
+# in the suite is genuinely checked by Postgres.
+
+_RLS_SQL = pathlib.Path(__file__).resolve().parents[2] / "database" / "update_rls.sql"
+_APP_ROLE = "erp_app_test"
+_APP_PASSWORD = "erp_app_test_pw"
+
+
+async def enable_rls_enforcement(superuser_uri: str) -> str:
+    """
+    Apply ``database/update_rls.sql`` and provision the non-superuser role
+    the app should run as. Returns the URI (asyncpg scheme) for that role.
+
+    ``superuser_uri`` is the plain ``postgresql://`` URI from pgserver.
+    """
+    import asyncpg
+
+    conn = await asyncpg.connect(superuser_uri)
+    try:
+        await conn.execute(
+            "DO $$ BEGIN "
+            f"IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{_APP_ROLE}') THEN "
+            f"CREATE ROLE {_APP_ROLE} LOGIN PASSWORD '{_APP_PASSWORD}'; "
+            "END IF; END $$;"
+        )
+        await conn.execute(f"GRANT USAGE ON SCHEMA public TO {_APP_ROLE}")
+        await conn.execute(f"GRANT ALL ON ALL TABLES IN SCHEMA public TO {_APP_ROLE}")
+        await conn.execute(f"GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO {_APP_ROLE}")
+
+        # Only the DO block matters here; the trailing verification SELECT is
+        # for human psql sessions.
+        rls_sql = _RLS_SQL.read_text().partition("-- Verification:")[0]
+        await conn.execute(rls_sql)
+    finally:
+        await conn.close()
+
+    return superuser_uri.replace(
+        "postgresql://postgres:@",
+        f"postgresql://{_APP_ROLE}:{_APP_PASSWORD}@",
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -22,6 +69,20 @@ def force_console_mailer():
     settings.EMAIL_PROVIDER = "console"
     yield
     settings.EMAIL_PROVIDER = original
+
+
+@pytest.fixture(autouse=True)
+def force_test_public_domain():
+    """
+    Never let a developer's local .env (e.g. PUBLIC_ROOT_DOMAIN=localhost:3000)
+    leak into the suite. Provisioned login URLs and subdomain checks must be
+    asserted against the canonical production root domain.
+    """
+    settings = get_settings()
+    original = settings.PUBLIC_ROOT_DOMAIN
+    settings.PUBLIC_ROOT_DOMAIN = "xyz.com"
+    yield
+    settings.PUBLIC_ROOT_DOMAIN = original
 
 
 @pytest.fixture(autouse=True)

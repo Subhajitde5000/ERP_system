@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, statu
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.services.institution_service import read_capped_upload
 from app.dependencies.auth import get_current_tenant_user_teacher
 from app.models.user import User
 from app.schemas.common import APIResponse
@@ -426,7 +427,9 @@ async def import_question_bank_file(
     file: UploadFile = File(...),
 ):
     """Upload a CSV or JSON file to bulk-import questions into the question bank."""
-    content = await file.read()
+    # Bounded read (audit issue H4): oversized uploads are rejected with 413
+    # instead of being pulled into memory. Same cap as staff/student imports.
+    content = await read_capped_upload(file)
     result = await TeacherService.import_question_bank_file(
         db,
         teacher,

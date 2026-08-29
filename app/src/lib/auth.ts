@@ -226,12 +226,19 @@ export async function refreshAccessToken(): Promise<string | null> {
   if (!refreshToken) return null;
 
   try {
-    const data = await apiFetch<{ access_token: string }>(TENANT_REFRESH, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
+    const data = await apiFetch<{ access_token: string; refresh_token?: string | null }>(
+      TENANT_REFRESH,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      },
+    );
     setAccessToken(data.access_token);
+    // Refresh tokens ROTATE (audit issue H6): the server revokes the token
+    // we just sent, so the replacement must be stored — replaying the old
+    // one would trip reuse detection and revoke the whole session family.
+    if (data.refresh_token) await saveRefreshToken(data.refresh_token);
     return data.access_token;
   } catch {
     // Refresh token is invalid or expired — clear it so we don't loop

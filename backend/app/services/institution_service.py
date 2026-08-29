@@ -74,9 +74,28 @@ from app.utils.security import generate_secure_token, hash_password, hash_token
 ONBOARDING_KEY = "onboarding"
 ONBOARDING_DONE_KEY = "onboarding.completed"
 
-# Bulk student import limits — 2 MB / 10 000 rows keeps one upload bounded.
-BULK_MAX_FILE_BYTES = 2 * 1024 * 1024
+# Bulk import limits — bounded reads protect the API from memory-exhaustion
+# DoS (audit issue H4). The byte cap is configured once in Settings so every
+# bulk-import endpoint shares one limit.
+BULK_MAX_FILE_BYTES = get_app_settings().BULK_IMPORT_MAX_MB * 1024 * 1024
 BULK_MAX_ROWS = 10_000
+
+
+async def read_capped_upload(file) -> bytes:
+    """
+    Read an upload with a hard byte cap (audit issue H4).
+
+    Reads at most ``BULK_MAX_FILE_BYTES + 1`` bytes and raises 413 when the
+    payload exceeds the cap, instead of pulling an arbitrary file into
+    memory. Shared by staff/student and question-bank bulk imports.
+    """
+    content = await file.read(BULK_MAX_FILE_BYTES + 1)
+    if len(content) > BULK_MAX_FILE_BYTES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large — max {get_app_settings().BULK_IMPORT_MAX_MB} MB",
+        )
+    return content
 
 # Default password for newly added staff members
 DEFAULT_STAFF_PASSWORD = "password1234!"
@@ -834,7 +853,7 @@ class InstitutionService:
         if role.name in ("VICE_PRINCIPAL", "HOD") and payload.department_id is None:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"An {role.name} must be assigned a department",
+                detail=f"A delegated department is required for {role.name}",
             )
 
         raw_token = generate_secure_token(32)
@@ -903,7 +922,7 @@ class InstitutionService:
         if role.name in ("VICE_PRINCIPAL", "HOD") and department_id is None:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"An {role.name} must be assigned a department",
+                detail=f"A delegated department is required for {role.name}",
             )
 
         if role.name == "HOD" and department_id is not None:
@@ -1001,7 +1020,7 @@ class InstitutionService:
         if role.name in ("VICE_PRINCIPAL", "HOD") and department_id is None:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"A department is required to revoke an {role.name} scope",
+                detail=f"A delegated department is required to revoke a {role.name} scope",
             )
         if department_id is not None:
             await InstitutionService._assert_dept(db, tenant_id, department_id)

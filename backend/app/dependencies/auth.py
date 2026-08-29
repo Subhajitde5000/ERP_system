@@ -21,8 +21,24 @@ from app.models.platform_owner import PlatformOwner
 from app.models.role import Role, RoleAssignment
 from app.models.user import User
 from app.services.jwt_service import decode_access_token
+from app.utils.rls import enable_rls_bypass, set_tenant_context
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/tenant/auth/login")
+
+
+async def rls_public_bypass(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """
+    RLS bypass for pre-authentication / public bootstrap endpoints (H3).
+
+    Login, password reset and self-service provisioning must read/write
+    tenant-scoped tables BEFORE any identity is established. The business
+    logic of those endpoints already restricts what they touch (hashed-token
+    lookups, order ownership checks); this dependency is deliberately listed
+    per-endpoint so every bypass remains explicit and reviewable.
+    """
+    await enable_rls_bypass(db)
 
 
 async def get_current_platform_user(
@@ -44,6 +60,10 @@ async def get_current_platform_user(
             raise credentials_exception
     except JWTError:
         raise credentials_exception
+
+    # RLS (H3): platform staff legitimately operate cross-tenant (support,
+    # billing, provisioning) — every query in these requests bypasses RLS.
+    await enable_rls_bypass(db)
 
     stmt = select(PlatformUser).where(PlatformUser.id == user_id)
     res = await db.execute(stmt)
@@ -76,6 +96,14 @@ async def get_current_tenant_user(
     except JWTError:
         raise credentials_exception
 
+    # RLS (H3): the bootstrap user lookup below is the very first query on
+    # this connection — it must bypass RLS or it would see zero rows. It is
+    # already safe (explicit user_id + tenant_id from the verified JWT).
+    # Immediately after resolving the user we SCOPE the connection to their
+    # tenant, so every subsequent query in this request is enforced by
+    # Postgres itself.
+    await enable_rls_bypass(db)
+
     stmt = select(User).where(
         User.id == user_id,
         User.tenant_id == tenant_id,
@@ -87,6 +115,7 @@ async def get_current_tenant_user(
     if user is None or not user.is_active:
         raise credentials_exception
 
+    await set_tenant_context(db, user.tenant_id)
     return user
 
 
@@ -113,6 +142,11 @@ async def get_current_platform_owner(
             raise credentials_exception
     except JWTError:
         raise credentials_exception
+
+    # RLS (H3): owners manage their own tenants' orders/subscriptions —
+    # those tables are tenant-scoped, so owner requests bypass RLS (their
+    # service layer filters by owner_id, and tenants belong to them).
+    await enable_rls_bypass(db)
 
     stmt = select(PlatformOwner).where(PlatformOwner.id == owner_id)
     res = await db.execute(stmt)

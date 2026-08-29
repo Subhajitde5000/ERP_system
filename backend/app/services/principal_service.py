@@ -82,6 +82,7 @@ from app.schemas.principal import (
     ScheduleApprovalRequest,
 )
 from app.services.audit_service import AuditService
+from app.services.jwt_service import sign_upload_url
 
 
 _APPROVAL_STATES = {"PENDING", "APPROVED", "REJECTED"}
@@ -1500,10 +1501,9 @@ class PrincipalService:
             len(readers),
             target_names.get((notice.target_scope.value, notice.target_id)),
         )
-        return PrincipalNoticeDetail(
-            **base.model_dump(), readers=readers,
-            attachments=await PrincipalService._notice_attachments(db, notice.id),
-        )
+        base_data = base.model_dump()
+        base_data["attachments"] = await PrincipalService._notice_attachments(db, notice.id)
+        return PrincipalNoticeDetail(**base_data, readers=readers)
 
     @staticmethod
     async def create_notice(
@@ -1575,7 +1575,9 @@ class PrincipalService:
             0,
             targets.get((notice.target_scope.value, notice.target_id)),
         )
-        return PrincipalNoticeDetail(**base.model_dump(), readers=[], attachments=attachments)
+        base_data = base.model_dump()
+        base_data["attachments"] = attachments
+        return PrincipalNoticeDetail(**base_data, readers=[])
 
     @staticmethod
     async def _save_notice_attachments(db: AsyncSession, notice_id: uuid.UUID, attachments: list) -> list[NoticeAttachmentOut]:
@@ -1606,14 +1608,17 @@ class PrincipalService:
             file_key = f"/uploads/notices/{notice_id}/{safe_name}"
             row = NoticeAttachment(id=uuid.uuid4(), notice_id=notice_id, file_name=Path(item.file_name).name[:255], file_key=file_key, file_size_bytes=len(content), mime_type=item.mime_type)
             db.add(row)
-            saved.append(NoticeAttachmentOut(id=row.id, file_name=row.file_name, file_size_bytes=row.file_size_bytes, mime_type=row.mime_type, url=file_key, is_image=row.mime_type.startswith("image/"), is_link=False))
+            # Signed, expiring download URL — never the raw /uploads path (A6).
+            saved.append(NoticeAttachmentOut(id=row.id, file_name=row.file_name, file_size_bytes=row.file_size_bytes, mime_type=row.mime_type, url=sign_upload_url(file_key), is_image=row.mime_type.startswith("image/"), is_link=False))
         await db.flush()
         return saved
 
     @staticmethod
     async def _notice_attachments(db: AsyncSession, notice_id: uuid.UUID) -> list[NoticeAttachmentOut]:
         rows = (await db.execute(select(NoticeAttachment).where(NoticeAttachment.notice_id == notice_id).order_by(NoticeAttachment.created_at))).scalars().all()
-        return [NoticeAttachmentOut(id=row.id, file_name=row.file_name, file_size_bytes=row.file_size_bytes, mime_type=row.mime_type, url=row.external_url or row.file_key or "", is_image=row.mime_type.startswith("image/"), is_link=bool(row.external_url)) for row in rows]
+        # External links pass through; stored files are served via signed,
+        # expiring URLs — never the raw /uploads path (A6).
+        return [NoticeAttachmentOut(id=row.id, file_name=row.file_name, file_size_bytes=row.file_size_bytes, mime_type=row.mime_type, url=row.external_url or (sign_upload_url(row.file_key) if row.file_key else ""), is_image=row.mime_type.startswith("image/"), is_link=bool(row.external_url)) for row in rows]
 
     @staticmethod
     def _notice_row(

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -62,6 +63,9 @@ from app.schemas.online_class import (
     StudentOnlineClassRow,
 )
 from app.services.jwt_service import decode_access_token
+from app.utils.rls import enable_rls_bypass, set_tenant_context
+
+logger = logging.getLogger(__name__)
 from app.services.online_class_service import OnlineClassService, live_rooms
 
 router = APIRouter(prefix="/online-classes", tags=["Online Classes"])
@@ -425,12 +429,21 @@ async def live_room(websocket: WebSocket, class_id: uuid.UUID, db: DB, token: st
         except ValueError:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
+
+        # RLS (H3): the bootstrap lookups below are the first queries on this
+        # connection — bypass so they can see rows (they are already safe:
+        # explicit user_id from the verified JWT), then scope the session to
+        # the user's tenant so every later query in the room is enforced by
+        # Postgres itself. The context survives commits/connection churn via
+        # session.info (see app/utils/rls.py).
+        await enable_rls_bypass(db)
         user = await db.get(User, user_pk)
         oc = await db.get(OnlineClass, class_id)
         if user is None or not user.is_active or oc is None or oc.tenant_id != user.tenant_id:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
+        await set_tenant_context(db, user.tenant_id)
         role = "TEACHER" if user.id == oc.teacher_id else "STUDENT"
         if role == "STUDENT":
             participant = await OnlineClassService._participant(db, oc, user)
@@ -518,6 +531,7 @@ async def live_room(websocket: WebSocket, class_id: uuid.UUID, db: DB, token: st
     except WebSocketDisconnect:
         pass
     except Exception:
+        logger.exception("Online class live room error")
         await db.rollback()
     finally:
         if user is not None:
