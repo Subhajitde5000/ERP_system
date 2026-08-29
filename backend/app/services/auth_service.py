@@ -92,91 +92,6 @@ def _extract_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
-# ── Refresh-token rotation (audit issue H6) ───────────────────────────────────
-# Every refresh REPLACES the refresh token: the presented session is revoked
-# and a new one is issued. If a revoked token is presented again (token theft
-# replay), the whole session family of that user is revoked — the classic
-# reuse-detection kill switch. All three login systems share these helpers;
-# no schema change is needed (revoked_at/expires_at already exist).
-
-import logging
-
-logger = logging.getLogger(__name__)
-
-
-async def revoke_session_family(
-    db: AsyncSession, session_model: type, subject_fk: str, subject_id: Any
-) -> None:
-    """Revoke every live session belonging to one user/owner (reuse response)."""
-    fk = getattr(session_model, subject_fk)
-    await db.execute(
-        update(session_model)
-        .where(fk == subject_id, session_model.revoked_at.is_(None))
-        .values(revoked_at=datetime.now(timezone.utc))
-    )
-
-
-async def rotate_session(
-    db: AsyncSession,
-    session_model: type,
-    subject_fk: str,
-    subject_id: Any,
-    current_session: Any,
-) -> str:
-    """
-    Rotate a refresh session: revoke ``current_session`` and create its
-    replacement. Returns the NEW raw refresh token (sent once to the client).
-    Device/IP context is inherited so audit trails stay meaningful.
-    """
-    now = datetime.now(timezone.utc)
-    current_session.revoked_at = now
-
-    new_token = generate_secure_token()
-    new_session = session_model(
-        **{
-            subject_fk: subject_id,
-            "refresh_token_hash": hash_token(new_token),
-            "device_info": current_session.device_info,
-            "ip_address": current_session.ip_address,
-            "expires_at": now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
-        }
-    )
-    db.add(new_session)
-    await db.flush()
-    return new_token
-
-
-async def abort_on_reuse(
-    db: AsyncSession,
-    session_row: Any,
-    session_model: type,
-    subject_fk: str,
-    subject_id: Any,
-    subject_label: str,
-) -> None:
-    """
-    Kill-switch for refresh-token reuse (H6).
-
-    If a REVOKED session is presented again the token was likely stolen:
-    revoke every live session of that user, COMMIT immediately (the 401 we
-    raise would otherwise roll the revocation back), log a security warning
-    and reject the request.
-    """
-    if session_row.revoked_at is None:
-        return
-    await revoke_session_family(db, session_model, subject_fk, subject_id)
-    await db.commit()
-    logger.warning(
-        "SECURITY: refresh-token reuse detected for %s %s — all sessions revoked",
-        subject_label,
-        subject_id,
-    )
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Session expired or revoked",
-    )
-
-
 class AuthService:
     # ── Platform Auth ────────────────────────────────────────────────────────
 
@@ -286,9 +201,6 @@ class AuthService:
 
         session, user = row
 
-        # Reuse detection → kill the whole session family, then reject (H6).
-        await abort_on_reuse(db, session, PlatformSession, "user_id", user.id, "platform user")
-
         if not session.is_valid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -304,13 +216,8 @@ class AuthService:
         new_access_token = create_platform_access_token(
             user_id=user.id, role=user.platform_role.value
         )
-        # Rotation: old refresh token revoked, replacement returned (H6).
-        new_refresh_token = await rotate_session(
-            db, PlatformSession, "user_id", user.id, session
-        )
         return AccessTokenResponse(
             access_token=new_access_token,
-            refresh_token=new_refresh_token,
             token_type="bearer",
             expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
@@ -462,10 +369,6 @@ class AuthService:
 
         session, user = row
 
-        # Reuse detection: a revoked token presented again means it was likely
-        # stolen — kill every session of this user, then reject (H6).
-        await abort_on_reuse(db, session, UserSession, "user_id", user.id, "tenant user")
-
         if not session.is_valid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -488,12 +391,8 @@ class AuthService:
             role=primary_role,
             permissions=permissions,
         )
-        # Rotation: the presented refresh token dies here; the client must
-        # store the returned replacement (H6).
-        new_refresh_token = await rotate_session(db, UserSession, "user_id", user.id, session)
         return AccessTokenResponse(
             access_token=new_access_token,
-            refresh_token=new_refresh_token,
             token_type="bearer",
             expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )

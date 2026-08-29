@@ -28,7 +28,7 @@ from app.schemas.institution import (
     StudentCreate,
     StudentUpdate,
 )
-from app.services.institution_service import InstitutionService, read_capped_upload
+from app.services.institution_service import BULK_MAX_FILE_BYTES, InstitutionService
 
 router = APIRouter()
 
@@ -64,7 +64,9 @@ async def bulk_create_staff(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_tenant_user_admin)],
 ):
-    content = await read_capped_upload(file)
+    content = await file.read(BULK_MAX_FILE_BYTES + 1)
+    if len(content) > BULK_MAX_FILE_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large — max 2 MB")
     tenant = await _tenant(db, admin)
     result = await InstitutionService.bulk_create_staff(db, tenant, content)
     return APIResponse(
@@ -194,7 +196,9 @@ async def bulk_create_students(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_tenant_user_admin)],
 ):
-    content = await read_capped_upload(file)
+    content = await file.read(BULK_MAX_FILE_BYTES + 1)
+    if len(content) > BULK_MAX_FILE_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large — max 2 MB")
     tenant = await _tenant(db, admin)
     result = await InstitutionService.bulk_create_students(db, tenant, content)
     return APIResponse(

@@ -12,24 +12,16 @@ Creates default initial data (all idempotent — safe to re-run):
 
 Usage:
   python scripts/seed_data.py
-
-Security (audit issue H5): this script creates well-known demo credentials.
-It refuses to run when APP_ENV=production unless --force is passed.
 """
 
 import asyncio
-import sys
 import uuid
 from datetime import date, timedelta
-from pathlib import Path
 
-# Allow `python scripts/seed_data.py` from the backend/ root.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from sqlalchemy import select  # noqa: E402
-from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
-
-from app.database import AsyncSessionLocal  # noqa: E402
+from app.database import AsyncSessionLocal
 from app.models.billing import Coupon
 from app.models.catalog import Module, Plan
 from app.models.platform_user import PlatformUser, PlatformRole
@@ -259,11 +251,6 @@ async def seed_demo_tenant(db: AsyncSession):
 async def main():
     async with AsyncSessionLocal() as db:
         try:
-            # RLS (H3): seeding writes tenant-scoped rows before any request
-            # context exists — the session must bypass row-level policies.
-            from app.utils.rls import enable_rls_bypass
-
-            await enable_rls_bypass(db)
             await seed_platform_users(db)
             await seed_modules(db)
             await seed_roles(db)
@@ -278,7 +265,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    from scripts.common import refuse_in_production
-
-    refuse_in_production("seed_data.py")
     asyncio.run(main())

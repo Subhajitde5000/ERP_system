@@ -11,11 +11,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from fastapi import FastAPI, Request, status
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-
-from app.rate_limit import limiter
+from slowapi.util import get_remote_address
 
 from app.config import get_settings
 from app.middleware.request_id import RequestIDMiddleware
@@ -40,11 +41,15 @@ from app.routers import (
     library_router,
     hostel_router,
     online_class_router,
-    files_router,
 )
 from app.schemas.common import ErrorDetail
 
 settings = get_settings()
+
+# ── Rate Limiter ─────────────────────────────────────────────────────────────
+# Keyed on the real client IP so a shared school NAT doesn't lock everyone out
+# at the account level. Per-account lockout is enforced in the service layer.
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="ERP Platform API",
@@ -53,34 +58,13 @@ app = FastAPI(
     docs_url="/docs" if settings.APP_DEBUG else None,
     redoc_url="/redoc" if settings.APP_DEBUG else None,
 )
-# Upload storage root — writers (online-class files, notice attachments) save
-# here. IMPORTANT (audit issue A6): this directory is NOT mounted publicly.
-# Delivery goes through the signed, expiring /api/v1/files/signed/{token}
-# endpoint (app/routers/files.py) so only authorized viewers get bytes.
 uploads_directory = PROJECT_ROOT / "uploads"
 uploads_directory.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_directory), name="uploads")
 
-# Attach the shared limiter (see app/rate_limit.py — Redis-backed counters and
-# a proxy-aware client-IP key function) and a JSON 429 response that matches
-# the API's standard error envelope.
+# Attach limiter to app state so the decorator can find it
 app.state.limiter = limiter
-
-
-@app.exception_handler(RateLimitExceeded)
-async def rate_limit_exceeded_handler(
-    request: Request, exc: RateLimitExceeded
-) -> JSONResponse:
-    """Return 429 in the standard ErrorDetail envelope with retry guidance."""
-    return JSONResponse(
-        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        content=ErrorDetail(
-            success=False,
-            error="RATE_LIMIT_EXCEEDED",
-            message="Too many requests — please slow down and retry shortly.",
-            details=str(exc.detail),
-        ).model_dump(),
-        headers={"Retry-After": "60"},
-    )
+app.add_exception_handler(RateLimitExceeded, lambda request, exc: _rate_limit_exceeded_handler(request, exc))
 
 # ── Middleware Stack ─────────────────────────────────────────────────────────
 # Order matters: RequestID first so every subsequent log entry has an ID.
@@ -155,4 +139,3 @@ app.include_router(student_router, prefix=api_prefix)
 app.include_router(library_router, prefix=api_prefix)
 app.include_router(hostel_router, prefix=api_prefix)
 app.include_router(online_class_router, prefix=api_prefix)
-app.include_router(files_router, prefix=api_prefix)

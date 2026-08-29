@@ -11,7 +11,8 @@ Endpoints:
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
-from app.rate_limit import limiter
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -29,6 +30,7 @@ from app.schemas.common import APIResponse
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/platform/auth", tags=["Platform Authentication"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/login", response_model=APIResponse[PlatformLoginResponse])

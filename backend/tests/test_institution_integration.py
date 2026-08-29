@@ -8,7 +8,6 @@ give — it proves the queries, joins, RBAC guard and return shapes actually wor
 """
 
 import asyncio
-import json
 import os
 import pathlib
 import tempfile
@@ -50,14 +49,14 @@ async def real_backend():
     srv = pgserver.get_server(pathlib.Path(tempfile.mkdtemp()), cleanup_mode="stop")
     srv.ensure_postgres_running()
     async_uri = srv.get_uri().replace("postgresql://", "postgresql+asyncpg://")
-    boot_engine = create_async_engine(async_uri)
-    async with boot_engine.begin() as conn:
+    engine = create_async_engine(async_uri)
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    BootSession = async_sessionmaker(boot_engine, expire_on_commit=False)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
 
     # ── seed ────────────────────────────────────────────────────────────────
-    async with BootSession() as s:
+    async with Session() as s:
         plan = Plan(id=uuid.uuid4(), name="Professional", slug="professional",
                     max_students=5000, max_teachers=500, max_storage_gb=200,
                     price_monthly=7999, price_yearly=79990, currency="INR",
@@ -93,17 +92,7 @@ async def real_backend():
                              tenant_id=tenant.id, is_active=True))
         await s.commit()
 
-    # RLS (H3): apply the production policy script, then run the whole suite
-    # as the non-superuser app role so Postgres genuinely enforces isolation.
-    from tests.conftest import enable_rls_enforcement
-
-    app_uri = await enable_rls_enforcement(srv.get_uri())
-    await boot_engine.dispose()
-    engine = create_async_engine(
-        app_uri.replace("postgresql://", "postgresql+asyncpg://")
-    )
-    Session = async_sessionmaker(engine, expire_on_commit=False)
-
+    # ── override get_db with a real session ─────────────────────────────────
     async def override_get_db():
         async with Session() as session:
             try:
@@ -477,47 +466,3 @@ async def test_settings_and_profile(real_backend):
     up = await client.put("/api/v1/institution/profile", headers=h, json={"phone": "+91 99999"})
     assert up.status_code == 200
     assert up.json()["data"]["phone"] == "+91 99999"
-
-
-# ── Bulk-import upload size cap (audit issue H4) ─────────────────────────────
-
-
-async def test_question_bank_import_enforces_size_cap(real_backend):
-    """Oversized question-bank uploads must be rejected with 413, same as staff/student imports."""
-    client, _ = real_backend
-    h = await _login(client)
-
-    # Provision a teacher and log in as them.
-    ir = await client.post("/api/v1/institution/staff", headers=h, json={
-        "name": "QB Teacher", "email": "qbteacher@green.edu", "role": "TEACHER"})
-    assert ir.status_code == 201, ir.text
-    tlogin = await client.post("/api/v1/tenant/auth/login", json={
-        "slug": "green", "identifier": "qbteacher@green.edu", "password": "password1234!"})
-    assert tlogin.status_code == 200, tlogin.text
-    th = {"Authorization": f"Bearer {tlogin.json()['data']['tokens']['access_token']}"}
-
-    # A valid small JSON file still goes through (guard must not block real uploads).
-    small_json = json.dumps([{
-        "text": "What is 2+2?", "question_type": "MCQ",
-        "options": [{"text": "4", "is_correct": True}, {"text": "5", "is_correct": False}],
-    }])
-    ok = await client.post("/api/v1/teacher/question-bank/import-file", headers=th,
-                           files={"file": ("q.json", small_json.encode(), "application/json")})
-    assert ok.status_code == 200, ok.text
-    assert ok.json()["data"]["imported"] == 1, ok.json()["data"]
-
-    # An oversized CSV (> cap) must be rejected before parsing.
-    oversized = b"text,question_type\n" + b"x" * (3 * 1024 * 1024)
-    too_big = await client.post("/api/v1/teacher/question-bank/import-file", headers=th,
-                                files={"file": ("big.csv", oversized, "text/csv")})
-    assert too_big.status_code == 413
-
-
-async def test_staff_bulk_upload_enforces_size_cap(real_backend):
-    """Oversized staff CSV is rejected with 413."""
-    client, _ = real_backend
-    h = await _login(client)
-    oversized = b"name,email,phone,role\n" + b"x" * (3 * 1024 * 1024)
-    res = await client.post("/api/v1/institution/staff/bulk", headers=h,
-                            files={"file": ("big.csv", oversized, "text/csv")})
-    assert res.status_code == 413

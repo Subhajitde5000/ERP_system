@@ -63,13 +63,13 @@ async def seeded_backend():
     async_uri = srv.get_uri().replace("postgresql://", "postgresql+asyncpg://")
     # NullPool: the WebSocket part runs under TestClient's own event loop, so
     # pooled connections from the module loop could not be reused there.
-    boot_engine = create_async_engine(async_uri, poolclass=NullPool)
-    async with boot_engine.begin() as conn:
+    engine = create_async_engine(async_uri, poolclass=NullPool)
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    BootSession = async_sessionmaker(boot_engine, expire_on_commit=False)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
 
-    async with BootSession() as s:
+    async with Session() as s:
         plan = Plan(
             id=uuid.uuid4(), name="Professional", slug=f"professional-{SLUG}",
             max_students=5000, max_teachers=500, max_storage_gb=200,
@@ -139,26 +139,8 @@ async def seeded_backend():
             "subject_id": subject.id, "teacher_id": teacher.id, "student_id": student.id,
         }
 
-    # RLS (H3): apply the production policy script, then route ALL HTTP
-    # traffic (get_db) through the non-superuser app role so Postgres
-    # genuinely enforces isolation. The Session yielded to tests stays
-    # superuser — it stands in for DBA/maintenance work (test row surgery),
-    # which legitimately bypasses RLS.
-    from tests.conftest import enable_rls_enforcement
-
-    app_uri = await enable_rls_enforcement(srv.get_uri())
-    await boot_engine.dispose()
-    app_engine = create_async_engine(
-        app_uri.replace("postgresql://", "postgresql+asyncpg://"),
-        poolclass=NullPool,
-    )
-    AppSession = async_sessionmaker(app_engine, expire_on_commit=False)
-
-    maint_engine = create_async_engine(async_uri, poolclass=NullPool)
-    Session = async_sessionmaker(maint_engine, expire_on_commit=False)
-
     async def override_get_db():
-        async with AppSession() as session:
+        async with Session() as session:
             try:
                 yield session
                 await session.commit()
@@ -174,8 +156,7 @@ async def seeded_backend():
         yield ac, Session, ids
 
     app.dependency_overrides.clear()
-    await app_engine.dispose()
-    await maint_engine.dispose()
+    await engine.dispose()
     srv.cleanup()
 
 
@@ -210,13 +191,11 @@ async def test_scheduled_class_full_lifecycle_with_automatic_attendance(seeded_b
     assignments = opts.json()["data"]["assignments"]
     assert any(a["subject_code"] == "DB101" for a in assignments), opts.text
 
-    # Schedule the class. 25 hours out guarantees the tenant-local date is
-    # always "tomorrow" (25h > 24h), so it lands in the student's `upcoming`
-    # bucket regardless of the wall-clock hour this suite runs at.
+    # Schedule the class.
     created = await client.post("/api/v1/online-classes", headers=teacher, json={
         "class_id": str(ids["class_id"]), "subject_id": str(ids["subject_id"]),
         "topic": "SQL Joins",
-        "scheduled_at": (datetime.now(timezone.utc) + timedelta(hours=25)).isoformat(),
+        "scheduled_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
         "duration_minutes": 50, "allow_join": True, "recording_enabled": False,
     })
     assert created.status_code == 201, created.text

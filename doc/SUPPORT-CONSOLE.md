@@ -20,11 +20,12 @@ setNotice(`POST /platform/tickets/${id}/reply … — API not connected yet`)
 ## Deploying
 
 ```bash
-# Raw SQL — the single canonical path (see database/README.md). The Support
-# schema is part of database.sql.
-psql -v ON_ERROR_STOP=1 -f database/database.sql
-psql -v ON_ERROR_STOP=1 -f database/class_hierarchy_migration.sql
-psql -v ON_ERROR_STOP=1 -f database/update_rls.sql
+psql -f database/database.sql
+psql -f database/update.sql
+psql -f database/update2.sql          # ← §8 adds the Support schema
+
+# …or with Alembic
+cd backend && alembic upgrade head
 ```
 
 Create a Support account, then sign in at `app.xyz.com/platform/login`:
@@ -74,9 +75,9 @@ settings**"*:
 
 ---
 
-## Schema (historical note — final shape now lives in `database.sql`)
+## Schema — `update2.sql` §8
 
-`support_tickets` originally existed in **two incompatible shapes**:
+`support_tickets` existed in **two incompatible shapes**:
 
 | | database.sql §10.2 | update.sql §1 |
 |---|---|---|
@@ -159,7 +160,7 @@ and fail if either drifts.
 | Client↔server contract | **25 assertions** — keys match `types/support.ts`; PATCH/POST/PUT/DELETE on the snapshot all 405 |
 | `next build` | succeeds; all 4 routes compile |
 | `tsc --noEmit` / ESLint | clean |
-| Schema SQL (now folded into `database.sql`) | idempotent; zero ORM drift on a fresh DB |
+| `update2.sql` | idempotent; zero ORM drift on a fresh DB |
 
 The 31 new unit tests include two cross-language drift guards, each verified by
 reverting the fix and confirming the test fails.

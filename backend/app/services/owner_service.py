@@ -54,7 +54,6 @@ from app.schemas.owner import (
     TicketMessageOut,
     TokenResponse,
 )
-from app.services.auth_service import abort_on_reuse, rotate_session
 from app.services.jwt_service import create_owner_access_token
 from app.services.mailer import queue_email
 from app.utils.security import (
@@ -273,21 +272,13 @@ class OwnerService:
                 detail="Invalid refresh token",
             )
         session, owner = row
-
-        # Reuse detection → revoke every owner session, then reject (H6).
-        await abort_on_reuse(db, session, OwnerSession, "owner_id", owner.id, "owner")
-
         if not session.is_valid or not owner.is_active or not owner.is_email_verified:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session expired or revoked",
             )
-
-        # Rotation: old refresh token revoked, replacement returned (H6).
-        new_refresh = await rotate_session(db, OwnerSession, "owner_id", owner.id, session)
         return AccessTokenResponse(
             access_token=create_owner_access_token(owner.id),
-            refresh_token=new_refresh,
             expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
 

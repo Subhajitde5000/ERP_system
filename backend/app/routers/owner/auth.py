@@ -9,7 +9,8 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
-from app.rate_limit import limiter
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -34,6 +35,7 @@ from app.schemas.owner import (
 from app.services.owner_service import OwnerService
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post(
