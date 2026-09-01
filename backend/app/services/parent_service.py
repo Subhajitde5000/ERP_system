@@ -1596,7 +1596,7 @@ class ParentLinkService:
         offset: int = 0,
     ) -> ParentLinkPage:
         """The C-IA-12 board: links, counts, and the students nobody is linked to."""
-        if not 1 <= limit <= 100 or offset < 0:
+        if not 1 <= limit <= 200 or offset < 0:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid pagination")
         tenant = await _tenant(db, admin.tenant_id)
 

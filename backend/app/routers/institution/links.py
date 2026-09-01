@@ -46,7 +46,7 @@ async def list_parent_links(
     class_id: uuid.UUID | None = Query(default=None),
     relation: str | None = Query(default=None, max_length=50),
     primary_only: bool = Query(default=False),
-    limit: int = Query(default=50, ge=1, le=100),
+    limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
     """Guardian links, counts, and the students nobody is linked to."""
