@@ -80,8 +80,8 @@ export function ParentLinks() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const rows = useMemo(() => board.data?.items ?? [], [board.data]);
-  // §6.7 is school-only. An admin of a college gets the reason, not an empty table.
-  const collegeTenant = board.data ? board.data.tenant_type !== "SCHOOL" : false;
+  // Plan-based entitlement: guardian portal is enabled if included in the plan (or by default for schools).
+  const portalDisabled = board.data ? board.data.portal_enabled === false : false;
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -129,7 +129,7 @@ export function ParentLinks() {
         title="Guardian links"
         description="Which guardian account sees which student, and which parts of the record they are allowed to open."
         action={
-          !board.data || collegeTenant ? undefined : (
+          !board.data || portalDisabled ? undefined : (
             <CreateButton label="Link a guardian" onClick={() => setCreating(true)} />
           )
         }
@@ -151,15 +151,13 @@ export function ParentLinks() {
         </FormAlert>
       ) : null}
 
-      {collegeTenant && (
+      {portalDisabled && (
         <div className="mb-4 flex min-w-0 items-start gap-2.5 rounded-field border border-accent-border bg-accent-light px-3.5 py-3">
           <div className="min-w-0 text-[12px] leading-6 text-[#3730A3]">
-            <p className="font-semibold">This institution is registered as a college.</p>
+            <p className="font-semibold">Parent Portal module is not enabled for this institution.</p>
             <p>
-              Guardian access is a school-type feature — students hold their own
-              accounts here, so there is nothing to link. Existing rows below stay
-              readable and removable so a tenant that changed type can still clean up
-              what it made.
+              Guardian access is enabled via your subscription plan. To activate parent/guardian
+              accounts and links, upgrade your plan in Platform Admin or enable the Parent Portal module.
             </p>
           </div>
         </div>
@@ -167,7 +165,7 @@ export function ParentLinks() {
 
       {board.data ? <Counts board={board.data} /> : null}
 
-      {board.data && board.data.unlinked_count > 0 && !collegeTenant ? (
+      {board.data && board.data.unlinked_count > 0 && !portalDisabled ? (
         <StructureCard className="mb-4">
           <h2 className="flex min-w-0 items-center gap-2 font-display text-[15px] font-bold text-foreground">
             {board.data.unlinked_count} student{board.data.unlinked_count === 1 ? "" : "s"} with no guardian
@@ -357,21 +355,19 @@ export function ParentLinks() {
                             <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         </button>
-                        {!collegeTenant && (
-                          <button
-                            type="button"
-                            aria-label={`Unlink ${l.parent_name ?? "guardian"} from ${l.student_name}`}
-                            onClick={() => setUnlinking(l)}
-                            className={cn(
-                              "rounded-lg p-1.5 text-muted-foreground transition-colors",
-                              "hover:bg-destructive-light hover:text-destructive-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15",
-                            )}
-                          >
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                              <path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          aria-label={`Unlink ${l.parent_name ?? "guardian"} from ${l.student_name}`}
+                          onClick={() => setUnlinking(l)}
+                          className={cn(
+                            "rounded-lg p-1.5 text-muted-foreground transition-colors",
+                            "hover:bg-destructive-light hover:text-destructive-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/15",
+                          )}
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                            <path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </button>
                       </div>
                     </td>
                   </tr>

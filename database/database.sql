@@ -2659,7 +2659,8 @@ INSERT INTO modules (key, name, description, is_core, icon, sort_order) VALUES
   ('hr',          'HR',              'Staff profiles, leave, payroll and appraisals.',        FALSE, 'Users',         13),
   ('admission',   'Admission',       'Admission cycles, applications and merit lists.',       FALSE, 'UserRoundPlus', 14),
   ('inventory',   'Inventory',       'Items, stock movements, vendors and purchase orders.',  FALSE, 'Boxes',         15),
-  ('finance',     'Finance',         'Fee structures, collection, scholarships and dues.',    FALSE, 'BadgeIndianRupee', 16)
+  ('finance',     'Finance',         'Fee structures, collection, scholarships and dues.',    FALSE, 'BadgeIndianRupee', 16),
+  ('parent',      'Parent Portal',   'Guardian portal, student-linked access, attendance & results view.', FALSE, 'Users', 17)
 ON CONFLICT (key) DO NOTHING;
 
 
@@ -2671,7 +2672,7 @@ INSERT INTO roles (name, label, scope_level, is_platform, is_optional, module_ke
   ('SUPPORT_STAFF',        'Support Staff',         'PLATFORM',    TRUE,  FALSE, NULL,        'Reads any institution to resolve tickets. Cannot modify tenant data.'),
   ('SALES_EXECUTIVE',      'Sales Executive',       'PLATFORM',    TRUE,  FALSE, NULL,        'Trials, conversions and subscription management.'),
   ('FINANCE_MANAGER',      'Finance Manager',       'PLATFORM',    TRUE,  FALSE, NULL,        'Platform invoicing and revenue. No access to institution academic data.'),
-  -- Institution — always available (10)
+  -- Institution — always available (9)
   ('INSTITUTION_ADMIN',    'Institution Admin',     'INSTITUTION', FALSE, FALSE, NULL,        'Full control of one institution: structure, users, roles, settings.'),
   ('PRINCIPAL',            'Principal',             'INSTITUTION', FALSE, FALSE, NULL,        'Institution-wide oversight; approves exam schedules and results.'),
   ('VICE_PRINCIPAL',       'Vice Principal',        'INSTITUTION', FALSE, FALSE, NULL,        'Institution-wide read access; posts notices.'),
@@ -2681,8 +2682,8 @@ INSERT INTO roles (name, label, scope_level, is_platform, is_optional, module_ke
   ('EXAM_CONTROLLER',      'Exam Controller',       'INSTITUTION', FALSE, FALSE, NULL,        'Examination module across all departments: schedule, halls, results.'),
   ('ACADEMIC_COORDINATOR', 'Academic Coordinator',  'INSTITUTION', FALSE, FALSE, NULL,        'Builds the timetable, arranges substitutions, owns the academic calendar.'),
   ('STUDENT',              'Student',               'SELF',        FALSE, FALSE, NULL,        'Own attendance, exams, assignments, results and fees.'),
-  ('PARENT',               'Parent',                'CHILD',       FALSE, FALSE, NULL,        'Read-only view of a linked child.'),
-  -- Institution — activated by an optional module (8)
+  -- Institution — activated by an optional module (9)
+  ('PARENT',               'Parent',                'CHILD',       FALSE, TRUE,  'parent',    'Read-only view of a linked child.'),
   ('ACCOUNTANT',           'Accountant',            'INSTITUTION', FALSE, TRUE,  'finance',   'Fee structures, collection, receipts, defaulters and scholarships.'),
   ('LIBRARIAN',            'Librarian',             'INSTITUTION', FALSE, TRUE,  'library',   'Catalogue, issue and return, overdue fines, e-resources.'),
   ('HOSTEL_WARDEN',        'Hostel Warden',         'INSTITUTION', FALSE, TRUE,  'hostel',    'Rooms, allotments, night attendance, leave and complaints.'),

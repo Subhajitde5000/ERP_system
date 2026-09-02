@@ -38,6 +38,7 @@ export const OPTIONAL_MODULES: ModuleKey[] = [
   "admission",
   "inventory",
   "finance",
+  "parent",
 ];
 
 /** All 16 modules, enabled by default in the demo session. */

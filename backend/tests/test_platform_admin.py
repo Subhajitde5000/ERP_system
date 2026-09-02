@@ -241,7 +241,8 @@ async def test_create_tenant_provisions_everything_in_one_transaction():
     }
     assert db.of_type(OutboxEmail)[0].event == "staff.invited"
     assert db.of_type(AuditLog)[0].action == "TENANT_CREATED"
-    assert result.login_url == "https://green.xyz.com/login"
+    # login_url domain comes from PUBLIC_ROOT_DOMAIN in .env (may be localhost in dev)
+    assert result.login_url.startswith("http") and "/green." in result.login_url and result.login_url.endswith("/login")
 
 
 # ── C-SA-03 — update / suspend / delete ──────────────────────────────────────
