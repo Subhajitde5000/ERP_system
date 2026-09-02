@@ -32,6 +32,11 @@ export function PlatformAuditView({
     [entries],
   );
 
+  const tenantOptions = useMemo(
+    () => [...new Set(tenants)].sort(),
+    [tenants],
+  );
+
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return entries.filter((e) => {
@@ -101,7 +106,7 @@ export function PlatformAuditView({
             >
               <option value="ALL">All institutions</option>
               <option value="PLATFORM">Platform actions only</option>
-              {tenants.map((t) => (
+              {tenantOptions.map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>

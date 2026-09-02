@@ -637,14 +637,14 @@ export function LiveAuditLogs() {
   // PlatformAuditView applies its own client-side filters over it.
   const page = useAuditLogs({ limit: 500 });
   const tenants = useTenants();
+  const tenantNames = [...new Set((tenants.data ?? []).map((t) => t.name))]
+    .filter(Boolean)
+    .sort();
 
   return (
     <Live resource={page} label="Loading audit trail…">
       {(p) => (
-        <PlatformAuditView
-          entries={p.entries}
-          tenants={(tenants.data ?? []).map((t) => t.name)}
-        />
+        <PlatformAuditView entries={p.entries} tenants={tenantNames} />
       )}
     </Live>
   );
