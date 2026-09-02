@@ -70,6 +70,19 @@ class ResetPasswordRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=128)
 
 
+class PlatformProfileUpdateRequest(BaseModel):
+    """Body for PUT /platform/auth/profile"""
+
+    name: str = Field(..., min_length=2, max_length=255)
+
+
+class PlatformChangePasswordRequest(BaseModel):
+    """Body for POST /platform/auth/change-password"""
+
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
 # ── Token payload ─────────────────────────────────────────────────────────────
 
 class TokenResponse(BaseModel):

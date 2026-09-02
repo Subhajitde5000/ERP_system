@@ -1,18 +1,22 @@
 import type { Metadata } from "next";
 
 import { PlatformPage } from "@/components/platform/platform-page";
-import { LiveOwnerProfile } from "@/components/platform/owner-consoles";
+import { PlatformProfile } from "@/components/platform/platform-profile";
+import { ALL_PLATFORM_ROLES } from "@/lib/platform";
 
-export const metadata: Metadata = { title: "Profile" };
+export const metadata: Metadata = { title: "Profile | Platform Console" };
 
 /**
- * Owner console — Profile.
+ * Platform Console — Profile Page.
  *
- * Owner name, verification and security (PUT /api/v1/owner/profile).
- * Scoped to the signed-in owner by the API, which resolves the account from
- * the JWT; one owner can never read another's data.
+ * Dedicated profile management for all platform-side roles:
+ * - Super Admin (SUPER_ADMIN)
+ * - Support Staff (SUPPORT_STAFF)
+ * - Sales Executive (SALES_EXECUTIVE)
+ * - Finance Manager (FINANCE_MANAGER)
+ * - Platform Owner (OWNER)
  */
-export default async function OwnerProfilePage({
+export default async function PlatformProfilePage({
   searchParams,
 }: {
   searchParams: Promise<{ role?: string }>;
@@ -20,8 +24,8 @@ export default async function OwnerProfilePage({
   const search = await searchParams;
 
   return (
-    <PlatformPage search={search} allow={["OWNER"]}>
-      {() => <LiveOwnerProfile />}
+    <PlatformPage search={search} allow={ALL_PLATFORM_ROLES}>
+      {({ role }) => <PlatformProfile role={role} />}
     </PlatformPage>
   );
 }

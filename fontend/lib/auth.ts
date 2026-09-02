@@ -460,3 +460,65 @@ export async function refreshPlatformToken(): Promise<string | null> {
     return null;
   }
 }
+
+/** Update the signed-in platform staff member's display name. */
+export async function updatePlatformProfile(
+  name: string,
+  signal?: AbortSignal,
+): Promise<{
+  id: string;
+  name: string;
+  email: string;
+  role: PlatformRole;
+  lastLoginAt: string | null;
+}> {
+  const data = await apiFetch<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    is_active: boolean;
+    last_login_at: string | null;
+  }>(
+    `${API_BASE_URL}/api/v1/platform/auth/profile`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${_accessToken ?? ""}`,
+      },
+      body: JSON.stringify({ name }),
+    },
+    signal,
+  );
+  return {
+    id: data.id,
+    name: data.name,
+    email: data.email,
+    role: normalizePlatformRole(data.role),
+    lastLoginAt: data.last_login_at,
+  };
+}
+
+/** Change the signed-in platform staff member's password. */
+export async function changePlatformPassword(
+  currentPassword: string,
+  newPassword: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  await apiFetch<null>(
+    `${API_BASE_URL}/api/v1/platform/auth/change-password`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${_accessToken ?? ""}`,
+      },
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    },
+    signal,
+  );
+}

@@ -56,6 +56,13 @@ export interface PlatformNavSection {
 /** The eight Super Admin pages, in doc order (C-SA-01…08). */
 const SUPER_ADMIN_ONLY: PlatformRole[] = ["SUPER_ADMIN"];
 const OWNER_ONLY: PlatformRole[] = ["OWNER"];
+export const ALL_PLATFORM_ROLES: PlatformRole[] = [
+  "SUPER_ADMIN",
+  "SUPPORT_STAFF",
+  "SALES_EXECUTIVE",
+  "FINANCE_MANAGER",
+  "OWNER",
+];
 
 const NAV: PlatformNavSection[] = [
   {
@@ -72,7 +79,6 @@ const NAV: PlatformNavSection[] = [
       { label: "Subscriptions", href: "/platform/subscriptions", icon: Receipt, roles: OWNER_ONLY },
       { label: "Invoices", href: "/platform/invoices", icon: ScrollText, roles: OWNER_ONLY },
       { label: "Support Tickets", href: "/platform/tickets", icon: Ticket, roles: OWNER_ONLY },
-      { label: "Profile", href: "/platform/profile", icon: UserCircle, roles: OWNER_ONLY },
     ],
   },
   {
@@ -140,6 +146,17 @@ const NAV: PlatformNavSection[] = [
     items: [
       // Not built yet — C-FM-01…04.
       { label: "Finance", href: "/platform/finance", icon: Wallet, roles: ["FINANCE_MANAGER"] },
+    ],
+  },
+  {
+    title: "Account",
+    items: [
+      {
+        label: "Profile",
+        href: "/platform/profile",
+        icon: UserCircle,
+        roles: ALL_PLATFORM_ROLES,
+      },
     ],
   },
 ];

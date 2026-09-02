@@ -20,6 +20,7 @@ export function SidebarNav({
   roleChip,
   onNavigate,
   logoutHref = "/login",
+  profileHref = "/profile",
 }: {
   sections: NavSection[];
   tenantName: string;
@@ -34,6 +35,8 @@ export function SidebarNav({
    * login they have no account on is a dead end.
    */
   logoutHref?: string;
+  /** Link for user avatar / profile item. Defaults to /profile. */
+  profileHref?: string;
 }) {
   const pathname = usePathname();
 
@@ -100,12 +103,16 @@ export function SidebarNav({
       <div className="border-t border-white/10 p-3">
         {/* Doubles as the entry point to /profile (PAGE 4) */}
         <Link
-          href="/profile"
+          href={profileHref}
           onClick={onNavigate}
-          aria-current={pathname === "/profile" ? "page" : undefined}
+          aria-current={
+            pathname === profileHref.split("?")[0] ? "page" : undefined
+          }
           className={cn(
             "flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors",
-            pathname === "/profile" ? "bg-white/[0.08]" : "hover:bg-white/5",
+            pathname === profileHref.split("?")[0]
+              ? "bg-white/[0.08]"
+              : "hover:bg-white/5",
           )}
         >
           <span

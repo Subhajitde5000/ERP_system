@@ -222,6 +222,47 @@ class AuthService:
             expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
 
+    @staticmethod
+    async def update_platform_profile(
+        db: AsyncSession,
+        user: PlatformUser,
+        name: str,
+    ) -> PlatformUserInfo:
+        """Update platform user profile display name."""
+        user.name = name.strip()
+        await db.flush()
+        return PlatformUserInfo(
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            role=user.platform_role.value,
+            is_active=user.is_active,
+            last_login_at=user.last_login_at,
+        )
+
+    @staticmethod
+    async def change_platform_password(
+        db: AsyncSession,
+        user: PlatformUser,
+        current_password: str,
+        new_password: str,
+    ) -> None:
+        """Change platform user password and invalidate all active sessions."""
+        if not verify_password(current_password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect",
+            )
+        user.password_hash = hash_password(new_password)
+        await db.flush()
+        # Revoke all active sessions
+        stmt = (
+            update(PlatformSession)
+            .where(PlatformSession.user_id == user.id)
+            .values(revoked_at=datetime.now(timezone.utc))
+        )
+        await db.execute(stmt)
+
     # ── Tenant Auth ──────────────────────────────────────────────────────────
 
     @staticmethod
