@@ -84,6 +84,37 @@
     text-wrap: balance;
   }
 
+  .platform-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+  }
+
+  .platform-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .platform-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .platform-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.5);
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-clip: padding-box;
+  }
+
+  .platform-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.7);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .platform-scrollbar::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
   /* Left branding panel — design §6.4 */
   .bg-brand-radial {
     background: radial-gradient(120% 120% at 0% 0%, #4f46e5 0%, #0f172a 60%);

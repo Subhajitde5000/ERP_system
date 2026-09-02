@@ -123,6 +123,16 @@ class AttendanceLeave(Base):
     status: Mapped[LeaveStatus] = mapped_column(
         SAEnum(LeaveStatus, name="leave_status"), nullable=False, default=LeaveStatus.PENDING
     )
+    # Who actually asked. In K-12 the guardian files the absence, and a teacher
+    # reading "fever, 3 days" needs to know whether the child or the parent said
+    # so; `requested_by` is that person when it was not the student.
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # STUDENT | PARENT | STAFF (ck_attendance_leaves_request_source)
+    request_source: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="STUDENT", default="STUDENT"
+    )
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())

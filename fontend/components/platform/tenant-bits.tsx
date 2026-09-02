@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import { cn } from "@/lib/utils";
 import { tenantState, trialDaysLeft } from "@/lib/platform";
@@ -33,7 +33,22 @@ export function TenantStateChip({
   now?: number;
 }) {
   const { label, tone } = tenantState(tenant);
-  const clientNow = useSyncExternalStore(subscribeNoop, getNow, getNowOnServer);
+  const snapshotRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    snapshotRef.current = Date.now();
+  }, []);
+
+  const clientNow = useSyncExternalStore(
+    subscribeNoop,
+    () => {
+      if (snapshotRef.current === null) {
+        snapshotRef.current = Date.now();
+      }
+      return snapshotRef.current;
+    },
+    getNowOnServer,
+  );
   const clock = now ?? clientNow;
 
   const days = clock === null ? null : trialDaysLeft(tenant.trialEndsAt, clock);
@@ -61,6 +76,5 @@ export function TenantStateChip({
 
 /** The chip never re-subscribes: a countdown in days does not need a ticker. */
 const subscribeNoop = () => () => {};
-const getNow = () => Date.now();
 /** No clock during SSR — the countdown appears on hydration. */
 const getNowOnServer = () => null;

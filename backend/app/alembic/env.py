@@ -33,7 +33,10 @@ _UNMANAGED_TABLES = frozenset([
     "appraisal_cycles", "appraisals", "leave_policies", "placement_drives",
     "placement_applications", "placement_offers", "drive_eligibility",
     "companies", "mentor_notes", "device_tokens",
-    "parent_student_links", "transport_routes", "grade_cards",
+    # "parent_student_links" removed: the guardian portal's ORM model now exists
+    # (app/models/parent.py), so autogenerate must see its columns and indexes.
+    # Leaving it here would hide the link table from every future drift check.
+    "transport_routes", "grade_cards",
     "inventory_categories", "inventory_items", "bulk_import_jobs",
     "vehicles", "payroll_runs", "vendors", "salary_structures",
     "notification_templates", "notice_attachments", "staff_documents",

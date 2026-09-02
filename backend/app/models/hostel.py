@@ -7,16 +7,13 @@ from sqlalchemy.dialects.postgresql import ARRAY, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from app.database import Base
+from app.models.parent import ParentStudentLink  # noqa: F401  (re-exported for hostel_service's guardian fence)
 from app.models.user import Gender
 
 class AllotmentStatus(str, enum.Enum): ACTIVE="ACTIVE"; VACATED="VACATED"; TRANSFERRED="TRANSFERRED"
 class HostelAttendanceStatus(str, enum.Enum): PRESENT="PRESENT"; ABSENT="ABSENT"; ON_LEAVE="ON_LEAVE"
 class LeaveStatus(str, enum.Enum): PENDING="PENDING"; APPROVED="APPROVED"; REJECTED="REJECTED"; CANCELLED="CANCELLED"
 class ComplaintStatus(str, enum.Enum): OPEN="OPEN"; IN_PROGRESS="IN_PROGRESS"; RESOLVED="RESOLVED"
-
-class ParentStudentLink(Base):
- __tablename__="parent_student_links"
- id:Mapped[uuid.UUID]=mapped_column(UUID(as_uuid=True),primary_key=True); tenant_id:Mapped[uuid.UUID]=mapped_column(UUID(as_uuid=True)); parent_id:Mapped[uuid.UUID]=mapped_column(UUID(as_uuid=True)); student_id:Mapped[uuid.UUID]=mapped_column(UUID(as_uuid=True)); relation:Mapped[str]=mapped_column(String(50)); is_primary:Mapped[bool]=mapped_column(Boolean); created_at:Mapped[datetime]=mapped_column(TIMESTAMP(timezone=True))
 
 class HostelBlock(Base):
  __tablename__="hostel_blocks"; __table_args__=(UniqueConstraint("tenant_id","name",name="uq_hostel_blocks_tenant_name"),)

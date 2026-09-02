@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/admin/ui";
 import { useResource } from "@/hooks/use-resource";
 import { fetchStudentTimetable } from "@/lib/student";
 import { AsyncState } from "@/components/principal/principal-ui";
-import { WeeklySlotGrid } from "@/components/institution-console/weekly-grid";
+import { WeeklySlotGrid, toWeeklyGridSlots } from "@/components/institution-console/weekly-grid";
 
 /** C-ST-06 — weekly timetable of the student's class with teachers and rooms. */
 export function StudentTimetablePage() {
@@ -28,17 +28,7 @@ export function StudentTimetablePage() {
           <WeeklySlotGrid
             highlightDay={today >= 1 && today <= 6 ? today : undefined}
             emptyText="No timetable has been published for your class yet."
-            slots={resource.data.slots.map((slot) => ({
-              id: slot.id,
-              day_of_week: slot.day_of_week,
-              period_number: slot.period_number,
-              start_time: slot.start_time,
-              end_time: slot.end_time,
-              heading: slot.subject_name ?? slot.slot_type,
-              subheading: slot.teacher_name ?? slot.subject_code,
-              meta: slot.room_no ? `Room ${slot.room_no}` : null,
-              slot_type: slot.slot_type,
-            }))}
+            slots={toWeeklyGridSlots(resource.data.slots)}
           />
         ) : null}
       </AsyncState>

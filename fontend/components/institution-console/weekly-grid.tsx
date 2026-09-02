@@ -40,6 +40,39 @@ const SLOT_TYPE_CLASS: Record<string, string> = {
   ASSEMBLY: "border-warning-border bg-warning-light",
 };
 
+/**
+ * The shape every console's timetable wire row has in common (student, parent and
+ * teacher all receive these fields from the same `timetable_slots` query). Taking
+ * the union here is what lets one mapper serve all three, instead of a 12-line
+ * `slots.map` copied beside each grid.
+ */
+export interface TimetableSlotRow {
+  id: string;
+  day_of_week: number;
+  period_number: number;
+  start_time: string;
+  end_time: string;
+  subject_name: string | null;
+  subject_code: string | null;
+  teacher_name: string | null;
+  room_no: string | null;
+  slot_type: string;
+}
+
+export function toWeeklyGridSlots(slots: TimetableSlotRow[]): WeeklyGridEntry[] {
+  return slots.map((slot) => ({
+    id: slot.id,
+    day_of_week: slot.day_of_week,
+    period_number: slot.period_number,
+    start_time: slot.start_time,
+    end_time: slot.end_time,
+    heading: slot.subject_name ?? slot.slot_type,
+    subheading: slot.teacher_name ?? slot.subject_code,
+    meta: slot.room_no ? `Room ${slot.room_no}` : null,
+    slot_type: slot.slot_type,
+  }));
+}
+
 export function clockTime(value: string): string {
   // "09:30:00" → "09:30"
   return value.length >= 5 ? value.slice(0, 5) : value;
