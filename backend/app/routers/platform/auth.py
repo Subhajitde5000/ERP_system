@@ -21,8 +21,10 @@ from app.models.platform_user import PlatformUser
 from app.schemas.auth import (
     AccessTokenResponse,
     LogoutRequest,
+    PlatformChangePasswordRequest,
     PlatformLoginRequest,
     PlatformLoginResponse,
+    PlatformProfileUpdateRequest,
     PlatformUserInfo,
     RefreshRequest,
 )
@@ -89,3 +91,34 @@ async def get_me(
         last_login_at=current_user.last_login_at,
     )
     return APIResponse(success=True, data=user_info, message="User profile retrieved")
+
+
+@router.put("/profile", response_model=APIResponse[PlatformUserInfo])
+async def update_profile(
+    payload: PlatformProfileUpdateRequest,
+    current_user: Annotated[PlatformUser, Depends(get_current_platform_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Update display name of the currently authenticated platform user."""
+    updated = await AuthService.update_platform_profile(
+        db=db, user=current_user, name=payload.name
+    )
+    return APIResponse(success=True, data=updated, message="Profile updated")
+
+
+@router.post("/change-password", response_model=APIResponse[None])
+async def change_password(
+    payload: PlatformChangePasswordRequest,
+    current_user: Annotated[PlatformUser, Depends(get_current_platform_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Change password for the currently authenticated platform user."""
+    await AuthService.change_platform_password(
+        db=db,
+        user=current_user,
+        current_password=payload.current_password,
+        new_password=payload.new_password,
+    )
+    return APIResponse(
+        success=True, data=None, message="Password changed successfully"
+    )

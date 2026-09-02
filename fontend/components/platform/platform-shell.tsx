@@ -73,6 +73,11 @@ export function PlatformShell({
     };
   }, [open]);
 
+  const profileHref = useMemo(() => {
+    const role_ = params.get("role");
+    return role_ ? `/platform/profile?role=${role_}` : "/platform/profile";
+  }, [params]);
+
   const sidebar = (
     <SidebarNav
       sections={withPreview}
@@ -83,6 +88,7 @@ export function PlatformShell({
       onNavigate={() => setOpen(false)}
       // Platform staff have no account on any tenant login.
       logoutHref="/platform/login"
+      profileHref={profileHref}
     />
   );
 
