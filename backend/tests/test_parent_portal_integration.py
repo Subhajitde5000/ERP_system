@@ -1093,11 +1093,16 @@ async def test_code_reissue_invalidates_the_previous_slip(backend, auth):
 
 
 async def test_a_college_tenant_is_told_the_portal_does_not_apply(backend, auth):
-    """Guardian access is a school construct; a college must not accumulate links
-    nobody will ever open."""
+    """Guardian portal is plan-gated. A SCHOOL tenant always gets portal_enabled=True.
+    A STUDENT user (not a PARENT role) always gets 403 on the guardian console."""
     client, _, _ = backend
     res = await client.get("/api/v1/parent/children", headers=auth["student"])
     assert res.status_code == 403  # not a parent, in any tenant type
+
+    # The admin board for the SCHOOL tenant should report portal_enabled=True.
+    board = await client.get("/api/v1/institution/parent-links?limit=10", headers=auth["admin"])
+    assert board.status_code == 200
+    assert board.json()["data"]["portal_enabled"] is True
 
 
 async def test_guardian_access_never_reaches_another_family(backend, auth):

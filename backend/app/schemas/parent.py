@@ -351,6 +351,7 @@ class ParentLinkPage(BaseModel):
     items: list[ParentLinkRow] = Field(default_factory=list)
     counts: dict[str, int] = Field(default_factory=dict)
     tenant_type: str
+    portal_enabled: bool = True
     #: Students with no guardian on record — the gap the page exists to close.
     unlinked_count: int = 0
     unlinked: list[dict] = Field(default_factory=list)

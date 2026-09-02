@@ -63,7 +63,8 @@ export type ModuleKey =
   | "hr"
   | "admission"
   | "inventory"
-  | "finance";
+  | "finance"
+  | "parent";
 
 export type TenantType = "SCHOOL" | "COLLEGE" | "UNIVERSITY" | "PLATFORM";
 

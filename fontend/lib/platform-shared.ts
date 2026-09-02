@@ -10,12 +10,15 @@ import { ROOT_DOMAIN } from "./tenant";
  * separate from `lib/platform.ts` for the same reason.
  */
 
-/** Acronyms that a plain capitalise would mangle ("Hr", "Ai"). */
-const ACRONYMS: Partial<Record<ModuleKey, string>> = { hr: "HR" };
+/** Custom display labels that a plain capitalise would not format properly. */
+const MODULE_CUSTOM_LABELS: Partial<Record<ModuleKey, string>> = {
+  hr: "HR",
+  parent: "Parent Portal",
+};
 
 /** Human label for a module key. */
 export function moduleLabel(key: ModuleKey): string {
-  return ACRONYMS[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
+  return MODULE_CUSTOM_LABELS[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
 }
 
 /** The platform's root domain, for display. */

@@ -413,6 +413,7 @@ export interface GuardianLinkBoard {
   /** Link counts by status, plus `total` */
   counts: Record<string, number>;
   tenant_type: string;
+  portal_enabled?: boolean;
   /** Students with no guardian on record at all — the gap this page exists to close */
   unlinked_count: number;
   unlinked: { student_id: string; student_name: string; student_roll_no: string | null; class_name: string | null }[];

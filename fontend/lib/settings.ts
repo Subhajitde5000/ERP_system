@@ -175,6 +175,7 @@ export const MODULE_ROLE: Record<string, InstitutionRole> = {
   admission: "ADMISSION_OFFICER",
   inventory: "STORE_MANAGER",
   finance: "ACCOUNTANT",
+  parent: "PARENT",
 };
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
@@ -194,6 +195,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   admission: "Admission",
   inventory: "Inventory",
   finance: "Finance & Fees",
+  parent: "Parent Portal",
 };
 
 export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
@@ -213,6 +215,7 @@ export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
   admission: "Applications, merit lists and enrolment.",
   inventory: "Stock, issue requests and purchase orders.",
   finance: "Fee structures, collection and receipts.",
+  parent: "Child attendance, results, fees and school notices.",
 };
 
 /* ── Notification channels (dev doc §12.1) ──────────────────────────────── */

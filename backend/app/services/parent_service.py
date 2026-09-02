@@ -65,6 +65,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models.academic import AcademicYear, Department, SchoolClass
+from app.models.billing import TenantModule
+from app.models.catalog import Plan
 from app.models.enrollment import Enrollment
 from app.models.hod import AttendanceRecord, MentorAssignment
 from app.models.lms import AttendanceLeave, LeaveStatus
@@ -235,6 +237,33 @@ async def _role_by_name(db: AsyncSession, name: str) -> Role | None:
 class ParentService:
     """The guardian console. Read-mostly; the only write is an excused absence."""
 
+    @staticmethod
+    async def _is_portal_enabled(db: AsyncSession, tenant: Tenant) -> bool:
+        """A tenant may use the guardian portal if:
+        1. The 'parent' module is explicitly enabled/disabled in tenant_modules.
+        2. The tenant's subscription plan includes 'parent' in allowed_modules.
+        3. By default for SCHOOL tenants (unless explicitly disabled above).
+        """
+        tm_enabled = (
+            await db.execute(
+                select(TenantModule.is_enabled).where(
+                    TenantModule.tenant_id == tenant.id,
+                    TenantModule.module_key == "parent",
+                )
+            )
+        ).scalar_one_or_none()
+        if tm_enabled is not None:
+            return bool(tm_enabled)
+
+        if tenant.plan_id is not None:
+            plan = (
+                await db.execute(select(Plan).where(Plan.id == tenant.plan_id))
+            ).scalar_one_or_none()
+            if plan and "parent" in (plan.allowed_modules or []):
+                return True
+
+        return _value(tenant.type) == "SCHOOL"
+
     # ── the fence ────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -276,6 +305,13 @@ class ParentService:
                 status.HTTP_404_NOT_FOUND, detail="No linked student with that id"
             )
         link_row, child = row
+
+        tenant = await _tenant(db, parent.tenant_id)
+        if not await ParentService._is_portal_enabled(db, tenant):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail="Parent Portal is not enabled for this institution's subscription plan.",
+            )
 
         today = await PrincipalService._tenant_today(db, parent.tenant_id)
         if link_row.status == LinkStatus.SUSPENDED.value:
@@ -459,15 +495,13 @@ class ParentService:
                 ).all()
             )
 
+        portal_enabled = await ParentService._is_portal_enabled(db, tenant)
         return ParentChildren(
             parent_name=parent.name,
             parent_email=parent.email,
             tenant_name=tenant.name,
             tenant_type=_value(tenant.type) or "SCHOOL",
-            # §3 of the role design makes PARENT a school-type role. A college
-            # tenant is told that, rather than shown an empty console it has no
-            # way to fill.
-            portal_enabled=_value(tenant.type) == "SCHOOL",
+            portal_enabled=portal_enabled,
             children=rows,
             pending_invites=[
                 ParentPendingInvite(
@@ -596,10 +630,11 @@ class ParentService:
             rollups.append(rollup)
 
         rollups.sort(key=lambda r: (not r.child.is_primary, r.child.name.lower()))
+        portal_enabled = await ParentService._is_portal_enabled(db, tenant)
         return ParentFamilyOverview(
             parent_name=parent.name,
             tenant_name=tenant.name,
-            portal_enabled=_value(tenant.type) == "SCHOOL",
+            portal_enabled=portal_enabled,
             children=rollups,
         )
 
@@ -1714,6 +1749,7 @@ class ParentLinkService:
             )
         ).all()
 
+        portal_enabled = await ParentService._is_portal_enabled(db, tenant)
         return ParentLinkPage(
             total=int(total or 0),
             limit=limit,
@@ -1721,6 +1757,7 @@ class ParentLinkService:
             items=await ParentLinkService._rows_out(db, admin.tenant_id, links),
             counts=counts,
             tenant_type=_value(tenant.type) or "SCHOOL",
+            portal_enabled=portal_enabled,
             unlinked_count=int(unlinked_total or 0),
             unlinked=[
                 {
@@ -1746,16 +1783,13 @@ class ParentLinkService:
         PENDING_CLAIM invite behind a code; `create_account` makes the login now
         and posts a reset link, the same way staff invites work.
         """
-        # The role design lists PARENT as a school-type role and a college has no
-        # guardian console to open, so creating a link here would produce access
-        # nobody can use. Reading and unlinking stay allowed: an institution that
-        # changed type must still be able to clean up what it made.
-        if _value(tenant.type) == "COLLEGE":
+        portal_enabled = await ParentService._is_portal_enabled(db, tenant)
+        if not portal_enabled:
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
                 detail=(
-                    "Guardian links are available to school institutions only. "
-                    "This tenant is a college."
+                    "Guardian portal is not enabled in this institution's subscription plan. "
+                    "Upgrade your plan or enable the Parent Portal module to create guardian links."
                 ),
             )
         child = (

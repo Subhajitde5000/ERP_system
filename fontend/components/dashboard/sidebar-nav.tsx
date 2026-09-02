@@ -51,7 +51,7 @@ export function SidebarNav({
       {/* Module-aware navigation */}
       <nav
         aria-label="Main"
-        className="flex-1 space-y-5 overflow-y-auto px-3 py-4"
+        className="platform-scrollbar flex-1 space-y-5 overflow-y-auto px-3 py-4"
       >
         {sections.map((section, i) => (
           <div key={section.title ?? i}>
