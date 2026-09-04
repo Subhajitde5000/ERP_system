@@ -1575,7 +1575,13 @@ class PrincipalService:
             0,
             targets.get((notice.target_scope.value, notice.target_id)),
         )
-        return PrincipalNoticeDetail(**base.model_dump(), readers=[], attachments=attachments)
+        return PrincipalNoticeDetail(
+            # LeadershipNoticeRow already carries an `attachments` default —
+            # exclude it or the explicit kwarg below collides (TypeError).
+            **base.model_dump(exclude={"attachments"}),
+            readers=[],
+            attachments=attachments,
+        )
 
     @staticmethod
     async def _save_notice_attachments(db: AsyncSession, notice_id: uuid.UUID, attachments: list) -> list[NoticeAttachmentOut]:

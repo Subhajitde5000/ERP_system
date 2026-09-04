@@ -102,17 +102,23 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 
 from app.services.fcm_client import get_fcm_client
+from app.services.online_class_service import live_rooms
 from app.services.scheduler_service import start_scheduler, stop_scheduler
 
 
 @app.on_event("startup")
 async def on_startup():
-    start_scheduler()
+    # Cross-worker live-room fan-out (Redis pub/sub) before anything serves.
+    await live_rooms.start()
+    await start_scheduler()
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    stop_scheduler()
+    await stop_scheduler()
+    # Close the live-room Redis listener after jobs stop, but before the
+    # process exits, so in-flight frames get a chance to drain.
+    await live_rooms.stop()
     # Release the shared FCM HTTP client connection pool, if one was created.
     try:
         await get_fcm_client().aclose()

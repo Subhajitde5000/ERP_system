@@ -33,6 +33,34 @@ class Settings(BaseSettings):
 
     # ── Redis ─────────────────────────────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
+    # WebRTC relay for the live classroom (see doc/deploy-coturn.md).
+    # TURN_URL e.g. "turn:turn.example.com:3478" or "turns:...:5349" (TLS);
+    # with static shared-secret auth set username/credential accordingly.
+    TURN_URL: str = ""
+    TURN_USERNAME: str = ""
+    TURN_CREDENTIAL: str = ""
+    # Set to false on API-only workers; run one scheduler-enabled worker
+    # (or a dedicated worker process) to own the background jobs.
+    SCHEDULER_ENABLED: bool = True
+
+    def ice_servers(self) -> list[dict]:
+        """ICE server list for the live-classroom WebRTC peers.
+
+        STUN is enough on open networks; TURN (relay) is what gets calls
+        through symmetric NATs and strict firewalls. TURN is only offered
+        when fully configured — a half-configured relay would just produce
+        failing candidates.
+        """
+        servers = [{"urls": "stun:stun.l.google.com:19302"}]
+        if self.TURN_URL and self.TURN_USERNAME and self.TURN_CREDENTIAL:
+            servers.append(
+                {
+                    "urls": self.TURN_URL,
+                    "username": self.TURN_USERNAME,
+                    "credential": self.TURN_CREDENTIAL,
+                }
+            )
+        return servers
 
     # ── Online Class ──────────────────────────────────────────────────────────
     # Max concurrent WebSocket connections per live room (per worker).

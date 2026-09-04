@@ -31,6 +31,7 @@ from fastapi import (
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database import get_db
 from app.dependencies.auth import (
     get_current_tenant_user,
@@ -439,7 +440,7 @@ async def live_room(websocket: WebSocket, class_id: uuid.UUID, db: DB, token: st
                 return
 
         await websocket.accept()
-        live_rooms.connect(class_id, user.id, websocket, user.name, role)
+        await live_rooms.register(class_id, user.id, websocket, user.name, role)
         if role == "STUDENT":
             await OnlineClassService.ws_student_joined(db, oc, user)
         await db.commit()
@@ -449,7 +450,10 @@ async def live_room(websocket: WebSocket, class_id: uuid.UUID, db: DB, token: st
             {
                 "type": "welcome",
                 "you": {"id": str(user.id), "name": user.name, "role": role},
-                "peers": live_rooms.online_peers(class_id, exclude=user.id),
+                "peers": await live_rooms.online_peers(class_id, exclude=user.id),
+                # ICE config for this deployment; the client keeps its STUN
+                # fallback when TURN is not configured server-side.
+                "ice_servers": get_settings().ice_servers(),
                 "whiteboard": oc.whiteboard_strokes or [],
             }
         )
@@ -521,7 +525,7 @@ async def live_room(websocket: WebSocket, class_id: uuid.UUID, db: DB, token: st
         await db.rollback()
     finally:
         if user is not None:
-            live_rooms.disconnect(class_id, user.id)
+            await live_rooms.unregister(class_id, user.id)
             with anyio.CancelScope(shield=True):
                 try:
                     if role == "STUDENT" and oc is not None and oc.status == OnlineClassStatus.LIVE:

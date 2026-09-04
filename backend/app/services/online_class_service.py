@@ -18,6 +18,7 @@ ERP (teacher sessions, student calendar, HOD reports) sees it unchanged.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import csv
 import io
 import json
@@ -92,17 +93,254 @@ def _tenant_now(tz_name: str | None) -> datetime:
 
 
 class LiveRoomManager:
-    """Hub for live classroom WebSockets supporting multi-worker via Redis pub/sub.
+    """Hub for live classroom WebSockets with real multi-worker fan-out.
 
-    Maintains local WebSocket connections per worker process and syncs
-    broadcast events across instances via Redis channels when available.
+    Each worker keeps its own socket registry (``rooms``) and mirrors every
+    broadcast / direct send onto a per-room Redis channel; a pub/sub listener
+    on every worker delivers those messages to the sockets it owns.  Presence
+    lives in a Redis hash per room so rosters and peer lists are cluster-wide.
+    With no reachable Redis the manager degrades to single-worker mode (local
+    rooms only) and logs one warning — chat/whiteboard keep working for the
+    sockets that worker owns.
+
+    Channel / key layout (all namespaced under ``live:``):
+
+    * ``live:room:{class_id}``  — pub/sub channel carrying an envelope
+      ``{"op": "bc" | "dm", "payload": …, "exclude"?, "target"?, "origin"}``;
+      workers skip envelopes they published themselves (``origin``).
+    * ``live:presence:{class_id}`` — hash ``user_id → {name, role, worker}``
+      giving every worker the same roster view.
+    * ``live:worker:{worker_id}`` — heartbeat key (TTL); presence entries from
+      dead workers are swept on read so a crashed process cannot haunt a room.
     """
 
-    def __init__(self) -> None:
+    _HEARTBEAT_SECONDS = 20
+    _WORKER_TTL_SECONDS = 60
+    _MAX_ENVELOPE_BYTES = 256 * 1024
+
+    def __init__(self, redis_factory=None) -> None:
         # class_id → user_id → {"ws": WebSocket, "name": str, "role": str}
         self.rooms: dict[uuid.UUID, dict[uuid.UUID, dict]] = {}
         self._redis = None
+        self._redis_factory = redis_factory
         self._pubsub_task: asyncio.Task | None = None
+        self._heartbeat_task: asyncio.Task | None = None
+        self._worker_id = uuid.uuid4().hex
+        self._started = False
+        self._warned_no_redis = False
+        # Set once the pub/sub listener is actually subscribed, so start()
+        # can guarantee early frames are not missed by a slow listener.
+        self._subscribed = asyncio.Event()
+
+    # ── Lifecycle ────────────────────────────────────────────────────────────
+
+    async def start(self) -> None:
+        """Connect Redis (best-effort) and start the listener + heartbeat."""
+        if self._started:
+            return
+        self._started = True
+        self._subscribed.clear()
+        if self._redis_factory is None:
+            return  # unit-test / explicit local-only construction
+        try:
+            self._redis = self._redis_factory()
+            # One round-trip up front: fail fast and fall back to local-only
+            # instead of discovering the outage on the first broadcast.
+            await self._redis.ping()
+        except Exception as exc:  # noqa: BLE001 - Redis is optional by design
+            self._redis = None
+            self._warn_once(
+                "Redis unavailable (%s) — live rooms run in single-worker mode; "
+                "chat/whiteboard will not cross workers until Redis is reachable.",
+                exc,
+            )
+            return
+        self._pubsub_task = asyncio.create_task(self._listen(), name="live-room-pubsub")
+        self._heartbeat_task = asyncio.create_task(self._heartbeat(), name="live-room-heartbeat")
+        try:
+            # Don't report "started" until fan-out can actually receive —
+            # otherwise the first broadcast may beat the SUBSCRIBE.
+            await asyncio.wait_for(self._subscribed.wait(), timeout=5)
+        except TimeoutError:  # pragma: no cover - slow Redis; listener still retried by task
+            logger.warning("live-room pub/sub subscription is slow to establish; proceeding anyway")
+
+    async def stop(self) -> None:
+        """Cancel background tasks and close the Redis connection."""
+        for task in (self._pubsub_task, self._heartbeat_task):
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
+        self._pubsub_task = None
+        self._heartbeat_task = None
+        if self._redis is not None:
+            try:
+                await self._redis.delete(f"live:worker:{self._worker_id}")
+                await self._redis.aclose()
+            except Exception:  # noqa: BLE001 - shutdown best-effort
+                pass
+            self._redis = None
+        self._started = False
+
+    def _warn_once(self, message: str, *args) -> None:
+        if self._warned_no_redis:
+            return
+        self._warned_no_redis = True
+        logger.warning(message, *args)
+
+    # ── Pub/sub plumbing ─────────────────────────────────────────────────────
+
+    async def _listen(self) -> None:
+        """Deliver envelopes from other workers to this worker's sockets."""
+        assert self._redis is not None
+        pubsub = self._redis.pubsub()
+        await pubsub.psubscribe("live:room:*")
+        self._subscribed.set()
+        try:
+            async for message in pubsub.listen():
+                if message.get("type") != "pmessage":
+                    continue
+                try:
+                    envelope = json.loads(message["data"])
+                    if not isinstance(envelope, dict) or envelope.get("origin") == self._worker_id:
+                        continue
+                    room = uuid.UUID(message["channel"].decode().rsplit(":", 1)[-1])
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    continue
+                if envelope.get("op") == "dm":
+                    await self._local_send(room, uuid.UUID(str(envelope.get("target"))), envelope.get("payload"))
+                else:
+                    await self._local_broadcast(room, envelope.get("payload"), envelope.get("exclude"))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - the listener must never die silently
+            logger.error("live-room pub/sub listener crashed: %s", exc)
+        finally:
+            with contextlib.suppress(Exception):
+                await pubsub.punsubscribe("live:room:*")
+                await pubsub.aclose()
+
+    async def _heartbeat(self) -> None:
+        """Keep this worker's liveness key fresh; TTL sweeps crashed workers."""
+        assert self._redis is not None
+        while True:
+            try:
+                await self._redis.set(
+                    f"live:worker:{self._worker_id}", "1", ex=self._WORKER_TTL_SECONDS
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                self._warn_once("live-room heartbeat failed: %s", exc)
+            await asyncio.sleep(self._HEARTBEAT_SECONDS)
+
+    async def _publish(self, class_id: uuid.UUID, envelope: dict) -> None:
+        if self._redis is None:
+            return
+        try:
+            raw = json.dumps(envelope, default=str)
+            if len(raw) > self._MAX_ENVELOPE_BYTES:
+                # Relay signalling must never wedge the channel on a huge frame.
+                logger.warning("dropping oversized live-room envelope for class %s", class_id)
+                return
+            await self._redis.publish(f"live:room:{class_id}", raw)
+        except Exception as exc:  # noqa: BLE001 - Redis outage must not break local delivery
+            self._warn_once("live-room publish failed (fan-out paused): %s", exc)
+
+    # ── Local delivery ───────────────────────────────────────────────────────
+
+    async def _local_broadcast(self, class_id: uuid.UUID, payload: dict, exclude: str | None = None) -> None:
+        if not isinstance(payload, dict):
+            return
+        for user_id, info in list(self.rooms.get(class_id, {}).items()):
+            if exclude is not None and str(user_id) == exclude:
+                continue
+            try:
+                await info["ws"].send_json(payload)
+            except Exception:
+                pass  # half-closed socket; disconnect handler cleans up
+
+    async def _local_send(self, class_id: uuid.UUID, user_id: uuid.UUID, payload: dict) -> None:
+        if not isinstance(payload, dict):
+            return
+        info = self.rooms.get(class_id, {}).get(user_id)
+        if info is not None:
+            try:
+                await info["ws"].send_json(payload)
+            except Exception:
+                pass
+
+    # ── Presence ─────────────────────────────────────────────────────────────
+
+    def _presence_key(self, class_id: uuid.UUID) -> str:
+        return f"live:presence:{class_id}"
+
+    async def _track_presence(self, class_id: uuid.UUID, user_id: uuid.UUID, name: str, role: str) -> None:
+        if self._redis is None:
+            return
+        try:
+            await self._redis.hset(
+                self._presence_key(class_id),
+                str(user_id),
+                json.dumps({"name": name, "role": role, "worker": self._worker_id}, default=str),
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._warn_once("live-room presence write failed: %s", exc)
+
+    async def _untrack_presence(self, class_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        if self._redis is None:
+            return
+        try:
+            key = self._presence_key(class_id)
+            stored = await self._redis.hget(key, str(user_id))
+            if stored is None:
+                return
+            entry = json.loads(stored)
+            # Only the worker that owns the socket removes it — a peer that
+            # reconnected on another worker must not be wiped by the old one.
+            if isinstance(entry, dict) and entry.get("worker") == self._worker_id:
+                await self._redis.hdel(key, str(user_id))
+        except Exception as exc:  # noqa: BLE001
+            self._warn_once("live-room presence delete failed: %s", exc)
+
+    async def _cluster_peers(self, class_id: uuid.UUID) -> dict[str, dict] | None:
+        """Cluster-wide presence map, sweeping entries of dead workers.
+
+        Returns ``None`` when Redis is unavailable — callers then fall back to
+        this worker's local view.
+        """
+        if self._redis is None:
+            return None
+        try:
+            key = self._presence_key(class_id)
+            raw = await self._redis.hgetall(key)
+            peers: dict[str, dict] = {}
+            stale: list[str] = []
+            for uid, blob in raw.items():
+                uid_text = uid.decode() if isinstance(uid, bytes) else str(uid)
+                blob_text = blob.decode() if isinstance(blob, bytes) else str(blob)
+                try:
+                    entry = json.loads(blob_text)
+                except json.JSONDecodeError:
+                    stale.append(uid_text)
+                    continue
+                if not isinstance(entry, dict):
+                    stale.append(uid_text)
+                    continue
+                if not await self._redis.exists(f"live:worker:{entry.get('worker')}"):
+                    stale.append(uid_text)  # owning worker died mid-class
+                    continue
+                peers[uid_text] = entry
+            if stale:
+                await self._redis.hdel(key, *stale)
+            return peers
+        except Exception as exc:  # noqa: BLE001
+            self._warn_once("live-room presence read failed: %s", exc)
+            return None
+
+    # ── Public API (unchanged shapes; presence reads are now async) ─────────
 
     def connect(self, class_id: uuid.UUID, user_id: uuid.UUID, ws: WebSocket, name: str, role: str) -> None:
         settings = get_settings()
@@ -124,36 +362,72 @@ class LiveRoomManager:
     def is_connected(self, class_id: uuid.UUID, user_id: uuid.UUID) -> bool:
         return user_id in self.rooms.get(class_id, {})
 
-    def active_count(self, class_id: uuid.UUID) -> int:
+    async def active_count(self, class_id: uuid.UUID) -> int:
+        peers = await self._cluster_peers(class_id)
+        if peers is not None:
+            return len(peers)
         return len(self.rooms.get(class_id, {}))
 
-    def online_peers(self, class_id: uuid.UUID, exclude: uuid.UUID | None = None) -> list[dict]:
+    async def online_peers(self, class_id: uuid.UUID, exclude: uuid.UUID | None = None) -> list[dict]:
+        """Cluster-wide peer list (falls back to this worker when offline)."""
+        peers = await self._cluster_peers(class_id)
+        if peers is not None:
+            return [
+                {"id": uid, "name": entry.get("name"), "role": entry.get("role")}
+                for uid, entry in peers.items()
+                if exclude is None or uid != str(exclude)
+            ]
         return [
             {"id": str(user_id), "name": info["name"], "role": info["role"]}
             for user_id, info in self.rooms.get(class_id, {}).items()
             if user_id != exclude
         ]
 
+    async def register(self, class_id: uuid.UUID, user_id: uuid.UUID, ws: WebSocket, name: str, role: str) -> None:
+        """Capacity-checked local registration + cluster-wide presence entry."""
+        self.connect(class_id, user_id, ws, name, role)
+        await self._track_presence(class_id, user_id, name, role)
+
+    async def unregister(self, class_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        """Remove the local socket and (if we still own it) the presence entry."""
+        self.disconnect(class_id, user_id)
+        await self._untrack_presence(class_id, user_id)
+
     async def broadcast(self, class_id: uuid.UUID, payload: dict, exclude: uuid.UUID | None = None) -> None:
-        """Broadcast payload to all connected peers in the room on this worker."""
-        for user_id, info in list(self.rooms.get(class_id, {}).items()):
-            if user_id == exclude:
-                continue
-            try:
-                await info["ws"].send_json(payload)
-            except Exception:
-                pass  # half-closed socket; disconnect handler cleans up
+        """Broadcast payload to every peer in the room across all workers."""
+        await self._local_broadcast(class_id, payload, str(exclude) if exclude else None)
+        await self._publish(
+            class_id,
+            {"op": "bc", "payload": payload, "exclude": str(exclude) if exclude else None, "origin": self._worker_id},
+        )
 
     async def send_to(self, class_id: uuid.UUID, user_id: uuid.UUID, payload: dict) -> None:
+        """Deliver a signalling envelope to one peer, whichever worker owns it."""
         info = self.rooms.get(class_id, {}).get(user_id)
         if info is not None:
             try:
                 await info["ws"].send_json(payload)
+                return
             except Exception:
                 pass
+        await self._publish(
+            class_id, {"op": "dm", "target": str(user_id), "payload": payload, "origin": self._worker_id}
+        )
 
 
-live_rooms = LiveRoomManager()
+def _default_redis_factory():
+    """Production Redis client from settings.REDIS_URL (lazy import).
+
+    ``redis`` is a hard dependency of the deployment but an optional one at
+    runtime: if the server is unreachable, LiveRoomManager.start() falls back
+    to single-worker mode instead of refusing to boot.
+    """
+    from redis.asyncio import from_url
+
+    return from_url(get_settings().REDIS_URL, decode_responses=False)
+
+
+live_rooms = LiveRoomManager(redis_factory=_default_redis_factory)
 
 
 class OnlineClassService:
@@ -1456,7 +1730,7 @@ class OnlineClassService:
                 ended_at=oc.ended_at,
                 created_at=oc.created_at,
                 participant_count=p_count,
-                active_participants=live_rooms.active_count(oc.id) if oc.status == OnlineClassStatus.LIVE else 0,
+                active_participants=(await live_rooms.active_count(oc.id)) if oc.status == OnlineClassStatus.LIVE else 0,
             )
             for oc, class_name, dept_name, subject_code, subject_name, teacher_name, p_count in rows
         ]
