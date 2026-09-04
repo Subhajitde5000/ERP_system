@@ -1501,7 +1501,10 @@ class PrincipalService:
             target_names.get((notice.target_scope.value, notice.target_id)),
         )
         return PrincipalNoticeDetail(
-            **base.model_dump(), readers=readers,
+            # LeadershipNoticeRow already carries an `attachments` default —
+            # exclude it or the explicit kwarg below collides (TypeError).
+            **base.model_dump(exclude={"attachments"}),
+            readers=readers,
             attachments=await PrincipalService._notice_attachments(db, notice.id),
         )
 
