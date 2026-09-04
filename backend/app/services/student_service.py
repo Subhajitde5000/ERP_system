@@ -157,10 +157,6 @@ from app.services.teacher_service import grade_for
 
 
 _OBJECTIVE_QUESTION_TYPES = (QuestionType.MCQ, QuestionType.TRUE_FALSE)
-_SUBMITTABLE_STATUSES = (
-    SubmissionStatus.RESUBMIT_REQUESTED,
-    SubmissionStatus.REJECTED,
-)
 _AUTO_SUBMIT_GRACE = timedelta(minutes=5)
 
 
