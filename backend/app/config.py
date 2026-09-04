@@ -68,6 +68,21 @@ class Settings(BaseSettings):
     WS_MAX_ROOM_PARTICIPANTS: int = 500
     # Maximum file upload size for class materials / recordings (MB).
     ONLINE_CLASS_UPLOAD_MAX_MB: int = 25
+    # ── File storage (B6): private, tenant-prefixed, signed-URL access ──────
+    # "local" = private disk under UPLOAD_FILE_ROOT (single instance);
+    # "s3"    = object storage (S3/R2/MinIO, multi-instance + durable).
+    STORAGE_BACKEND: str = "local"
+    UPLOAD_FILE_ROOT: str = "uploads"
+    # How long vended file links stay valid (S3 presigned URLs share this).
+    UPLOAD_SIGNED_URL_TTL_SECONDS: int = 900
+    # S3 backend settings. S3_BUCKET is required when STORAGE_BACKEND=s3;
+    # credentials may be omitted when the workload runs on an IAM role.
+    S3_BUCKET: str = ""
+    S3_REGION: str = ""
+    S3_ENDPOINT_URL: str = ""      # e.g. MinIO https://minio.internal:9000
+    S3_ACCESS_KEY_ID: str = ""
+    S3_SECRET_ACCESS_KEY: str = ""
+    S3_KEY_PREFIX: str = ""        # optional bucket-internal prefix
     # Comma-separated MIME-type allowlist for shared class files.
     ONLINE_CLASS_ALLOWED_MIME_TYPES: str = (
         "application/pdf,"

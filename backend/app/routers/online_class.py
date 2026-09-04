@@ -12,7 +12,6 @@ import contextlib
 import json
 import uuid
 from datetime import date, datetime, timezone
-from pathlib import Path
 from typing import Annotated
 
 import anyio
@@ -72,7 +71,6 @@ Teacher = Annotated[User, Depends(get_current_tenant_user_teacher)]
 Student = Annotated[User, Depends(get_current_tenant_user_student)]
 AnyTenantUser = Annotated[User, Depends(get_current_tenant_user)]
 
-UPLOADS_ROOT = Path(__file__).resolve().parent.parent.parent / "uploads"
 
 
 # ── Static / Fixed paths (MUST COME BEFORE parameterized /{class_id}) ─────────
@@ -307,14 +305,14 @@ async def export_attendance_csv(class_id: uuid.UUID, db: DB, teacher: Teacher):
 async def share_file(class_id: uuid.UUID, db: DB, teacher: Teacher, file: UploadFile = File(...)):
     oc = await OnlineClassService._get_owned_class(db, teacher, class_id)
     row = await OnlineClassService.add_file(
-        db, teacher, oc, file.filename or "file", file, file.content_type or "", UPLOADS_ROOT, role="TEACHER"
+        db, teacher, oc, file.filename or "file", file, file.content_type or "", role="TEACHER"
     )
     return APIResponse(success=True, data=row, message="File shared with the class")
 
 
 @router.delete("/{class_id}/files/{file_id}", response_model=APIResponseOnlineFiles)
 async def delete_file(class_id: uuid.UUID, file_id: uuid.UUID, db: DB, teacher: Teacher):
-    files = await OnlineClassService.delete_file(db, teacher, class_id, file_id, UPLOADS_ROOT)
+    files = await OnlineClassService.delete_file(db, teacher, class_id, file_id)
     return APIResponse(success=True, data=files, message="File deleted")
 
 
@@ -322,7 +320,7 @@ async def delete_file(class_id: uuid.UUID, file_id: uuid.UUID, db: DB, teacher: 
 async def save_recording(class_id: uuid.UUID, db: DB, teacher: Teacher, file: UploadFile = File(...)):
     oc = await OnlineClassService._get_owned_class(db, teacher, class_id)
     row = await OnlineClassService.save_recording(
-        db, teacher, oc, file.filename or "recording.webm", file, file.content_type or "video/webm", UPLOADS_ROOT
+        db, teacher, oc, file.filename or "recording.webm", file, file.content_type or "video/webm"
     )
     return APIResponse(success=True, data=row, message="Recording saved")
 
@@ -355,7 +353,7 @@ async def leave_class(class_id: uuid.UUID, db: DB, student: Student):
 async def student_share_file(class_id: uuid.UUID, db: DB, student: Student, file: UploadFile = File(...)):
     oc = await OnlineClassService._get_visible_class(db, student, class_id)
     row = await OnlineClassService.add_file(
-        db, student, oc, file.filename or "student_upload", file, file.content_type or "", UPLOADS_ROOT, role="STUDENT"
+        db, student, oc, file.filename or "student_upload", file, file.content_type or "", role="STUDENT"
     )
     return APIResponse(success=True, data=row, message="File uploaded")
 

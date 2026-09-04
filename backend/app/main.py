@@ -11,7 +11,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from fastapi import FastAPI, Request, status
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -44,6 +43,7 @@ from app.routers import (
     online_class_router,
     notifications_router,
     push_tokens_router,
+    files_router,
 )
 from app.schemas.common import ErrorDetail
 
@@ -61,9 +61,9 @@ app = FastAPI(
     docs_url="/docs" if settings.APP_DEBUG else None,
     redoc_url="/redoc" if settings.APP_DEBUG else None,
 )
-uploads_directory = PROJECT_ROOT / "uploads"
-uploads_directory.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=uploads_directory), name="uploads")
+# B6: uploads live under this root (STORAGE_BACKEND=local) but are NEVER
+# publicly mounted — every byte is served through the signed-URL files router.
+(PROJECT_ROOT / "uploads").mkdir(parents=True, exist_ok=True)
 
 # Attach limiter to app state so the decorator can find it
 app.state.limiter = limiter
@@ -157,3 +157,6 @@ app.include_router(hostel_router, prefix=api_prefix)
 app.include_router(online_class_router, prefix=api_prefix)
 app.include_router(notifications_router, prefix=api_prefix)
 app.include_router(push_tokens_router, prefix=api_prefix)
+# Stored uploads: signed, expiring downloads — replaces the old public
+# /uploads static mount (see app/routers/files.py).
+app.include_router(files_router, prefix=api_prefix)

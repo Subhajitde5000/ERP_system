@@ -4129,7 +4129,7 @@ class TeacherService:
         )
         db.add(notice)
         await db.flush()
-        await PrincipalService._save_notice_attachments(db, notice.id, payload.attachments)
+        await PrincipalService._save_notice_attachments(db, notice.tenant_id, notice.id, payload.attachments)
         AuditService.record(
             db,
             actor=teacher,

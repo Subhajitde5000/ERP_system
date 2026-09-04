@@ -74,6 +74,7 @@ from app.schemas.online_class import (
 from app.services.audit_service import AuditService
 from app.services.principal_service import PrincipalService
 from app.services.notification_service import NotificationService
+from app.services.storage_service import storage
 from app.services.push_service import PushService
 from app.services.teacher_service import TeacherService
 
@@ -508,7 +509,7 @@ class OnlineClassService:
             duration_minutes=oc.duration_minutes,
             allow_join=oc.allow_join,
             recording_enabled=oc.recording_enabled,
-            recording_url=oc.recording_url,
+            recording_url=OnlineClassService._recording_url(oc),
             started_at=oc.started_at,
             ended_at=oc.ended_at,
             created_at=oc.created_at,
@@ -577,13 +578,29 @@ class OnlineClassService:
                 uploader_name=name,
                 uploader_role=f.uploader_role,
                 file_name=f.file_name,
-                url=f"/uploads/online-classes/{class_id}/{f.file_path}",
+                url=storage.signed_url(
+                    f.file_path if "/" in f.file_path else f"online-classes/{class_id}/{f.file_path}"
+                ),
                 file_size_bytes=f.file_size_bytes,
                 mime_type=f.mime_type,
                 created_at=f.created_at,
             )
             for f, name in rows
         ]
+
+    @staticmethod
+    def _recording_url(oc: OnlineClass) -> str | None:
+        """Sign the stored recording key per response (never persist URLs).
+
+        Legacy rows hold ``/uploads/…`` paths, newer ones the bare storage
+        key — the storage service normalises both. Absolute external URLs
+        pass through untouched.
+        """
+        if not oc.recording_url:
+            return None
+        if oc.recording_url.startswith(("http://", "https://", "//")):
+            return oc.recording_url
+        return storage.signed_url(oc.recording_url)
 
     # ── Teacher: setup & creation ─────────────────────────────────────────────
 
@@ -774,7 +791,7 @@ class OnlineClassService:
                 duration_minutes=oc.duration_minutes,
                 allow_join=oc.allow_join,
                 recording_enabled=oc.recording_enabled,
-                recording_url=oc.recording_url,
+                recording_url=OnlineClassService._recording_url(oc),
                 started_at=oc.started_at,
                 ended_at=oc.ended_at,
                 created_at=oc.created_at,
@@ -1494,16 +1511,18 @@ class OnlineClassService:
         filename: str,
         content: bytes | UploadFile,
         mime_type: str,
-        uploads_root: Path,
         role: str = "TEACHER",
     ) -> OnlineFileRow:
+        """Share one file into the class room.
+
+        Storage is delegated to the platform storage service (B6): magic-byte
+        validation, a tenant-prefixed key, and a short-lived signed download
+        URL.
+        """
         settings = get_settings()
         if oc.status not in (OnlineClassStatus.LIVE, OnlineClassStatus.COMPLETED):
             raise HTTPException(status.HTTP_409_CONFLICT, detail="Files can be shared once the class has started")
 
-        max_bytes = settings.ONLINE_CLASS_UPLOAD_MAX_MB * 1024 * 1024
-
-        # Validate MIME type against configured safe allowlist
         clean_mime = (mime_type or "application/octet-stream").lower().split(";")[0].strip()
         if clean_mime not in settings.allowed_mime_set and clean_mime != "application/octet-stream":
             raise HTTPException(
@@ -1511,33 +1530,14 @@ class OnlineClassService:
                 detail="Unsupported or disallowed file type for classroom sharing",
             )
 
-        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", filename)[:200] or "file"
-        stored_name = f"{uuid.uuid4().hex}_{safe_name}"
-        target_dir = uploads_root / "online-classes" / str(oc.id)
-        target_dir.mkdir(parents=True, exist_ok=True)
-        dest = target_dir / stored_name
-
-        if hasattr(content, "read"):
-            total_size = 0
-            with dest.open("wb") as out:
-                while chunk := await content.read(64 * 1024):
-                    total_size += len(chunk)
-                    if total_size > max_bytes:
-                        dest.unlink(missing_ok=True)
-                        raise HTTPException(
-                            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                            detail=f"File exceeds the {settings.ONLINE_CLASS_UPLOAD_MAX_MB} MB limit",
-                        )
-                    out.write(chunk)
-            file_size = total_size
-        else:
-            if len(content) > max_bytes:
-                raise HTTPException(
-                    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"File exceeds the {settings.ONLINE_CLASS_UPLOAD_MAX_MB} MB limit",
-                )
-            dest.write_bytes(content)
-            file_size = len(content)
+        stored = await storage.save(
+            oc.tenant_id,
+            f"online-classes/{oc.id}",
+            filename,
+            content,
+            clean_mime,
+            max_bytes=settings.ONLINE_CLASS_UPLOAD_MAX_MB * 1024 * 1024,
+        )
 
         file_entry = OnlineClassFile(
             id=uuid.uuid4(),
@@ -1545,10 +1545,10 @@ class OnlineClassService:
             class_id=oc.id,
             uploader_id=user.id,
             uploader_role=role,
-            file_name=safe_name,
-            file_path=stored_name,
-            file_size_bytes=file_size,
-            mime_type=clean_mime[:100],
+            file_name=re.sub(r"[^A-Za-z0-9._-]", "_", filename)[:200] or "file",
+            file_path=stored.key,
+            file_size_bytes=stored.size,
+            mime_type=stored.mime[:100],
         )
         db.add(file_entry)
         await db.flush()
@@ -1558,7 +1558,7 @@ class OnlineClassService:
 
     @staticmethod
     async def delete_file(
-        db: AsyncSession, teacher: User, class_id: uuid.UUID, file_id: uuid.UUID, uploads_root: Path
+        db: AsyncSession, teacher: User, class_id: uuid.UUID, file_id: uuid.UUID
     ) -> list[OnlineFileRow]:
         oc = await OnlineClassService._get_owned_class(db, teacher, class_id)
         file_obj = (
@@ -1572,13 +1572,14 @@ class OnlineClassService:
         if file_obj is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found")
 
-        # Delete local file from disk if present
-        try:
-            target = uploads_root / "online-classes" / str(oc.id) / file_obj.file_path
-            if target.exists():
-                target.unlink()
-        except Exception as e:
-            logger.warning("Could not unlink physical file: %s", e)
+        # Remove the stored object (local disk or S3); legacy rows stored a
+        # bare name that only resolves with the class namespace attached.
+        key = (
+            file_obj.file_path
+            if "/" in file_obj.file_path
+            else f"online-classes/{class_id}/{file_obj.file_path}"
+        )
+        storage.delete(key)
 
         await db.delete(file_obj)
         await db.flush()
@@ -1586,12 +1587,22 @@ class OnlineClassService:
 
     @staticmethod
     async def save_recording(
-        db: AsyncSession, user: User, oc: OnlineClass, filename: str, content: bytes, mime_type: str, uploads_root: Path
+        db: AsyncSession, user: User, oc: OnlineClass, filename: str, content: bytes, mime_type: str
     ) -> OnlineClassRow:
         if user.id != oc.teacher_id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the class teacher can save a recording")
-        row = await OnlineClassService.add_file(db, user, oc, filename, content, mime_type, uploads_root, role="TEACHER")
-        oc.recording_url = row.url
+        await OnlineClassService.add_file(db, user, oc, filename, content, mime_type, role="TEACHER")
+        # Persist the storage KEY (stable forever); a signed URL would expire
+        # in the database. Serialization signs it fresh on every response.
+        entry = (
+            await db.execute(
+                select(OnlineClassFile)
+                .where(OnlineClassFile.class_id == oc.id)
+                .order_by(OnlineClassFile.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one()
+        oc.recording_url = entry.file_path
         await db.flush()
         return await OnlineClassService._to_row(db, oc)
 
@@ -1725,7 +1736,7 @@ class OnlineClassService:
                 duration_minutes=oc.duration_minutes,
                 allow_join=oc.allow_join,
                 recording_enabled=oc.recording_enabled,
-                recording_url=oc.recording_url,
+                recording_url=OnlineClassService._recording_url(oc),
                 started_at=oc.started_at,
                 ended_at=oc.ended_at,
                 created_at=oc.created_at,
